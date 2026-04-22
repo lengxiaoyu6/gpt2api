@@ -30,6 +30,7 @@ const (
 	SiteDescription   = "site.description"
 	SiteLogoURL       = "site.logo_url"
 	SiteFooter        = "site.footer"
+	SiteImageNotice   = "site.image_notice"
 	SiteContactEmail  = "site.contact_email"
 	SiteDocsURL       = "site.docs_url"
 	SiteAPIBaseURL    = "site.api_base_url"
@@ -100,6 +101,7 @@ var Defs = []KeyDef{
 	{Key: SiteDescription, Type: "string", Category: "site", Default: "企业级 OpenAI 兼容网关", Label: "副标题", Desc: "登录页宣传语", Public: true},
 	{Key: SiteLogoURL, Type: "url", Category: "site", Default: "", Label: "Logo URL", Desc: "空则使用默认图标", Public: true},
 	{Key: SiteFooter, Type: "string", Category: "site", Default: "", Label: "页脚文案", Desc: "版权/备案号等(纯文本)", Public: true},
+	{Key: SiteImageNotice, Type: "string", Category: "site", Default: "", Label: "生图页公告", Desc: "展示在 Web 与移动端生图页顶部的公告文本", Public: true},
 	{Key: SiteContactEmail, Type: "email", Category: "site", Default: "", Label: "联系邮箱", Desc: "对外展示的客服邮箱", Public: true},
 	{Key: SiteDocsURL, Type: "url", Category: "site", Default: "", Label: "文档链接", Desc: "留空则前端隐藏「文档」入口", Public: true},
 	{Key: SiteAPIBaseURL, Type: "url", Category: "site", Default: "", Label: "API Base URL", Desc: "展示给用户的 /v1 入口;留空=当前站点地址", Public: true},
