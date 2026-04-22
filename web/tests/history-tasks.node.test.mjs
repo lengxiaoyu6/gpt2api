@@ -39,10 +39,18 @@ test('历史任务页面支持点击缩略图全屏放大查看', () => {
   assert.match(pageVue, /const previewList = ref<string\[\]>\(\[\]\)/)
   assert.match(pageVue, /const previewIndex = ref\(0\)/)
   assert.match(pageVue, /function openPreview\(urls: string\[\], idx = 0\)/)
-  assert.match(pageVue, /@click="openPreview\(t\.image_urls, 0\)"/)
   assert.match(pageVue, /<el-image-viewer/)
   assert.match(pageVue, /:url-list="previewList"/)
   assert.match(pageVue, /:initial-index="previewIndex"/)
+})
+
+test('历史任务页面按图片拆分多图任务展示', () => {
+  const pageVue = read('web/src/views/personal/HistoryTasks.vue')
+  assert.match(pageVue, /const flattenedImageTasks = computed(?:<FlattenedImageTask\[\]>)?\(\(\) =>/)
+  assert.match(pageVue, /imageTasks\.value\.flatMap\(\(task\) =>/)
+  assert.match(pageVue, /v-for="item in flattenedImageTasks"/)
+  assert.match(pageVue, /@click="openPreview\(item\.task\.image_urls, item\.image_index\)"/)
+  assert.match(pageVue, /第\{\{ item\.image_index \+ 1 \}\}张，共\{\{ item\.image_total \}\}张/)
 })
 
 test('历史任务页面将任务状态显示为中文', () => {
@@ -54,7 +62,7 @@ test('历史任务页面将任务状态显示为中文', () => {
   assert.match(pageVue, /success:\s*\{\s*tag:\s*'success',\s*label:\s*'成功'\s*\}/)
   assert.match(pageVue, /failed:\s*\{\s*tag:\s*'danger',\s*label:\s*'失败'\s*\}/)
   assert.match(pageVue, /function statusLabel\(s: string\)/)
-  assert.match(pageVue, /\{\{ statusLabel\(t\.status\) \}\}/)
+  assert.match(pageVue, /\{\{ statusLabel\(item\.task\.status\) \}\}/)
 })
 
 test('接口文档页不再内置图片任务历史', () => {

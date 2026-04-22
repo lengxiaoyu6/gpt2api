@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as rechargeApi from '@/api/recharge'
 import { formatCredit } from '@/utils/format'
@@ -13,6 +13,8 @@ const total = ref(0)
 const paging = reactive({ limit: 10, offset: 0, status: '' as '' | 'pending' | 'paid' | 'cancelled' | 'expired' })
 const loadingPkg = ref(false)
 const loadingOrder = ref(false)
+const redeeming = ref(false)
+const redeemForm = reactive({ code: '' })
 
 async function loadPackages() {
   loadingPkg.value = true
@@ -58,8 +60,25 @@ async function buy(pkg: rechargeApi.Package, payType?: string) {
       { confirmButtonText: '去刷新订单', callback: () => { paging.offset = 0; loadOrders() } },
     )
   } catch (e: any) {
-    // Axios 拦截器已经 Toast 过,这里额外兜底
     if (e?.message) ElMessage.error(e.message)
+  }
+}
+
+async function submitRedeem() {
+  const code = redeemForm.code.trim()
+  if (!code) {
+    ElMessage.warning('请输入兑换码')
+    return
+  }
+
+  redeeming.value = true
+  try {
+    const result = await rechargeApi.redeemCode(code)
+    redeemForm.code = ''
+    await userStore.fetchMe()
+    ElMessage.success(`兑换成功，到账 ${formatCredit(result.credits)} 积分，当前余额 ${formatCredit(result.balance_after)}`)
+  } finally {
+    redeeming.value = false
   }
 }
 
@@ -93,7 +112,6 @@ onMounted(() => {
 
 <template>
   <div class="page-container">
-    <!-- 当前余额 -->
     <div class="card-block">
       <div class="flex-between">
         <div>
@@ -111,7 +129,24 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 套餐 -->
+    <div class="card-block redeem-card">
+      <div class="flex-between redeem-head">
+        <div>
+          <h3 style="margin:0;font-size:15px">兑换码</h3>
+          <div class="redeem-desc">输入兑换码后，积分会计入当前账号余额。</div>
+        </div>
+      </div>
+      <div class="redeem-form">
+        <el-input
+          v-model.trim="redeemForm.code"
+          placeholder="请输入兑换码"
+          clearable
+          @keyup.enter="submitRedeem"
+        />
+        <el-button type="primary" :loading="redeeming" @click="submitRedeem">立即兑换</el-button>
+      </div>
+    </div>
+
     <div class="card-block">
       <div class="flex-between" style="margin-bottom:12px">
         <h3 style="margin:0;font-size:15px">选择充值套餐</h3>
@@ -143,7 +178,6 @@ onMounted(() => {
       </el-row>
     </div>
 
-    <!-- 订单列表 -->
     <div class="card-block">
       <div class="flex-between" style="margin-bottom:10px">
         <h3 style="margin:0;font-size:15px">我的订单</h3>
@@ -214,6 +248,23 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
+.redeem-card {
+  .redeem-head {
+    margin-bottom: 12px;
+  }
+
+  .redeem-desc {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+  }
+
+  .redeem-form {
+    display: flex;
+    gap: 12px;
+  }
+}
+
 .pkg-card {
   border-radius: 10px;
   transition: transform .15s;
@@ -239,4 +290,11 @@ code {
   border-radius: 4px;
 }
 :global(html.dark) code { background: #1d2026; }
+
+@media (max-width: 768px) {
+  .redeem-card .redeem-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 </style>

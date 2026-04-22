@@ -25,6 +25,7 @@ const defaultSiteInfo: Record<string, string> = {
   'site.description': 'AI 创作平台',
   'site.logo_url': '',
   'site.footer': '',
+  'site.image_notice': '',
   'auth.allow_register': 'true',
 }
 
@@ -56,6 +57,10 @@ function clearTokens() {
   localStorage.removeItem(REFRESH_KEY)
 }
 
+function normalizeImageCount(count?: number) {
+  return Math.min(Math.max(count ?? 1, 1), 4)
+}
+
 interface AppState {
   siteInfo: Record<string, string>
   bootstrapStatus: BootstrapStatus
@@ -83,8 +88,9 @@ interface AppState {
   fetchImageModels: () => Promise<meApi.ImageModel[]>
   fetchHistory: (force?: boolean) => Promise<HistoryRecord[]>
   submitCheckin: () => Promise<meApi.CheckinStatus>
-  generateImage: (input: { prompt: string; aspectRatio: AspectRatio; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
-  editImage: (input: { prompt: string; aspectRatio: AspectRatio; file: File; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  setSelectedImageModel: (model: string | null) => void
+  generateImage: (input: { prompt: string; aspectRatio: AspectRatio; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  editImage: (input: { prompt: string; aspectRatio: AspectRatio; file: File; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
   openAuthForTab: (tab: TabKey) => void
   closeAuth: () => void
   setActiveTab: (tab: TabKey) => void
@@ -241,6 +247,10 @@ export const useStore = create<AppState>()(
         return result
       },
 
+      setSelectedImageModel(model) {
+        set({ selectedImageModel: model })
+      },
+
       async generateImage(input) {
         const model = get().selectedImageModel || (await get().fetchImageModels())[0]?.slug
         if (!model) {
@@ -251,7 +261,7 @@ export const useStore = create<AppState>()(
             model,
             prompt: input.prompt,
             size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
-            n: 1,
+            n: normalizeImageCount(input.count),
           },
           input.signal,
         )
@@ -268,8 +278,11 @@ export const useStore = create<AppState>()(
           model,
           input.prompt,
           input.file,
-          ASPECT_RATIO_TO_SIZE[input.aspectRatio],
-          input.signal,
+          {
+            size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
+            n: normalizeImageCount(input.count),
+            signal: input.signal,
+          },
         )
         await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
         return result

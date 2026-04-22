@@ -222,6 +222,15 @@ func (e *Engine) Recharge(ctx context.Context, userID uint64, amount int64, refI
 
 // AwardCheckinTx 在外部事务内发放每日签到积分并写流水。
 func (e *Engine) AwardCheckinTx(ctx context.Context, tx *sqlx.Tx, userID uint64, amount int64, refID, remark string) (int64, error) {
+	return e.creditTx(ctx, tx, userID, amount, KindCheckin, refID, remark)
+}
+
+// RedeemTx 在外部事务内核销兑换码并写积分流水。
+func (e *Engine) RedeemTx(ctx context.Context, tx *sqlx.Tx, userID uint64, amount int64, refID, remark string) (int64, error) {
+	return e.creditTx(ctx, tx, userID, amount, KindRedeem, refID, remark)
+}
+
+func (e *Engine) creditTx(ctx context.Context, tx *sqlx.Tx, userID uint64, amount int64, kind, refID, remark string) (int64, error) {
 	if amount <= 0 {
 		return 0, errors.New("amount must be positive")
 	}
@@ -244,7 +253,7 @@ func (e *Engine) AwardCheckinTx(ctx context.Context, tx *sqlx.Tx, userID uint64,
 		`INSERT INTO credit_transactions
          (user_id, key_id, type, amount, balance_after, ref_id, remark)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		userID, 0, KindCheckin, amount, balanceAfter, refID, remark)
+		userID, 0, kind, amount, balanceAfter, refID, remark)
 	if err != nil {
 		return 0, err
 	}

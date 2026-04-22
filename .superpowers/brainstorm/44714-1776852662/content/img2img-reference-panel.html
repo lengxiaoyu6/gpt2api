@@ -1,0 +1,49 @@
+<h2>图生图参考图区组织方式</h2>
+<p class="subtitle">当前按 B 方案继续细化：参考图与结果并排。这里讨论左侧参考图区如何承载上传、预览与多图切换。</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>上传框优先</h3>
+      <p>顶部保持大上传框，已有图片以下方网格展示。适合首次上传，但对照时主图焦点偏弱。</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>主预览 + 缩略条</h3>
+      <p>左侧显示当前参考主图，下方横向缩略条切换多图，并把“添加图片”放进缩略条末尾。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>与右侧结果主图形成稳定对照</li>
+            <li>多张参考图仍然易于切换</li>
+            <li>上传完成后的视觉重心更明确</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>需要一个“当前参考图”状态</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>多图网格</h3>
+      <p>左侧直接展示全部参考图网格，上传入口作为第一格。适合批量参考，但单图对照关系较弱。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐方案</h3>
+  <p>B 更适合当前页面目标：生成完成后，左侧参考主图与右侧结果主图形成稳定并排关系；多图时通过缩略条切换，信息层次也更清晰。</p>
+</div>

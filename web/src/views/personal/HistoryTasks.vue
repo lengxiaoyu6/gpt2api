@@ -1,15 +1,38 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { listMyImageTasks, type ImageTask } from '@/api/me';
+import { computed, onMounted, ref } from 'vue';
+import { deleteMyImageTask, listMyImageTasks, type ImageTask } from '@/api/me';
 import { formatCredit, formatDateTime } from '@/utils/format';
+
+type FlattenedImageTask = {
+    task: ImageTask;
+    image_url: string;
+    image_index: number;
+    image_total: number;
+    image_key: string;
+};
 
 const imageTasks = ref<ImageTask[]>([]);
 const imagePage = ref({ limit: 12, offset: 0 });
 const imageLoading = ref(false);
 const hasMoreImage = ref(false);
+const deletingTaskID = ref('');
 const previewVisible = ref(false);
 const previewList = ref<string[]>([]);
 const previewIndex = ref(0);
+
+const flattenedImageTasks = computed<FlattenedImageTask[]>(() =>
+    imageTasks.value.flatMap((task) => {
+        const urls = task.image_urls?.length ? task.image_urls : [''];
+        const imageTotal = task.image_urls?.length || 0;
+        return urls.map((imageURL, index) => ({
+            task,
+            image_url: imageURL,
+            image_index: index,
+            image_total: imageTotal,
+            image_key: `${task.task_id}-${index}`,
+        }));
+    }),
+);
 
 async function loadImageTasks(reset = true) {
     imageLoading.value = true;
@@ -40,6 +63,37 @@ function openPreview(urls: string[], idx = 0) {
     previewList.value = urls;
     previewIndex.value = idx;
     previewVisible.value = true;
+}
+
+async function onDeleteTask(task: ImageTask) {
+    try {
+        await ElMessageBox.confirm(
+            '确定删除该历史任务吗？删除后将从历史任务列表隐藏，原始记录保留为软删除状态。',
+            '删除确认',
+            {
+                confirmButtonText: '删除',
+                cancelButtonText: '取消',
+                type: 'warning',
+            },
+        );
+    } catch {
+        return;
+    }
+    deletingTaskID.value = task.task_id;
+    try {
+        await deleteMyImageTask(task.task_id);
+        imageTasks.value = imageTasks.value.filter((item) => item.task_id !== task.task_id);
+        if (previewVisible.value && previewList.value[0] === task.image_urls?.[0]) {
+            previewVisible.value = false;
+            previewList.value = [];
+            previewIndex.value = 0;
+        }
+        ElMessage.success('已删除');
+    } catch (e: any) {
+        ElMessage.error(e?.message || '删除失败');
+    } finally {
+        deletingTaskID.value = '';
+    }
 }
 
 const statusMap: Record<string, { tag: 'success' | 'warning' | 'danger' | 'info'; label: string }> = {
@@ -82,30 +136,46 @@ onMounted(() => {
                     暂无图片任务，复制接口文档中的图片代码调用一次或者在线体验即可生成记录。
                 </div>
                 <div class="grid">
-                    <el-card v-for="t in imageTasks" :key="t.id" shadow="hover" class="img-card">
-                        <div class="thumb" :class="{ 'is-clickable': !!t.image_urls?.length }" @click="openPreview(t.image_urls, 0)">
-                            <img v-if="t.image_urls?.[0]" :src="t.image_urls[0]" :alt="t.prompt" />
-                            <div v-if="t.image_urls?.[0]" class="thumb-mask">
+                    <el-card v-for="item in flattenedImageTasks" :key="item.image_key" shadow="hover" class="img-card">
+                        <div
+                            class="thumb"
+                            :class="{ 'is-clickable': !!item.image_url }"
+                            @click="openPreview(item.task.image_urls, item.image_index)"
+                        >
+                            <img v-if="item.image_url" :src="item.image_url" :alt="item.task.prompt" />
+                            <div v-if="item.image_url" class="thumb-mask">
                                 <el-icon><ZoomIn /></el-icon>
                                 <span>点击放大查看</span>
                             </div>
                             <div v-else class="thumb-ph">
                                 <el-icon :size="32"><PictureRounded /></el-icon>
-                                <div class="s">{{ statusLabel(t.status) }}</div>
+                                <div class="s">{{ statusLabel(item.task.status) }}</div>
                             </div>
                         </div>
                         <div class="meta">
-                            <div class="title" :title="t.prompt">{{ t.prompt || '(无 prompt)' }}</div>
+                            <div class="meta-top">
+                                <div class="title" :title="item.task.prompt">{{ item.task.prompt || '(无 prompt)' }}</div>
+                                <el-button
+                                    link
+                                    type="danger"
+                                    size="small"
+                                    :loading="deletingTaskID === item.task.task_id"
+                                    @click.stop="onDeleteTask(item.task)"
+                                >
+                                    {{ deletingTaskID === item.task.task_id ? '删除中...' : '删除' }}
+                                </el-button>
+                            </div>
                             <div class="sub">
-                                <el-tag size="small" :type="statusTag(t.status)">{{ statusLabel(t.status) }}</el-tag>
-                                <span>{{ t.size }}</span>
-                                <span class="mute">n={{ t.n }}</span>
+                                <el-tag size="small" :type="statusTag(item.task.status)">{{ statusLabel(item.task.status) }}</el-tag>
+                                <span>{{ item.task.size }}</span>
+                                <span class="mute" v-if="item.image_total > 0">第{{ item.image_index + 1 }}张，共{{ item.image_total }}张</span>
+                                <span class="mute" v-else>结果图缺失</span>
                             </div>
                             <div class="foot">
-                                <span class="mute">{{ formatDateTime(t.created_at) }}</span>
-                                <span class="credit">{{ formatCredit(t.credit_cost) }} 积分</span>
+                                <span class="mute">{{ formatDateTime(item.task.created_at) }}</span>
+                                <span class="credit">{{ formatCredit(item.task.credit_cost) }} 积分</span>
                             </div>
-                            <div v-if="t.error" class="err">{{ t.error }}</div>
+                            <div v-if="item.task.error" class="err">{{ item.task.error }}</div>
                         </div>
                     </el-card>
                 </div>
@@ -235,6 +305,12 @@ onMounted(() => {
     .meta {
         padding: 10px 12px;
     }
+    .meta-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
     .title {
         font-size: 13px;
         font-weight: 600;
@@ -242,6 +318,7 @@ onMounted(() => {
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
+        flex: 1;
     }
     .sub {
         display: flex;

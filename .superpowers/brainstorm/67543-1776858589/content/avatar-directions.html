@@ -1,0 +1,46 @@
+<style>
+.avatar-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.avatar-card{padding:18px;border-radius:24px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08)}.avatar-stage{display:flex;align-items:center;justify-content:center;padding:22px 0 18px}.avatar-shell{position:relative;width:112px;height:112px;border-radius:999px;display:flex;align-items:center;justify-content:center}.avatar-shell svg{width:52px;height:52px}.avatar-a{background:radial-gradient(circle at 30% 28%,rgba(255,255,255,.5),rgba(255,255,255,0) 28%),linear-gradient(135deg,#7c3aed,#2563eb 55%,#06b6d4);box-shadow:0 20px 50px rgba(37,99,235,.35)}.avatar-a::after{content:"";position:absolute;inset:7px;border-radius:999px;border:1px solid rgba(255,255,255,.28)}.avatar-a svg{color:white;filter:drop-shadow(0 4px 10px rgba(0,0,0,.18))}.avatar-b{background:linear-gradient(180deg,rgba(148,163,184,.22),rgba(51,65,85,.16));border:1px solid rgba(148,163,184,.32);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 18px 36px rgba(15,23,42,.18)}.avatar-b::before{content:"";position:absolute;inset:10px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.08))}.avatar-b svg{position:relative;color:#0f172a}.avatar-c{background:linear-gradient(135deg,#0f172a,#1e293b);border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 44px rgba(15,23,42,.42)}.avatar-c::before{content:"";position:absolute;top:12px;left:50%;transform:translateX(-50%);width:72px;height:28px;border-radius:999px;background:rgba(255,255,255,.08)}.avatar-c svg{color:#f8fafc}.chip{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;background:rgba(99,102,241,.12);color:#c4b5fd;margin-bottom:10px}.meta{display:grid;gap:8px}.meta h3{margin:0;font-size:18px}.meta p{margin:0;color:#cbd5e1;line-height:1.6;font-size:13px}.rec{font-size:12px;color:#f5d0fe;font-weight:700}.card-footer{margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:#94a3b8}.profile-mini{margin-top:14px;border-radius:20px;background:rgba(15,23,42,.3);border:1px solid rgba(255,255,255,.06);padding:14px}.profile-row{display:flex;align-items:center;gap:12px}.mini-shell{width:44px;height:44px;border-radius:999px;display:flex;align-items:center;justify-content:center;flex:none}.mini-shell svg{width:22px;height:22px}.profile-copy strong{display:block;font-size:13px}.profile-copy span{display:block;font-size:11px;color:#94a3b8;margin-top:4px}@media (max-width: 960px){.avatar-grid{grid-template-columns:1fr}}</style>
+<h2>头像方向选择</h2>
+<p class="subtitle">当前页面适合圆形头像，重点是辨识度、精致感与深色主题融合。已准备三种方向，推荐先看 A。</p>
+<div class="cards avatar-grid">
+  <div class="card avatar-card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="avatar-stage">
+      <div class="avatar-shell avatar-a">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="8" r="4"></circle></svg>
+      </div>
+    </div>
+    <div class="card-body meta">
+      <div class="chip">推荐</div>
+      <h3>A 渐变光感头像</h3>
+      <p>圆形渐变底加一层细描边，视觉精致，和当前深色主题贴合度最高，识别也最稳定。</p>
+      <div class="profile-mini"><div class="profile-row"><div class="mini-shell avatar-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="8" r="4"></circle></svg></div><div class="profile-copy"><strong>Demo</strong><span>demo@example.com</span></div></div></div>
+      <div class="card-footer">优点：精致、稳重、主题一致</div>
+    </div>
+  </div>
+  <div class="card avatar-card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="avatar-stage">
+      <div class="avatar-shell avatar-b">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="8" r="4"></circle></svg>
+      </div>
+    </div>
+    <div class="card-body meta">
+      <h3>B 柔光玻璃头像</h3>
+      <p>偏浅色玻璃质感，细节丰富，显得更轻盈，但在深色模式下存在一点漂浮感。</p>
+      <div class="profile-mini"><div class="profile-row"><div class="mini-shell avatar-b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="8" r="4"></circle></svg></div><div class="profile-copy"><strong>Demo</strong><span>demo@example.com</span></div></div></div>
+      <div class="card-footer">优点：轻盈、柔和、层次明显</div>
+    </div>
+  </div>
+  <div class="card avatar-card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="avatar-stage">
+      <div class="avatar-shell avatar-c">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="8" r="4"></circle></svg>
+      </div>
+    </div>
+    <div class="card-body meta">
+      <h3>C 深色徽章头像</h3>
+      <p>更克制，像品牌徽章，商务感较强，统一性最好，但精致感略偏硬朗。</p>
+      <div class="profile-mini"><div class="profile-row"><div class="mini-shell avatar-c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="8" r="4"></circle></svg></div><div class="profile-copy"><strong>Demo</strong><span>demo@example.com</span></div></div></div>
+      <div class="card-footer">优点：稳重、统一、品牌感较强</div>
+    </div>
+  </div>
+</div>

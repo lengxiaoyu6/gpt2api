@@ -500,6 +500,22 @@ type PollOpts struct {
 	PreviewWait     time.Duration       // 第 1 条 tool 出现后等第 2 条的窗口,默认 30s
 }
 
+func normalizePollOpts(opt PollOpts) PollOpts {
+	if opt.MaxWait == 0 {
+		opt.MaxWait = 300 * time.Second
+	}
+	if opt.Interval == 0 {
+		opt.Interval = 6 * time.Second
+	}
+	if opt.StableRounds == 0 {
+		opt.StableRounds = 4
+	}
+	if opt.PreviewWait == 0 {
+		opt.PreviewWait = 30 * time.Second
+	}
+	return opt
+}
+
 // PollStatus 是 PollConversationForImages 的结果状态。
 type PollStatus string
 
@@ -513,18 +529,7 @@ const (
 // PollConversationForImages 轮询会话直到灰度图出现。
 // 返回 (status, file_ids, sediment_ids)。状态为 img2 时 file_ids 或 sediment_ids 至少一个非空。
 func (c *Client) PollConversationForImages(ctx context.Context, convID string, opt PollOpts) (PollStatus, []string, []string) {
-	if opt.MaxWait == 0 {
-		opt.MaxWait = 300 * time.Second
-	}
-	if opt.Interval == 0 {
-		opt.Interval = 6 * time.Second
-	}
-	if opt.StableRounds == 0 {
-		opt.StableRounds = 4
-	}
-	if opt.PreviewWait == 0 {
-		opt.PreviewWait = 30 * time.Second
-	}
+	opt = normalizePollOpts(opt)
 	baseline := opt.BaselineToolIDs
 
 	deadline := time.Now().Add(opt.MaxWait)

@@ -1,0 +1,80 @@
+<h2>图生图状态区表现</h2>
+<p class="subtitle">当前主布局已经基本确定，接下来确认空态、生成中、生成完成这三种状态在右侧结果区的切换方式。</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>传统提示块</h3>
+      <p>空态和生成中都使用较轻的说明区，生成完成后切到主图展示。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>实现简单</li>
+            <li>与现有页面差异较小</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>状态切换的仪式感较弱</li>
+            <li>对照关系需要生成后才建立</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>固定画布骨架</h3>
+      <p>右侧始终保留结果画布区域。空态显示占位说明，生成中在同一画布上显示进度反馈，完成后原位替换为结果图。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>界面稳定，跳动更少</li>
+            <li>参考图与结果图区从开始就建立并排关系</li>
+            <li>更适合后续补充历史结果与多图切换</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>需要更完整的状态样式设计</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>步骤页切换</h3>
+      <p>空态显示引导页，提交后切到独立的生成中页面，完成后再进入结果页。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>每种状态都能单独设计</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>切换感强，页面连续性较弱</li>
+            <li>与当前单页编辑方式契合度较低</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐方案</h3>
+  <p>B 最适合当前方向：左侧参考区和右侧结果区在进入页面时就保持稳定框架，提交后只更新右侧内容层，视觉关系连续，后续也更容易扩展。</p>
+</div>

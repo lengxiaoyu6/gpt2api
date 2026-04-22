@@ -17,6 +17,7 @@ import (
 	"github.com/432539/gpt2api/internal/proxy"
 	"github.com/432539/gpt2api/internal/rbac"
 	"github.com/432539/gpt2api/internal/recharge"
+	"github.com/432539/gpt2api/internal/redeem"
 	"github.com/432539/gpt2api/internal/settings"
 	"github.com/432539/gpt2api/internal/usage"
 	"github.com/432539/gpt2api/internal/user"
@@ -57,6 +58,8 @@ type Deps struct {
 
 	RechargeH      *recharge.Handler
 	AdminRechargeH *recharge.AdminHandler
+	RedeemH        *redeem.Handler
+	AdminRedeemH   *redeem.AdminHandler
 
 	SettingsH *settings.Handler
 }
@@ -114,6 +117,12 @@ func New(d *Deps) *gin.Engine {
 					rg.POST("/orders", d.RechargeH.CreateOrder)
 					rg.GET("/orders", d.RechargeH.ListMyOrders)
 					rg.POST("/orders/:id/cancel", d.RechargeH.CancelOrder)
+				}
+			}
+			if d.RedeemH != nil {
+				rg := authed.Group("/recharge", middleware.RequirePerm(rbac.PermSelfRecharge))
+				{
+					rg.POST("/redeem-codes", d.RedeemH.Redeem)
 				}
 			}
 
@@ -306,6 +315,14 @@ func New(d *Deps) *gin.Engine {
 					rg.DELETE("/packages/:id", d.AdminRechargeH.DeletePackage)
 					rg.GET("/orders", d.AdminRechargeH.ListOrders)
 					rg.POST("/orders/:id/force-paid", d.AdminRechargeH.ForcePaid)
+				}
+			}
+
+			if d.AdminRedeemH != nil {
+				rg := admin.Group("/redeem-codes", middleware.RequirePerm(rbac.PermRechargeManage))
+				{
+					rg.GET("", d.AdminRedeemH.List)
+					rg.POST("/generate", d.AdminRedeemH.Generate)
 				}
 			}
 

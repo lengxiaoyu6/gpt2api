@@ -76,6 +76,7 @@ function reset() {
 function isBool(it: SettingItem) { return it.type === 'bool' }
 function isInt(it: SettingItem) { return it.type === 'int' }
 function isFloat(it: SettingItem) { return it.type === 'float' }
+function isTextarea(it: SettingItem) { return it.key === 'site.image_notice' }
 function inputType(it: SettingItem) {
   if (it.type === 'email') return 'email'
   if (it.type === 'url') return 'url'
@@ -216,7 +217,8 @@ onMounted(load)
                     v-else
                     v-model="draft[it.key]"
                     :placeholder="it.desc || it.label"
-                    :type="inputType(it)"
+                    :type="isTextarea(it) ? 'textarea' : inputType(it)"
+                    :rows="isTextarea(it) ? 3 : undefined"
                     clearable
                     style="max-width: 520px"
                   />

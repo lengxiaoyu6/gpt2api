@@ -1,0 +1,67 @@
+<h2>图生图页面定稿方向</h2>
+<p class="subtitle">当前将前面几轮选项合并为一个完整页面结构，用于确认是否按这一版写入设计文档。</p>
+
+<div class="mockup">
+  <div class="mockup-header">图生图 · 参考图与结果并排对照</div>
+  <div class="mockup-body" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+    <div style="border:1px solid var(--border);border-radius:16px;padding:16px;background:#fff;">
+      <div class="label">参考图</div>
+      <div style="margin-top:10px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(135deg,#eef4ff,#f8fbff);height:280px;display:flex;align-items:center;justify-content:center;color:#4b5563;font-weight:600;">
+        当前参考主图
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;">
+        <div style="width:68px;height:68px;border-radius:12px;background:#dbeafe;border:2px solid #2563eb;"></div>
+        <div style="width:68px;height:68px;border-radius:12px;background:#e5e7eb;"></div>
+        <div style="width:68px;height:68px;border-radius:12px;background:#e5e7eb;"></div>
+        <div style="width:68px;height:68px;border-radius:12px;border:1px dashed #9ca3af;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:28px;">+</div>
+      </div>
+      <div style="margin-top:16px;display:grid;gap:12px;">
+        <div>
+          <div class="label">改动描述</div>
+          <div style="margin-top:6px;border:1px solid var(--border);border-radius:12px;padding:12px;color:#4b5563;background:#fafafa;">
+            保持人物姿态，把背景换成赛博朋克夜景，整体色调偏冷。
+          </div>
+        </div>
+        <div>
+          <div class="label">输出比例</div>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <div style="padding:8px 10px;border-radius:10px;border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;font-weight:600;">1:1</div>
+            <div style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);">4:3</div>
+            <div style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);">16:9</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="mock-button" style="width:160px;">生成结果</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:16px;padding:16px;background:#fff;">
+      <div class="label">生成结果</div>
+      <div style="margin-top:10px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(135deg,#efe7ff,#f8f5ff);height:280px;display:flex;align-items:center;justify-content:center;color:#4b5563;font-weight:600;">
+        当前结果主图
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;">
+        <div style="width:68px;height:68px;border-radius:12px;background:#c4b5fd;border:2px solid #7c3aed;"></div>
+        <div style="width:68px;height:68px;border-radius:12px;background:#ede9fe;"></div>
+        <div style="width:68px;height:68px;border-radius:12px;background:#ede9fe;"></div>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="mock-button">查看</button>
+          <button class="mock-button">放大</button>
+          <button class="mock-button">下载</button>
+        </div>
+        <a href="#" style="color:#6b7280;text-decoration:none;font-size:14px;">继续编辑当前结果</a>
+      </div>
+      <div style="margin-top:18px;border:1px dashed var(--border);border-radius:12px;padding:12px;color:#6b7280;background:#fafafa;">
+        空态显示占位说明，生成中在同一画布内展示进度反馈，完成后原位替换为结果图。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>当前汇总</h3>
+  <p>页面采用左右双栏。左侧参考图区使用“主预览 + 缩略条”，右侧结果区使用“主结果图 + 缩略条”。右侧主图下方固定查看、放大、下载三项主要操作，“继续编辑当前结果”以较轻入口呈现。右侧结果区使用固定画布骨架承接空态、生成中、生成完成三种状态。</p>
+</div>

@@ -53,6 +53,13 @@ upstream:
   request_timeout_sec: 60
   sse_read_timeout_sec: 300
 
+image:
+  same_conversation_max_turns: 3
+  poll_max_wait_sec: 120
+  poll_interval_sec: 3
+  poll_stable_rounds: 2
+  preview_wait_sec: 15
+
 # 支付(易支付)
 epay:
   gateway_url: ""

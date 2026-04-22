@@ -60,6 +60,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '积分管理', perm: 'user:credit' } },
       { path: 'recharges', component: () => import('@/views/admin/Recharges.vue'),
         meta: { title: '充值订单', perm: 'recharge:manage' } },
+      { path: 'redeem-codes', component: () => import('@/views/admin/RedeemCodes.vue'),
+        meta: { title: '兑换码', perm: 'recharge:manage' } },
       { path: 'accounts', component: () => import('@/views/admin/Accounts.vue'),
         meta: { title: 'GPT账号', perm: 'account:read' } },
       { path: 'proxies', component: () => import('@/views/admin/Proxies.vue'),

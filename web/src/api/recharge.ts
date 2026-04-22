@@ -34,6 +34,35 @@ export interface Order {
   updated_at: string
 }
 
+export interface RedeemCode {
+  id: number
+  code: string
+  batch_id: string
+  credits: number
+  used_by_user_id: number
+  used_at: string | null
+  expires_at: string | null
+  created_at: string
+}
+
+export interface RedeemResult {
+  code: string
+  credits: number
+  balance_after: number
+}
+
+export interface RedeemCodeListParams {
+  batch_id?: string
+  status?: 'active' | 'used'
+  limit?: number
+  offset?: number
+}
+
+export interface GenerateRedeemCodesPayload {
+  credits: number
+  quantity: number
+}
+
 // ---------- user ----------
 
 export function listMyPackages(): Promise<{ items: Package[]; enabled: boolean }> {
@@ -48,6 +77,9 @@ export function listMyOrders(params: { status?: string; limit?: number; offset?:
 }
 export function cancelMyOrder(id: number) {
   return http.post(`/api/recharge/orders/${id}/cancel`)
+}
+export function redeemCode(code: string): Promise<RedeemResult> {
+  return http.post('/api/recharge/redeem-codes', { code })
 }
 
 // ---------- admin ----------
@@ -73,4 +105,12 @@ export function adminForcePaid(id: number, adminPassword: string) {
   return http.post(`/api/admin/recharge/orders/${id}/force-paid`, null, {
     headers: { 'X-Admin-Confirm': adminPassword },
   })
+}
+export function adminListRedeemCodes(params: RedeemCodeListParams = {}):
+  Promise<{ items: RedeemCode[]; total: number; limit: number; offset: number }> {
+  return http.get('/api/admin/redeem-codes', { params })
+}
+export function adminGenerateRedeemCodes(payload: GenerateRedeemCodesPayload):
+  Promise<{ items: RedeemCode[]; total: number }> {
+  return http.post('/api/admin/redeem-codes/generate', payload)
 }

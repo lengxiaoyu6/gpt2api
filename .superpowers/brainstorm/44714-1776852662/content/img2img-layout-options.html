@@ -1,0 +1,124 @@
+
+<h2>图生图页面整理方案</h2>
+<p class="subtitle">重点围绕上传参考图与结果查看两段流程，当前推荐 B 方案</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A 方案：左侧工具栏，右侧结果优先</div>
+        <div class="mockup-body">
+          <div style="display:flex; gap:12px; min-height:260px;">
+            <div class="mock-sidebar" style="width:34%; padding:12px;">
+              <div class="label">参考图</div>
+              <div class="placeholder" style="height:90px; margin:8px 0;">上传区</div>
+              <div class="placeholder" style="height:70px;">缩略图列表</div>
+              <div class="mock-input" style="margin-top:10px;">改动描述</div>
+              <button class="mock-button" style="width:100%; margin-top:10px;">开始生成</button>
+            </div>
+            <div class="mock-content" style="padding:12px; width:66%;">
+              <div class="placeholder" style="height:210px;">结果大图区</div>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="mock-button">放大</button>
+                <button class="mock-button">下载</button>
+                <button class="mock-button">继续编辑</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A 结果优先</h3>
+      <p>生成完成后视觉中心最明确，但参考图对照较弱，上传前后阶段切换感较强。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B 方案：参考图与结果并排对照</div>
+        <div class="mockup-body">
+          <div style="display:flex; gap:12px; min-height:260px;">
+            <div class="mock-content" style="padding:12px; width:46%;">
+              <div class="label">参考图面板</div>
+              <div class="placeholder" style="height:110px; margin:8px 0;">上传区</div>
+              <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;">
+                <div class="placeholder" style="height:62px;">参考图 1</div>
+                <div class="placeholder" style="height:62px;">参考图 2</div>
+              </div>
+              <div class="mock-input" style="margin-top:10px;">改动描述</div>
+              <button class="mock-button" style="width:100%; margin-top:10px;">开始生成</button>
+            </div>
+            <div class="mock-content" style="padding:12px; width:54%;">
+              <div class="label">生成结果</div>
+              <div class="placeholder" style="height:180px; margin:8px 0;">结果主图</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="mock-button">放大查看</button>
+                <button class="mock-button">下载图片</button>
+                <button class="mock-button">设为继续编辑</button>
+              </div>
+              <div style="margin-top:10px;" class="subtitle">下方保留结果缩略条，便于切换多张结果</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B 并排对照</h3>
+      <p>上传与查看处于同一视野，适合图生图任务；继续编辑保留为次级入口，符合当前目标。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C 方案：上下双阶段</div>
+        <div class="mockup-body">
+          <div class="placeholder" style="height:120px; margin-bottom:10px;">顶部上传与参数区</div>
+          <div style="display:flex; gap:12px; min-height:150px;">
+            <div class="mock-content" style="width:40%; padding:12px;">
+              <div class="label">参考图</div>
+              <div class="placeholder" style="height:120px; margin-top:8px;">参考图区</div>
+            </div>
+            <div class="mock-content" style="width:60%; padding:12px;">
+              <div class="label">生成结果</div>
+              <div class="placeholder" style="height:120px; margin-top:8px;">结果图区</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button class="mock-button">放大</button>
+            <button class="mock-button">下载</button>
+            <button class="mock-button">继续编辑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C 双阶段面板</h3>
+      <p>结构整齐，信息分层清晰，但上传区与结果区距离更远，生成后的对照效率略低。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>当前推荐</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>B 方案优势</h4>
+      <ul>
+        <li>参考图与结果天然对照，适合判断编辑效果</li>
+        <li>上传前与生成后使用同一布局，页面跳变较小</li>
+        <li>放大、下载保留在结果主区域，继续编辑可作为次级按钮</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>需要控制的点</h4>
+      <ul>
+        <li>左侧上传区需要兼顾空状态与已上传状态</li>
+        <li>右侧结果区需要定义无结果、生成中、生成完成三种状态</li>
+        <li>多图结果时需要有稳定的主图切换方式</li>
+      </ul>
+    </div>
+  </div>
+</div>

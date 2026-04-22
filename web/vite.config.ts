@@ -29,11 +29,11 @@ export default defineConfig(({ mode }) => {
       vue(),
       AutoImport({
         imports: ['vue', 'vue-router', 'pinia', '@vueuse/core'],
-        resolvers: [ElementPlusResolver()],
+        resolvers: [ElementPlusResolver({ importStyle: false })],
         dts: 'src/auto-imports.d.ts',
       }),
       Components({
-        resolvers: [ElementPlusResolver()],
+        resolvers: [ElementPlusResolver({ importStyle: false })],
         dts: 'src/components.d.ts',
       }),
     ],

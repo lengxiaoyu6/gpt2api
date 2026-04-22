@@ -1,0 +1,121 @@
+
+<h2>深色模式可读性调整方向</h2>
+<p class="subtitle">只调整颜色、透明度、边框与文字颜色；尺寸、圆角、阴影与排版保持现状</p>
+
+<div class="cards" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">方案 A · 主题语义对齐</div>
+        <div class="mockup-body" style="padding: 14px; background:#111315;">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;">
+            <div style="padding:10px 4px;border-radius:14px;background:#e8e8e8;color:#252525;border:1px solid #e8e8e8;text-align:center;">
+              <div style="font-size:11px;font-weight:800;">1:1</div>
+              <div style="font-size:9px;opacity:.78;">社交媒体</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#1f2226;color:#f2f2f2;border:1px solid rgba(255,255,255,.10);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">4:3</div>
+              <div style="font-size:9px;opacity:.68;">经典画幅</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#1f2226;color:#f2f2f2;border:1px solid rgba(255,255,255,.10);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">3:4</div>
+              <div style="font-size:9px;opacity:.68;">人像摄影</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#1f2226;color:#f2f2f2;border:1px solid rgba(255,255,255,.10);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">16:9</div>
+              <div style="font-size:9px;opacity:.68;">电影宽屏</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#1f2226;color:#f2f2f2;border:1px solid rgba(255,255,255,.10);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">9:16</div>
+              <div style="font-size:9px;opacity:.68;">短视频</div>
+            </div>
+          </div>
+          <div style="height:56px;border-radius:18px;background:#e8e8e8;color:#252525;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;box-shadow:0 18px 28px rgba(255,255,255,.08);">✦ 开始创作</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 A</h3>
+      <p>沿用现有亮色主按钮，只把文字改回主题前景色，并统一说明文字透明度。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">方案 B · 对比更强</div>
+        <div class="mockup-body" style="padding: 14px; background:#111315;">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;">
+            <div style="padding:10px 4px;border-radius:14px;background:#ffffff;color:#111315;border:1px solid #ffffff;text-align:center;box-shadow:0 0 0 1px rgba(255,255,255,.08);">
+              <div style="font-size:11px;font-weight:900;">1:1</div>
+              <div style="font-size:9px;opacity:.82;">社交媒体</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">4:3</div>
+              <div style="font-size:9px;opacity:.72;">经典画幅</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">3:4</div>
+              <div style="font-size:9px;opacity:.72;">人像摄影</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">16:9</div>
+              <div style="font-size:9px;opacity:.72;">电影宽屏</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">9:16</div>
+              <div style="font-size:9px;opacity:.72;">短视频</div>
+            </div>
+          </div>
+          <div style="height:56px;border-radius:18px;background:#ffffff;color:#111315;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 32px rgba(255,255,255,.10);">✦ 开始创作</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 B</h3>
+      <p>保持浅色按钮，但把选中态和按钮边界再提亮一点，可读性最强，视觉更醒目。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">方案 C · 深色反转</div>
+        <div class="mockup-body" style="padding: 14px; background:#111315;">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;">
+            <div style="padding:10px 4px;border-radius:14px;background:#2a2d31;color:#ffffff;border:1px solid rgba(255,255,255,.18);text-align:center;">
+              <div style="font-size:11px;font-weight:900;">1:1</div>
+              <div style="font-size:9px;opacity:.76;">社交媒体</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">4:3</div>
+              <div style="font-size:9px;opacity:.68;">经典画幅</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">3:4</div>
+              <div style="font-size:9px;opacity:.68;">人像摄影</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">16:9</div>
+              <div style="font-size:9px;opacity:.68;">电影宽屏</div>
+            </div>
+            <div style="padding:10px 4px;border-radius:14px;background:#181b1f;color:#eef0f2;border:1px solid rgba(255,255,255,.12);text-align:center;">
+              <div style="font-size:11px;font-weight:800;">9:16</div>
+              <div style="font-size:9px;opacity:.68;">短视频</div>
+            </div>
+          </div>
+          <div style="height:56px;border-radius:18px;background:#2a2d31;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;border:1px solid rgba(255,255,255,.14);box-shadow:0 18px 28px rgba(0,0,0,.35);">✦ 开始创作</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 C</h3>
+      <p>改为深底浅字，符合常见暗色界面习惯，但会偏离当前页面的亮色重点按钮风格。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">推荐</div>
+  <p>推荐先采用 <strong>方案 A</strong>。原因是改动范围最小，直接修正深色模式下的语义色误用，能保留当前页面的识别度与层级关系。</p>
+</div>

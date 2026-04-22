@@ -27,6 +27,7 @@ import (
 	"github.com/432539/gpt2api/internal/proxy"
 	gwratelimit "github.com/432539/gpt2api/internal/ratelimit"
 	"github.com/432539/gpt2api/internal/recharge"
+	"github.com/432539/gpt2api/internal/redeem"
 	"github.com/432539/gpt2api/internal/scheduler"
 	"github.com/432539/gpt2api/internal/server"
 	"github.com/432539/gpt2api/internal/settings"
@@ -143,7 +144,7 @@ func main() {
 	}
 
 	imageDAO := image.NewDAO(sqldb)
-	imageRunner := image.NewRunner(sched, imageDAO)
+	imageRunner := image.NewRunner(sched, imageDAO, cfg.Image)
 	imagesH := &gateway.ImagesHandler{
 		Handler: gwH,
 		Runner:  imageRunner,
@@ -224,6 +225,10 @@ func main() {
 	rechargeSvc.SetSettings(settingsSvc)
 	rechargeH := recharge.NewHandler(rechargeSvc)
 	adminRechargeH := recharge.NewAdminHandler(rechargeSvc, authSvc)
+	redeemDAO := redeem.NewDAO(sqldb, billEngine)
+	redeemSvc := redeem.NewService(redeemDAO)
+	redeemH := redeem.NewHandler(redeemSvc)
+	adminRedeemH := redeem.NewAdminHandler(redeemSvc)
 
 	// 代理池健康探测器:由 settings 提供热更参数,注入到 Handler
 	proxyH := proxy.NewHandler(proxySvc)
@@ -289,6 +294,8 @@ func main() {
 
 		RechargeH:      rechargeH,
 		AdminRechargeH: adminRechargeH,
+		RedeemH:        redeemH,
+		AdminRedeemH:   adminRedeemH,
 
 		SettingsH: settingsH,
 	}

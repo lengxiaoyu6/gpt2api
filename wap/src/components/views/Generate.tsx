@@ -1,25 +1,39 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wand2, Image as ImageIcon, Zap, RefreshCw, Download, Share2, Sparkles, AlertCircle, X, Check } from 'lucide-react';
+import { Wand2, Image as ImageIcon, RefreshCw, Sparkles, AlertCircle, X, Check, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatCredit } from '@/lib/utils';
+import { cn, formatCredit } from '@/lib/utils';
 import { useStore, type AspectRatio } from '../../store/useStore';
 
+const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
+
 export default function GenerateView() {
-  const { generateImage, editImage, imageModels, selectedImageModel } = useStore();
+  const {
+    generateImage,
+    editImage,
+    imageModels,
+    siteInfo,
+    selectedImageModel,
+    setSelectedImageModel,
+  } = useStore();
   const [mode, setMode] = useState<'txt' | 'img'>('txt');
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [resultImage, setResultImage] = useState<string | null>(null);
+  const [resultImages, setResultImages] = useState<string[]>([]);
+  const [isPreviewResult, setIsPreviewResult] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+  const [imageCount, setImageCount] = useState<1 | 2 | 3 | 4>(1);
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [sourceImagePreview, setSourceImagePreview] = useState<string | null>(null);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
 
   const ratios: ReadonlyArray<{ label: AspectRatio; value: AspectRatio; desc: string }> = [
     { label: '1:1', value: '1:1', desc: '社交媒体' },
@@ -31,6 +45,9 @@ export default function GenerateView() {
 
   const currentModel = imageModels.find((item) => item.slug === selectedImageModel);
   const currentPrice = currentModel?.image_price_per_call ?? 5;
+  const totalPrice = currentPrice * imageCount;
+  const currentModelLabel = currentModel?.description?.trim() || currentModel?.slug || '暂无可用模型';
+  const imageNotice = siteInfo['site.image_notice']?.trim() || '';
 
   useEffect(() => {
     return () => {
@@ -40,9 +57,44 @@ export default function GenerateView() {
     };
   }, [sourceImagePreview]);
 
+  useEffect(() => {
+    if (!isModelPickerOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!modelPickerRef.current?.contains(event.target as Node)) {
+        setIsModelPickerOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsModelPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isModelPickerOpen]);
+
+  const clearResults = () => {
+    setResultImages([]);
+    setIsPreviewResult(false);
+  };
+
   const handleGenerate = async () => {
     const nextPrompt = prompt.trim();
 
+    if (!selectedImageModel) {
+      toast.error('当前暂无可用图像模型');
+      return;
+    }
     if (!nextPrompt && mode === 'txt') {
       toast.error('请输入提示词');
       return;
@@ -53,25 +105,30 @@ export default function GenerateView() {
     }
 
     setIsGenerating(true);
+    clearResults();
     try {
       const response = mode === 'txt'
-        ? await generateImage({ prompt: nextPrompt, aspectRatio })
+        ? await generateImage({ prompt: nextPrompt, aspectRatio, count: imageCount })
         : await editImage({
             prompt: nextPrompt || '增强细节，提升画面质感',
             aspectRatio,
             file: sourceFile as File,
+            count: imageCount,
           });
 
-      const imageUrl = response.data?.[0]?.url;
-      if (!imageUrl) {
+      const imageUrls = (response.data || [])
+        .map((item) => item.url)
+        .filter((url): url is string => Boolean(url));
+      if (imageUrls.length === 0) {
         throw new Error('当前任务尚未返回图像结果');
       }
 
-      setResultImage(imageUrl);
+      setResultImages(imageUrls);
+      setIsPreviewResult(!!response.is_preview);
       if (response.is_preview) {
         toast.message('当前结果为预览图，稍后可在记录页查看任务状态');
       } else {
-        toast.success('创作完成');
+        toast.success(`创作完成，共 ${imageUrls.length} 张`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成失败，请稍后重试');
@@ -96,14 +153,28 @@ export default function GenerateView() {
 
   return (
     <div className="px-4 py-6 space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      {imageNotice ? (
+        <Card className="border-amber-500/25 bg-amber-500/10 px-4 py-3 rounded-3xl">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-300">
+              <AlertCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm leading-6 text-foreground/90">{imageNotice}</p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black tracking-tight">创意实验室</h1>
           <p className="text-xs text-muted-foreground font-medium">释放视觉想象力</p>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold">
-          <Zap className="w-3 h-3 fill-current" />
-          <span>每次生成消耗 {formatCredit(currentPrice)} 积分</span>
+        <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-right text-[10px] font-bold text-primary">
+          <p>单张基准价格：{formatCredit(currentPrice)} 积分 / 张</p>
+          <p className="mt-1 text-[9px] font-medium text-foreground/80">多张生成会按张数累计扣费</p>
+          <p className="mt-1 text-[9px] font-medium text-foreground/80">当前 {imageCount} 张，预计消耗 {formatCredit(totalPrice)} 积分</p>
         </div>
       </div>
 
@@ -154,6 +225,105 @@ export default function GenerateView() {
         )}
 
         <div className="space-y-4">
+          <div className="space-y-3">
+            <p className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
+              图片模型
+            </p>
+            <div ref={modelPickerRef} className="relative">
+              {imageModels.length === 0 ? (
+                <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-muted-foreground">
+                  暂无可用模型
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    aria-label={`图片模型 ${currentModelLabel}`}
+                    aria-haspopup="listbox"
+                    aria-expanded={isModelPickerOpen}
+                    onClick={() => setIsModelPickerOpen((open) => !open)}
+                    className={cn(
+                      'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none',
+                      'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
+                      isModelPickerOpen
+                        ? 'border-primary/50 bg-primary/12 shadow-lg shadow-primary/10'
+                        : 'border-border/50 bg-background/55 hover:border-primary/30 hover:bg-background/70',
+                    )}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-foreground">
+                        {currentModelLabel}
+                      </span>
+                      {currentModel?.description?.trim() && currentModel.description.trim() !== currentModel.slug ? (
+                        <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
+                          {currentModel.slug}
+                        </span>
+                      ) : null}
+                    </span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn(
+                        'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                        isModelPickerOpen && 'rotate-180 text-primary',
+                      )}
+                    />
+                  </button>
+                  {isModelPickerOpen ? (
+                    <div className="absolute left-0 top-[calc(100%+0.5rem)] z-20 w-full overflow-hidden rounded-2xl border border-border/60 bg-background/95 p-2 shadow-2xl shadow-black/20 backdrop-blur">
+                      <ScrollArea className="max-h-72">
+                        <div aria-label="图片模型列表" role="listbox" className="space-y-2 pr-2">
+                          {imageModels.map((model) => {
+                            const isActive = selectedImageModel === model.slug;
+                            const modelLabel = model.description?.trim() || model.slug;
+
+                            return (
+                              <button
+                                key={model.slug}
+                                type="button"
+                                aria-selected={isActive}
+                                onClick={() => {
+                                  setSelectedImageModel(model.slug);
+                                  setIsModelPickerOpen(false);
+                                }}
+                                className={cn(
+                                  'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none',
+                                  'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
+                                  isActive
+                                    ? 'border-primary/50 bg-primary/15 shadow-lg shadow-primary/10'
+                                    : 'border-border/50 bg-background/60 hover:border-primary/30 hover:bg-background/80',
+                                )}
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-semibold text-foreground">
+                                    {modelLabel}
+                                  </span>
+                                  {model.description?.trim() && model.description.trim() !== model.slug ? (
+                                    <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
+                                      {model.slug}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span
+                                  aria-hidden="true"
+                                  className={cn(
+                                    'h-2.5 w-2.5 shrink-0 rounded-full border transition-colors',
+                                    isActive
+                                      ? 'border-primary bg-primary shadow-[0_0_0_4px_rgba(124,58,237,0.14)]'
+                                      : 'border-border bg-muted/20',
+                                  )}
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+
           <div className="relative">
             <Textarea
               placeholder={mode === 'txt' ? '描述想看到的画面...' : '描述想要修改、增强或重绘的部分...'}
@@ -166,28 +336,57 @@ export default function GenerateView() {
           <div className="space-y-3">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">画布比例</p>
             <div className="grid grid-cols-5 gap-2">
-              {ratios.map((r) => (
-                <button
-                  key={r.value}
-                  onClick={() => setAspectRatio(r.value)}
-                  className={`flex flex-col items-center justify-center py-2.5 rounded-xl border transition-all ${
-                    aspectRatio === r.value
-                      ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20'
-                      : 'bg-background/50 border-border/50 hover:border-primary/30'
-                  }`}
-                >
-                  <span className="text-[10px] font-black">{r.label}</span>
-                  <span className={`text-[8px] mt-0.5 opacity-60 ${aspectRatio === r.value ? 'text-white' : ''}`}>{r.desc}</span>
-                </button>
-              ))}
+              {ratios.map((r) => {
+                const isActive = aspectRatio === r.value;
+                return (
+                  <button
+                    type="button"
+                    key={r.value}
+                    onClick={() => setAspectRatio(r.value)}
+                    className={`flex flex-col items-center justify-center py-2.5 rounded-xl border transition-all ${
+                      isActive
+                        ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                        : 'bg-background/50 border-border/50 hover:border-primary/30'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black">{r.label}</span>
+                    <span className={`text-[8px] mt-0.5 ${isActive ? 'opacity-80 text-foreground/80' : 'opacity-60 text-muted-foreground'}`}>
+                      {r.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">生成张数</p>
+            <div className="grid grid-cols-4 gap-2">
+              {IMAGE_COUNT_OPTIONS.map((count) => {
+                const isActive = imageCount === count;
+                return (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setImageCount(count)}
+                    className={`rounded-2xl border px-3 py-3 text-sm font-bold transition-all ${
+                      isActive
+                        ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                        : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+                    }`}
+                  >
+                    {count} 张
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
 
         <Button
-          className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black text-lg shadow-xl shadow-primary/25 disabled:opacity-50"
+          className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg shadow-xl shadow-primary/25 disabled:opacity-50"
           onClick={handleGenerate}
-          disabled={isGenerating}
+          disabled={isGenerating || !selectedImageModel}
         >
           {isGenerating ? (
             <div className="flex items-center gap-3">
@@ -204,44 +403,39 @@ export default function GenerateView() {
       </Card>
 
       <AnimatePresence>
-        {resultImage && (
+        {resultImages.length > 0 && (
           <motion.section
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="space-y-4 pb-12"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                 生成结果 <Check className="w-4 h-4 text-green-500" />
               </h2>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="icon" className="rounded-xl h-9 w-9">
-                  <Download className="w-4 h-4" />
-                </Button>
-                <Button variant="secondary" size="icon" className="rounded-xl h-9 w-9">
-                  <Share2 className="w-4 h-4" />
-                </Button>
-              </div>
+              <Button variant="secondary" size="sm" onClick={clearResults} className="rounded-xl px-3">
+                <X className="w-4 h-4 mr-1" />
+                清空结果
+              </Button>
             </div>
 
-            <div className="relative group overflow-hidden rounded-3xl border-2 border-primary/20 shadow-2xl">
-              <img src={resultImage} alt="Result" className="w-full h-auto object-cover" />
-              <div className="absolute top-4 right-4">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => setResultImage(null)}
-                  className="rounded-full bg-black/40 backdrop-blur-md border-none text-white hover:bg-black/60"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
+            <div className="grid grid-cols-2 gap-3">
+              {resultImages.map((imageUrl, index) => (
+                <div key={`${imageUrl}-${index}`} className="relative overflow-hidden rounded-3xl border border-primary/20 bg-card shadow-xl">
+                  <img src={imageUrl} alt={`Result ${index + 1}`} className="aspect-square w-full object-cover" />
+                  {isPreviewResult && (
+                    <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
+                      预览图
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </motion.section>
         )}
       </AnimatePresence>
 
-      {!resultImage && !isGenerating && (
+      {resultImages.length === 0 && !isGenerating && (
         <div className="flex flex-col items-center justify-center py-12 opacity-30 text-center space-y-3">
           <AlertCircle className="w-8 h-8" />
           <div>

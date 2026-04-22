@@ -90,10 +90,10 @@ export default function App() {
             transition={{ duration: 0.2 }}
             className="w-full"
           >
-            {activeTab === 'home' && <HomeView onStartGeneration={() => handleTabChange('generate')} />}
+            {activeTab === 'home' && <HomeView siteName={siteName} onStartGeneration={() => handleTabChange('generate')} />}
             {activeTab === 'generate' && <GenerateView />}
             {activeTab === 'history' && <HistoryView />}
-            {activeTab === 'profile' && <ProfileView />}
+            {activeTab === 'profile' && <ProfileView siteName={siteName} />}
           </motion.div>
         </AnimatePresence>
       </main>

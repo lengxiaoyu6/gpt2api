@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { storeToRefs } from 'pinia'
+import { useSiteStore } from '@/stores/site'
 import { useUserStore } from '@/stores/user'
 import { formatCredit } from '@/utils/format'
 import {
@@ -18,6 +19,7 @@ import { ENABLE_CHAT_MODEL } from '@/config/feature'
 // 用户 / 模型
 // ----------------------------------------------------
 const userStore = useUserStore()
+const siteStore = useSiteStore()
 const { user } = storeToRefs(userStore)
 
 const balance = computed(() => formatCredit(user.value?.credit_balance))
@@ -37,6 +39,7 @@ const currentImageModel = computed(
 )
 const currentImageDesc = computed(() => currentImageModel.value?.description || '')
 const currentImageBasePrice = computed(() => currentImageModel.value?.image_price_per_call ?? 0)
+const noticeText = computed(() => siteStore.get('site.image_notice'))
 
 onMounted(async () => {
   try {
@@ -358,12 +361,28 @@ const i2iResult = ref<PlayImageData[]>([])
 const i2iPreview = ref(false)
 const i2iError = ref('')
 const i2iAbort = ref<AbortController | null>(null)
+const activeRefIndex = ref(0)
+const activeResultIndex = ref(0)
+const activeRefImage = computed<RefImage | null>(() => refImages.value[activeRefIndex.value] || null)
+const activeResultImage = computed<PlayImageData | null>(() => i2iResult.value[activeResultIndex.value] || null)
+const i2iResultUrls = computed(() => i2iResult.value.map((item) => item.url))
 const MAX_REF_BYTES = 4 * 1024 * 1024 // 4MB
+
+function setActiveRef(idx: number) {
+  if (idx < 0 || idx >= refImages.value.length) return
+  activeRefIndex.value = idx
+}
+
+function setActiveResult(idx: number) {
+  if (idx < 0 || idx >= i2iResult.value.length) return
+  activeResultIndex.value = idx
+}
 
 function handleFilePick(e: Event) {
   const input = e.target as HTMLInputElement
   const files = input.files
   if (!files) return
+  const shouldResetActive = refImages.value.length === 0
   for (const file of Array.from(files)) {
     if (file.size > MAX_REF_BYTES) {
       ElMessage.warning(`${file.name} 超过 4MB 限制`)
@@ -376,6 +395,7 @@ function handleFilePick(e: Event) {
         dataUrl: String(reader.result || ''),
         size: file.size,
       })
+      if (shouldResetActive && refImages.value.length === 1) activeRefIndex.value = 0
     }
     reader.readAsDataURL(file)
   }
@@ -384,6 +404,41 @@ function handleFilePick(e: Event) {
 
 function removeRefImage(idx: number) {
   refImages.value.splice(idx, 1)
+  if (refImages.value.length === 0) {
+    activeRefIndex.value = 0
+    return
+  }
+  if (activeRefIndex.value >= refImages.value.length) {
+    activeRefIndex.value = refImages.value.length - 1
+  }
+}
+
+async function imageUrlToDataUrl(url: string) {
+  const resp = await fetch(url)
+  const blob = await resp.blob()
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('结果图转换失败'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function continueEditCurrentResult() {
+  if (!activeResultImage.value?.url) return
+  try {
+    const dataUrl = await imageUrlToDataUrl(activeResultImage.value.url)
+    refImages.value = [{
+      name: `generated-${Date.now()}.png`,
+      dataUrl,
+      size: Math.round((dataUrl.length * 3) / 4),
+    }]
+    activeRefIndex.value = 0
+    ElMessage.success('当前结果已写回参考图区')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    ElMessage.error(msg)
+  }
 }
 
 async function sendImg2Img() {
@@ -403,6 +458,7 @@ async function sendImg2Img() {
   i2iError.value = ''
   i2iPreview.value = false
   i2iResult.value = []
+  activeResultIndex.value = 0
   i2iAbort.value = new AbortController()
   try {
     const resp = await playGenerateImage(
@@ -416,9 +472,14 @@ async function sendImg2Img() {
       i2iAbort.value.signal,
     )
     i2iResult.value = resp.data || []
+    activeResultIndex.value = 0
     i2iPreview.value = !!resp.is_preview
-    if (i2iPreview.value && i2iResult.value.length > 0) {
+    if (i2iResult.value.length === 0) {
+      i2iError.value = '未产出图片,请重试或调整描述'
+    } else if (i2iPreview.value) {
       ElMessage.warning('生成成功(预览模式):本次账号未命中 IMG2 灰度,展示的是 IMG1 预览图')
+    } else {
+      ElMessage.success('图生图生成成功')
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -479,6 +540,15 @@ watch(activeTab, (v) => {
         </div>
       </div>
     </div>
+
+    <el-alert
+      v-if="noticeText"
+      class="play-notice"
+      type="warning"
+      :closable="false"
+      show-icon
+      :description="noticeText"
+    />
 
     <!-- ============ Tabs ============ -->
     <el-tabs v-model="activeTab" class="pg-tabs">
@@ -796,112 +866,133 @@ watch(activeTab, (v) => {
           <span class="tab-lbl"><el-icon><PictureFilled /></el-icon> 图生图</span>
         </template>
 
-        <div class="img-grid">
-          <aside class="card-block side">
-            <div class="side-row">
-              <label class="side-lbl">图片模型</label>
-              <el-select v-model="selectedImageModel" placeholder="选择图片模型" size="large" style="width:100%">
-                <el-option v-for="m in imageModels" :key="m.id" :label="m.slug" :value="m.slug" />
-              </el-select>
-              <div v-if="currentImageDesc" class="side-hint">{{ currentImageDesc }}</div>
-              <div class="price-hint">
-                <span class="price-hint__title">
-                  单张基准价格：{{ formatCredit(currentImageBasePrice) }} 积分 / 张
-                </span>
-                <span class="price-hint__sub">多张生成会按张数累计扣费</span>
-              </div>
-            </div>
-
-            <div class="side-row">
-              <label class="side-lbl">参考图 <span class="side-val">{{ refImages.length }}/多</span></label>
-              <label class="upload-zone">
-                <el-icon class="up-ic"><UploadFilled /></el-icon>
-                <div class="up-t">点击选择 / 拖拽图片到这里</div>
-                <div class="up-s">最多多张,每张 ≤ 4MB</div>
-                <input type="file" accept="image/*" multiple @change="handleFilePick" />
-              </label>
-
-              <div v-if="refImages.length" class="ref-grid">
-                <div v-for="(r, idx) in refImages" :key="idx" class="ref-thumb">
-                  <img :src="r.dataUrl" :alt="r.name" />
-                  <div class="ref-x" @click="removeRefImage(idx)">
-                    <el-icon><Close /></el-icon>
-                  </div>
-                  <div class="ref-meta">{{ (r.size / 1024).toFixed(0) }} KB</div>
+        <div class="img2img-compare">
+          <section class="compare-panel compare-panel--reference">
+            <div class="card-block compare-panel__card">
+              <div class="compare-panel__head">
+                <div>
+                  <div class="compare-panel__title">参考图</div>
+                  <div class="compare-panel__sub">左侧固定展示当前参考主图、参考图切换与生成参数</div>
                 </div>
+                <span class="compare-panel__count">{{ refImages.length }} 张</span>
               </div>
-            </div>
 
-            <div class="side-row">
-              <label class="side-lbl">输出比例</label>
-              <div class="ratio-row">
+              <div class="compare-canvas compare-canvas--reference">
+                <label v-if="!activeRefImage" class="upload-zone upload-zone--canvas">
+                  <el-icon class="up-ic"><UploadFilled /></el-icon>
+                  <div class="up-t">点击选择 / 拖拽图片到这里</div>
+                  <div class="up-s">最多多张,每张 ≤ 4MB</div>
+                  <input type="file" accept="image/*" multiple @change="handleFilePick" />
+                </label>
+                <template v-else>
+                  <img
+                    :src="activeRefImage.dataUrl"
+                    :alt="activeRefImage.name"
+                    class="compare-image"
+                    loading="lazy"
+                  />
+                  <div class="compare-canvas__meta">
+                    <span class="compare-canvas__name">{{ activeRefImage.name }}</span>
+                    <span class="compare-canvas__size">{{ (activeRefImage.size / 1024).toFixed(0) }} KB</span>
+                  </div>
+                </template>
+              </div>
+
+              <div v-if="refImages.length" class="thumb-strip">
                 <button
-                  v-for="opt in [
-                    { v: '1024x1024', l: '1:1',  w: 36, h: 36 },
-                    { v: '1536x1152', l: '4:3',  w: 44, h: 33 },
-                    { v: '1792x1024', l: '16:9', w: 48, h: 28 },
-                    { v: '1024x1792', l: '9:16', w: 28, h: 48 },
-                  ]"
-                  :key="opt.v"
-                  :class="['ratio-btn', { active: i2iSize === opt.v }]"
-                  @click="i2iSize = opt.v as any"
+                  v-for="(r, idx) in refImages"
+                  :key="`${r.name}-${idx}-${r.size}`"
+                  type="button"
+                  :class="['thumb-strip__item', { active: idx === activeRefIndex }]"
+                  @click="setActiveRef(idx)"
                 >
-                  <div class="ratio-box" :style="{ width: opt.w + 'px', height: opt.h + 'px' }" />
-                  <span>{{ opt.l }}</span>
+                  <img :src="r.dataUrl" :alt="r.name" class="thumb-strip__image" loading="lazy" />
+                  <span class="thumb-strip__meta">{{ (r.size / 1024).toFixed(0) }} KB</span>
+                  <span class="thumb-strip__remove" @click.stop="removeRefImage(idx)">
+                    <el-icon><Close /></el-icon>
+                  </span>
                 </button>
+                <label class="thumb-strip__adder">
+                  <el-icon><Plus /></el-icon>
+                  <span>添加图片</span>
+                  <input type="file" accept="image/*" multiple @change="handleFilePick" />
+                </label>
+              </div>
+
+              <div class="compare-panel__form">
+                <div class="side-row">
+                  <label class="side-lbl">图片模型</label>
+                  <el-select v-model="selectedImageModel" placeholder="选择图片模型" size="large" style="width:100%">
+                    <el-option v-for="m in imageModels" :key="m.id" :label="m.slug" :value="m.slug" />
+                  </el-select>
+                  <div v-if="currentImageDesc" class="side-hint">{{ currentImageDesc }}</div>
+                  <div class="price-hint">
+                    <span class="price-hint__title">
+                      单张基准价格：{{ formatCredit(currentImageBasePrice) }} 积分 / 张
+                    </span>
+                    <span class="price-hint__sub">多张生成会按张数累计扣费</span>
+                  </div>
+                </div>
+
+                <div class="side-row">
+                  <label class="side-lbl">输出比例</label>
+                  <div class="ratio-row">
+                    <button
+                      v-for="opt in [
+                        { v: '1024x1024', l: '1:1',  w: 36, h: 36 },
+                        { v: '1536x1152', l: '4:3',  w: 44, h: 33 },
+                        { v: '1792x1024', l: '16:9', w: 48, h: 28 },
+                        { v: '1024x1792', l: '9:16', w: 28, h: 48 },
+                      ]"
+                      :key="opt.v"
+                      type="button"
+                      :class="['ratio-btn', { active: i2iSize === opt.v }]"
+                      @click="i2iSize = opt.v as any"
+                    >
+                      <div class="ratio-box" :style="{ width: opt.w + 'px', height: opt.h + 'px' }" />
+                      <span>{{ opt.l }}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="side-row">
+                  <label class="side-lbl">希望如何改动</label>
+                  <el-input
+                    v-model="i2iPrompt"
+                    type="textarea"
+                    :rows="4"
+                    resize="none"
+                    placeholder="例:保持人物姿态,把背景换成赛博朋克夜景"
+                  />
+                </div>
+
+                <el-button
+                  type="primary"
+                  round
+                  size="large"
+                  :loading="i2iSending"
+                  :disabled="refImages.length === 0 || !i2iPrompt.trim() || !selectedImageModel"
+                  @click="sendImg2Img"
+                  class="side-btn gen-btn compare-generate-btn"
+                >
+                  <el-icon><MagicStick /></el-icon> 生成
+                </el-button>
               </div>
             </div>
+          </section>
 
-            <div class="side-row">
-              <label class="side-lbl">希望如何改动</label>
-              <el-input
-                v-model="i2iPrompt"
-                type="textarea"
-                :rows="4"
-                resize="none"
-                placeholder="例:保持人物姿态,把背景换成赛博朋克夜景"
-              />
-            </div>
+          <section class="compare-panel compare-panel--result">
+            <div class="card-block compare-panel__card">
+              <div class="compare-panel__head">
+                <div>
+                  <div class="compare-panel__title">生成结果</div>
+                  <div class="compare-panel__sub">右侧固定展示当前结果主图与主要操作，便于与参考图并排对照</div>
+                </div>
+                <span class="compare-panel__count">{{ i2iResult.length }} 张</span>
+              </div>
 
-            <el-button
-              type="primary"
-              round
-              size="large"
-              :loading="i2iSending"
-              :disabled="refImages.length === 0 || !i2iPrompt.trim()"
-              @click="sendImg2Img"
-              class="side-btn gen-btn"
-            >
-              <el-icon><MagicStick /></el-icon> 生成
-            </el-button>
-          </aside>
-
-          <section class="card-block img-main">
-            <el-alert
-              type="warning"
-              :closable="false"
-              title="图生图目前处于 Preview"
-              description="上游 ChatGPT 文件上传协议还在接入,当前提交会返回 501。UI 已准备就绪,协议完成后即刻可用。"
-              show-icon
-              style="margin-bottom: 14px; border-radius: 10px;"
-            />
-
-            <div v-if="i2iError" class="err-block">
-              <el-icon><WarningFilled /></el-icon>
-              {{ i2iError }}
-            </div>
-            <div v-else-if="i2iSending" class="stage loading">
-              <div class="orb"><el-icon class="spin"><Loading /></el-icon></div>
-              <div class="stage-title">正在生成…</div>
-            </div>
-            <div v-else-if="i2iResult.length === 0" class="stage">
-              <div class="stage-art">🎨</div>
-              <div class="stage-title">还没有结果</div>
-              <div class="stage-sub">上传参考图 + 描述改动,然后点击「生成」</div>
-            </div>
-            <div v-else class="result-wrap">
               <el-alert
-                v-if="i2iPreview"
+                v-if="i2iPreview && i2iResult.length"
                 class="preview-tip"
                 type="warning"
                 :closable="false"
@@ -909,25 +1000,71 @@ watch(activeTab, (v) => {
                 title="本次未使用 IMG2 灰度生成"
                 description="上游没有把本账号放入 IMG2 终稿通道,返回的是 IMG1 预览图。"
               />
-              <div class="result-grid">
-                <div
-                  v-for="(img, idx) in i2iResult"
-                  :key="idx"
-                  class="img-cell"
-                  :class="{ 'is-preview': i2iPreview }"
-                  @click="openPreview(i2iResult.map((x) => x.url), idx)"
-                >
-                  <img :src="img.url" :alt="`result-${idx}`" />
-                  <div v-if="i2iPreview" class="img-badge">IMG1 预览</div>
-                  <div class="img-actions" @click.stop>
-                    <button class="iact" @click="openPreview(i2iResult.map((x) => x.url), idx)">
-                      <el-icon><ZoomIn /></el-icon>
-                    </button>
-                    <button class="iact" @click="downloadUrl(img.url)">
-                      <el-icon><Download /></el-icon>
-                    </button>
-                  </div>
+
+              <div class="compare-canvas compare-canvas--result">
+                <div v-if="i2iError" class="err-block compare-canvas__status">
+                  <el-icon><WarningFilled /></el-icon>
+                  {{ i2iError }}
                 </div>
+                <div v-else-if="i2iSending" class="stage loading compare-canvas__status">
+                  <div class="orb"><el-icon class="spin"><Loading /></el-icon></div>
+                  <div class="stage-title">正在生成…</div>
+                  <div class="stage-sub">结果会在当前画布中更新，页面保持开启即可</div>
+                </div>
+                <div v-else-if="!activeResultImage" class="stage compare-canvas__status">
+                  <div class="stage-art">🎨</div>
+                  <div class="stage-title">还没有结果</div>
+                  <div class="stage-sub">先在左侧上传参考图并填写改动描述</div>
+                </div>
+                <template v-else>
+                  <img
+                    :src="activeResultImage.url"
+                    :alt="`result-${activeResultIndex}`"
+                    class="compare-image"
+                    :class="{ 'compare-image--preview': i2iPreview }"
+                    loading="lazy"
+                  />
+                  <div v-if="i2iPreview" class="img-badge compare-image__badge">IMG1 预览</div>
+                </template>
+              </div>
+
+              <div v-if="i2iResult.length > 1" class="thumb-strip">
+                <button
+                  v-for="(img, idx) in i2iResult"
+                  :key="`${img.url}-${idx}`"
+                  type="button"
+                  :class="['thumb-strip__item', 'thumb-strip__item--result', { active: idx === activeResultIndex }]"
+                  @click="setActiveResult(idx)"
+                >
+                  <img :src="img.url" :alt="`result-${idx}`" class="thumb-strip__image" loading="lazy" />
+                  <span class="thumb-strip__meta">第 {{ idx + 1 }} 张</span>
+                </button>
+              </div>
+
+              <div v-if="activeResultImage" class="result-actions">
+                <div class="result-primary-actions">
+                  <a
+                    class="result-action-btn result-action-btn--link"
+                    :href="activeResultImage.url"
+                    target="_blank"
+                    rel="noopener"
+                  >查看</a>
+                  <button
+                    type="button"
+                    class="result-action-btn"
+                    @click="openPreview(i2iResultUrls, activeResultIndex)"
+                  >放大</button>
+                  <button
+                    type="button"
+                    class="result-action-btn"
+                    @click="downloadUrl(activeResultImage.url)"
+                  >下载</button>
+                </div>
+                <button
+                  type="button"
+                  class="result-secondary-action"
+                  @click="continueEditCurrentResult"
+                >继续编辑当前结果</button>
               </div>
             </div>
           </section>
@@ -1001,6 +1138,9 @@ watch(activeTab, (v) => {
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+}
+.play-notice {
+  margin-bottom: 16px;
 }
 .mini-stat {
   display: inline-flex;
@@ -1265,6 +1405,120 @@ watch(activeTab, (v) => {
   gap: 16px;
 }
 .img-main { min-height: 560px; }
+.img2img-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.compare-panel {
+  min-height: 100%;
+  min-width: 0;
+}
+.compare-panel__card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
+  min-width: 0;
+}
+.compare-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.compare-panel__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.compare-panel__sub {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+.compare-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--el-fill-color-light);
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.compare-panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+.compare-canvas {
+  position: relative;
+  min-height: 420px;
+  height: min(62vh, 560px);
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: linear-gradient(180deg, var(--el-fill-color-light) 0%, var(--el-bg-color) 100%);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.compare-canvas--reference {
+  background: linear-gradient(180deg, rgba(64, 158, 255, 0.06) 0%, var(--el-bg-color) 100%);
+}
+.compare-canvas--result {
+  background: linear-gradient(180deg, rgba(103, 194, 58, 0.06) 0%, var(--el-bg-color) 100%);
+}
+.compare-canvas__status {
+  width: calc(100% - 24px);
+  margin: 12px;
+}
+.compare-canvas__meta {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  backdrop-filter: blur(6px);
+}
+.compare-canvas__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compare-canvas__size {
+  flex-shrink: 0;
+}
+.compare-image {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  background: rgba(255, 255, 255, 0.55);
+}
+.compare-image--preview {
+  box-shadow: inset 0 0 0 1.5px rgba(245, 158, 11, 0.45);
+}
+.compare-image__badge {
+  top: 16px;
+  left: 16px;
+}
 
 /* 比例按钮 */
 .ratio-row { display: flex; gap: 8px; }
@@ -1320,36 +1574,81 @@ watch(activeTab, (v) => {
   .up-s { font-size: 11px; color: var(--el-text-color-placeholder); margin-top: 2px; }
   input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 }
-
-.ref-grid {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+.upload-zone--canvas {
+  width: calc(100% - 24px);
+  min-height: 300px;
 }
-.ref-thumb {
+
+.thumb-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.thumb-strip__item,
+.thumb-strip__adder {
   position: relative;
-  aspect-ratio: 1;
-  border-radius: 8px;
+  flex: 0 0 88px;
+  height: 88px;
+  border-radius: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color);
   overflow: hidden;
-  background: var(--el-fill-color-light);
-  img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .ref-x {
-    position: absolute; top: 4px; right: 4px;
-    width: 20px; height: 20px; border-radius: 50%;
-    background: rgba(0,0,0,0.55); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: 12px;
-    opacity: 0; transition: opacity 0.2s;
-  }
-  .ref-meta {
-    position: absolute; bottom: 0; left: 0; right: 0;
-    padding: 2px 6px;
-    background: linear-gradient(transparent, rgba(0,0,0,0.6));
-    color: #fff; font-size: 10px;
-    opacity: 0; transition: opacity 0.2s;
-  }
-  &:hover { .ref-x, .ref-meta { opacity: 1; } }
+}
+.thumb-strip__item {
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.thumb-strip__item:hover,
+.thumb-strip__item.active {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.12);
+}
+.thumb-strip__item--result.active {
+  border-color: var(--el-color-success);
+  box-shadow: 0 0 0 3px rgba(103, 194, 58, 0.12);
+}
+.thumb-strip__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumb-strip__meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 4px 6px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.thumb-strip__remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  cursor: pointer;
+}
+.thumb-strip__adder {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 }
 
 /* 主区 stage / 结果 */
@@ -1431,6 +1730,55 @@ watch(activeTab, (v) => {
   .result-grid { padding: 0; }
   .preview-tip { border-radius: 10px; }
 }
+.preview-tip { border-radius: 10px; }
+.result-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.result-primary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.result-action-btn {
+  min-width: 88px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.result-action-btn:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+.result-action-btn--link {
+  background: var(--el-color-primary-light-9);
+  border-color: rgba(64, 158, 255, 0.28);
+}
+.result-secondary-action {
+  border: none;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.result-secondary-action:hover {
+  color: var(--el-color-primary);
+}
 .img-cell.is-preview {
   box-shadow: 0 2px 8px rgba(251, 146, 60, 0.25);
   &::after {
@@ -1461,7 +1809,7 @@ watch(activeTab, (v) => {
 
 /* ====================== Responsive ====================== */
 @media (max-width: 1100px) {
-  .chat-grid, .img-grid { grid-template-columns: 1fr; }
+  .chat-grid, .img-grid, .img2img-compare { grid-template-columns: 1fr; }
   .side { position: static; }
   .chat-main { height: 580px; }
 }
@@ -1473,5 +1821,23 @@ watch(activeTab, (v) => {
   }
   .hero-sub { display: none; }
   .hero-stats { width: 100%; justify-content: flex-start; }
+  .compare-canvas {
+    min-height: 300px;
+    height: min(52vh, 420px);
+  }
+  .compare-image {
+    max-height: 100%;
+  }
+  .compare-canvas__meta,
+  .result-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .result-primary-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .result-action-btn { min-width: 0; width: 100%; }
 }
 </style>

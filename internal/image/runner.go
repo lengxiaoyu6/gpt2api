@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/432539/gpt2api/internal/config"
 	"github.com/432539/gpt2api/internal/scheduler"
 	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 	"github.com/432539/gpt2api/pkg/logger"
@@ -28,12 +29,13 @@ type runnerAttemptFunc func(context.Context, RunOptions, *RunResult) (bool, stri
 type Runner struct {
 	sched     *scheduler.Scheduler
 	dao       *DAO
+	cfg       config.ImageConfig
 	runOnceFn runnerAttemptFunc // 仅测试使用
 }
 
 // NewRunner 构造 Runner。
-func NewRunner(sched *scheduler.Scheduler, dao *DAO) *Runner {
-	return &Runner{sched: sched, dao: dao}
+func NewRunner(sched *scheduler.Scheduler, dao *DAO, cfg config.ImageConfig) *Runner {
+	return &Runner{sched: sched, dao: dao, cfg: cfg}
 }
 
 // ReferenceImage 是图生图/编辑的一张参考图输入。
@@ -77,24 +79,7 @@ type RunResult struct {
 // Run 执行生图。会同步阻塞直到完成/失败;调用方自行做超时控制(传 ctx)。
 func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 	start := time.Now()
-	if opt.MaxAttempts <= 0 {
-		opt.MaxAttempts = 2
-	}
-	if opt.PerAttemptTimeout <= 0 {
-		opt.PerAttemptTimeout = 5 * time.Minute
-	}
-	if opt.PollMaxWait <= 0 {
-		opt.PollMaxWait = 300 * time.Second
-	}
-	if opt.UpstreamModel == "" {
-		// 对齐浏览器抓包 + 参考实现:图像走 f/conversation 时 model 字段和
-		// 普通 chat 一致用 "auto",通过 system_hints=["picture_v2"] 让上游知道
-		// 这是图像任务。硬写 "gpt-5-3" 在免费/新账号上会直接 404。
-		opt.UpstreamModel = "auto"
-	}
-	if opt.N <= 0 {
-		opt.N = 1
-	}
+	opt = r.normalizeOptions(opt)
 
 	result := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown}
 
@@ -175,6 +160,49 @@ func retryLimit(maxAttempts int, code string) int {
 		return 2
 	}
 	return maxAttempts
+}
+
+func (r *Runner) normalizeOptions(opt RunOptions) RunOptions {
+	if opt.MaxAttempts <= 0 {
+		opt.MaxAttempts = 2
+	}
+	if opt.PerAttemptTimeout <= 0 {
+		opt.PerAttemptTimeout = 5 * time.Minute
+	}
+	if opt.PollMaxWait <= 0 {
+		waitCfg := r.imageWaitConfig()
+		opt.PollMaxWait = time.Duration(waitCfg.PollMaxWaitSec) * time.Second
+	}
+	if opt.UpstreamModel == "" {
+		// 对齐浏览器抓包 + 参考实现:图像走 f/conversation 时 model 字段和
+		// 普通 chat 一致用 "auto",通过 system_hints=["picture_v2"] 让上游知道
+		// 这是图像任务。硬写 "gpt-5-3" 在免费/新账号上会直接 404。
+		opt.UpstreamModel = "auto"
+	}
+	if opt.N <= 0 {
+		opt.N = 1
+	}
+	return opt
+}
+
+func (r *Runner) imageWaitConfig() config.ImageConfig {
+	cfg := r.cfg
+	if cfg.SameConversationMaxTurns <= 0 {
+		cfg.SameConversationMaxTurns = 3
+	}
+	if cfg.PollMaxWaitSec <= 0 {
+		cfg.PollMaxWaitSec = 120
+	}
+	if cfg.PollIntervalSec <= 0 {
+		cfg.PollIntervalSec = 3
+	}
+	if cfg.PollStableRounds <= 0 {
+		cfg.PollStableRounds = 2
+	}
+	if cfg.PreviewWaitSec <= 0 {
+		cfg.PreviewWaitSec = 15
+	}
+	return cfg
 }
 
 // runOnce 一次完整的尝试。返回 (ok, errorCode, err)。
@@ -291,7 +319,8 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// 5-7) 同账号 + 同会话多轮发起 picture_v2,命中 IMG2 即返回;
 	// 连续 sameConvMax 轮只拿到预览(preview_only)时,用最后一轮的 sediment 作为 IMG1 返回。
 	// 协议/网络级错误(非 preview_only)会直接退出,由外层 Run 换账号。
-	const sameConvMax = 3
+	waitCfg := r.imageWaitConfig()
+	sameConvMax := waitCfg.SameConversationMaxTurns
 
 	var (
 		fileRefs        []string
@@ -410,6 +439,9 @@ loop:
 		// 没直出就轮询当前会话
 		pollOpt := chatgpt.PollOpts{
 			MaxWait:         opt.PollMaxWait,
+			Interval:        time.Duration(waitCfg.PollIntervalSec) * time.Second,
+			StableRounds:    waitCfg.PollStableRounds,
+			PreviewWait:     time.Duration(waitCfg.PreviewWaitSec) * time.Second,
 			BaselineToolIDs: baselineTools,
 		}
 		status, fids, sids := cli.PollConversationForImages(ctx, convID, pollOpt)
@@ -530,6 +562,11 @@ loop:
 		zap.String("conv_id", convID),
 		zap.Int("turns_used", result.TurnsInConv),
 		zap.Bool("is_preview", result.IsPreview),
+		zap.Int("same_conversation_max_turns", waitCfg.SameConversationMaxTurns),
+		zap.Int("poll_max_wait_sec", waitCfg.PollMaxWaitSec),
+		zap.Int("poll_interval_sec", waitCfg.PollIntervalSec),
+		zap.Int("poll_stable_rounds", waitCfg.PollStableRounds),
+		zap.Int("preview_wait_sec", waitCfg.PreviewWaitSec),
 		zap.Int("refs", len(fileRefs)),
 		zap.Strings("refs_list", fileRefs),
 		zap.Int("signed_count", len(signedURLs)),

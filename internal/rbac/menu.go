@@ -23,9 +23,9 @@ var menuTree = []Menu{
 		Children: []Menu{
 			{Key: "personal.dashboard", Title: "总览", Icon: "House", Path: "/personal/dashboard",
 				Perms: []Permission{PermSelfProfile}},
-				{Key: "personal.play", Title: "在线体验", Icon: "MagicStick", Path: "/personal/play",
+			{Key: "personal.play", Title: "在线体验", Icon: "MagicStick", Path: "/personal/play",
 				Perms: []Permission{PermSelfImage, PermSelfUsage}},
-			
+
 			{Key: "personal.usage", Title: "使用记录", Icon: "Histogram", Path: "/personal/usage",
 				Perms: []Permission{PermSelfUsage}},
 			{Key: "personal.history-tasks", Title: "历史任务", Icon: "PictureRounded", Path: "/personal/history-tasks",
@@ -36,7 +36,6 @@ var menuTree = []Menu{
 				Perms: []Permission{PermSelfKey}},
 			{Key: "personal.docs", Title: "接口文档", Icon: "Document", Path: "/personal/docs",
 				Perms: []Permission{PermSelfUsage, PermSelfImage}},
-			
 		},
 	},
 	// ---- 管理员区 ----
@@ -50,6 +49,8 @@ var menuTree = []Menu{
 			{Key: "admin.credits", Title: "积分管理", Icon: "Coin", Path: "/admin/credits",
 				Perms: []Permission{PermUserCredit}},
 			{Key: "admin.recharges", Title: "充值订单", Icon: "CreditCard", Path: "/admin/recharges",
+				Perms: []Permission{PermRechargeManage}},
+			{Key: "admin.redeem-codes", Title: "兑换码", Icon: "Ticket", Path: "/admin/redeem-codes",
 				Perms: []Permission{PermRechargeManage}},
 			{Key: "admin.accounts", Title: "GPT账号", Icon: "Connection", Path: "/admin/accounts",
 				Perms: []Permission{PermAccountRead}},

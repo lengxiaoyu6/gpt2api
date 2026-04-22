@@ -7,9 +7,10 @@ import homeHero from '@/assets/home-hero.jpg';
 
 interface HomeViewProps {
   onStartGeneration: () => void;
+  siteName?: string;
 }
 
-export default function HomeView({ onStartGeneration }: HomeViewProps) {
+export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: HomeViewProps) {
   const features = [
     {
       title: '文生图',
@@ -90,8 +91,8 @@ export default function HomeView({ onStartGeneration }: HomeViewProps) {
       </section>
 
       <div className="text-center pb-8 opacity-50 space-y-1">
-        <p className="text-[10px] font-medium tracking-widest uppercase">GPT2API • Creative Studio</p>
-        <p className="text-[8px]">Powered by GPT2API Image Playground</p>
+        <p className="text-[10px] font-medium tracking-widest uppercase">{siteName}</p>
+        <p className="text-[8px]">© {siteName}</p>
       </div>
     </div>
   );

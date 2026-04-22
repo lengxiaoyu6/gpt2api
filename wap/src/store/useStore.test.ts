@@ -150,17 +150,36 @@ describe('useStore backend integration', () => {
     expect((useStore.getState() as any).user?.credit_balance).toBe(88)
   })
 
-  test('generateImage uses mapped size 1792x1024 for 16:9 and refreshes me plus history', async () => {
+  test('generateImage uses mapped size 1792x1024 for 16:9, forwards count and refreshes me plus history', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
     await state.fetchImageModels()
 
-    await state.generateImage({ prompt: 'night city', aspectRatio: '16:9' })
+    await state.generateImage({ prompt: 'night city', aspectRatio: '16:9', count: 4 })
 
     expect(meApi.playGenerateImage).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'gpt-image-1', prompt: 'night city', size: '1792x1024', n: 1 }),
+      expect.objectContaining({ model: 'gpt-image-1', prompt: 'night city', size: '1792x1024', n: 4 }),
       undefined,
+    )
+    expect(meApi.getMe).toHaveBeenCalledTimes(2)
+    expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+  })
+
+  test('editImage uses mapped size 1024x1792 for 9:16, forwards count and refreshes me plus history', async () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    const state = useStore.getState() as any
+    await state.fetchMe()
+    await state.fetchImageModels()
+    const file = new File(['demo'], 'demo.png', { type: 'image/png' })
+
+    await state.editImage({ prompt: 'repaint', aspectRatio: '9:16', file, count: 3 })
+
+    expect(meApi.playEditImage).toHaveBeenCalledWith(
+      'gpt-image-1',
+      'repaint',
+      file,
+      expect.objectContaining({ size: '1024x1792', n: 3 }),
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)

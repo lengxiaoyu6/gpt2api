@@ -120,11 +120,17 @@ export async function playGenerateImage(req: PlayImageRequest, signal?: AbortSig
   return resp.json() as Promise<PlayImageResponse>
 }
 
-export async function playEditImage(model: string, prompt: string, file: File, size: string, signal?: AbortSignal) {
+export async function playEditImage(
+  model: string,
+  prompt: string,
+  file: File,
+  opts?: { n?: number; size?: string; signal?: AbortSignal },
+) {
   const fd = new FormData()
   fd.append('model', model)
   fd.append('prompt', prompt)
-  fd.append('size', size)
+  if (opts?.size) fd.append('size', opts.size)
+  if (opts?.n) fd.append('n', String(opts.n))
   fd.append('image', file, file.name)
 
   const resp = await fetch(buildApiURL('/api/me/playground/image-edit'), {
@@ -133,7 +139,7 @@ export async function playEditImage(model: string, prompt: string, file: File, s
       Authorization: `Bearer ${readToken()}`,
     },
     body: fd,
-    signal,
+    signal: opts?.signal,
   })
 
   if (!resp.ok) {

@@ -1,0 +1,80 @@
+<h2>图生图结果区结构</h2>
+<p class="subtitle">当前已确认两点：结果操作采用 B，参考图区采用 B。这里继续确定右侧结果区本体如何承载单图查看、多图切换与主操作带。</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>结果网格</h3>
+      <p>沿用当前宫格展示方式，多张结果同时平铺，每张图上悬浮显示操作按钮。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>与文生图一致</li>
+            <li>多图浏览速度快</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>与左侧参考图的对照关系较弱</li>
+            <li>主动作层级仍然偏散</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>主结果 + 缩略条</h3>
+      <p>右侧以一张主结果图为中心，下方固定主操作带，若存在多张结果则在底部显示缩略条切换。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>与左侧主参考图形成稳定并排对照</li>
+            <li>查看、放大、下载可以固定在主图下方</li>
+            <li>以后支持多张结果时扩展自然</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>需要一个“当前结果图”状态</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>上下翻页</h3>
+      <p>结果区只显示一张图，通过左右切换按钮浏览多张结果，缩略图隐藏。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>画面最整洁</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>多图定位效率较低</li>
+            <li>状态感较弱</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐方案</h3>
+  <p>B 与前两轮选择最一致：左侧参考主图、右侧结果主图并排对照；操作条固定在主图下方；若后续恢复多图生成，也能继续通过缩略条承载。</p>
+</div>

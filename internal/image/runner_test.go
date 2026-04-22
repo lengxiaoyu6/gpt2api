@@ -4,7 +4,85 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
+
+	"github.com/432539/gpt2api/internal/config"
 )
+
+func TestRunnerRunUsesConfiguredPollMaxWaitWhenUnset(t *testing.T) {
+	r := &Runner{
+		cfg: config.ImageConfig{PollMaxWaitSec: 120},
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			if opt.PollMaxWait != 120*time.Second {
+				t.Fatalf("PollMaxWait = %s", opt.PollMaxWait)
+			}
+			result.ConversationID = "conv_cfg_wait"
+			result.FileIDs = []string{"sed:preview_1"}
+			result.SignedURLs = []string{"https://example.com/preview.png"}
+			result.ContentTypes = []string{"image/png"}
+			result.IsPreview = true
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_cfg_wait"})
+	if res.Status != StatusSuccess {
+		t.Fatalf("status = %s", res.Status)
+	}
+	if !res.IsPreview {
+		t.Fatalf("expected preview fallback")
+	}
+}
+
+func TestRunnerImageWaitConfigUsesConfiguredValues(t *testing.T) {
+	r := &Runner{cfg: config.ImageConfig{
+		SameConversationMaxTurns: 2,
+		PollMaxWaitSec:           120,
+		PollIntervalSec:          3,
+		PollStableRounds:         2,
+		PreviewWaitSec:           15,
+	}}
+
+	cfg := r.imageWaitConfig()
+	if cfg.SameConversationMaxTurns != 2 {
+		t.Fatalf("SameConversationMaxTurns = %d", cfg.SameConversationMaxTurns)
+	}
+	if cfg.PollIntervalSec != 3 {
+		t.Fatalf("PollIntervalSec = %d", cfg.PollIntervalSec)
+	}
+	if cfg.PreviewWaitSec != 15 {
+		t.Fatalf("PreviewWaitSec = %d", cfg.PreviewWaitSec)
+	}
+}
+
+func TestRunnerRunPreservesPreviewFallbackResult(t *testing.T) {
+	r := &Runner{
+		cfg: config.ImageConfig{SameConversationMaxTurns: 2, PollMaxWaitSec: 120},
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			result.ConversationID = "conv_preview"
+			result.FileIDs = []string{"sed:preview_2"}
+			result.SignedURLs = []string{"https://example.com/preview-2.png"}
+			result.ContentTypes = []string{"image/png"}
+			result.TurnsInConv = 2
+			result.IsPreview = true
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_preview_fallback"})
+	if res.Status != StatusSuccess {
+		t.Fatalf("status = %s", res.Status)
+	}
+	if res.TurnsInConv != 2 {
+		t.Fatalf("TurnsInConv = %d", res.TurnsInConv)
+	}
+	if !res.IsPreview {
+		t.Fatalf("expected preview fallback")
+	}
+	if got := len(res.FileIDs); got != 1 || res.FileIDs[0] != "sed:preview_2" {
+		t.Fatalf("file ids = %v", res.FileIDs)
+	}
+}
 
 func TestRunnerRunRetriesUpstreamErrorUntilSuccess(t *testing.T) {
 	attempts := 0
