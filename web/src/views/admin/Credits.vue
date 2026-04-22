@@ -84,6 +84,7 @@ function onReset() {
 const TYPE_MAP: Record<string, { label: string; type: 'success' | 'warning' | 'info' | 'danger' | 'primary' }> = {
   recharge:    { label: '充值',     type: 'success' },
   redeem:      { label: '兑换码',   type: 'success' },
+  checkin:     { label: '签到',     type: 'success' },
   admin_adjust:{ label: '管理员调账', type: 'warning' },
   refund:      { label: '退款',     type: 'info'    },
   consume:     { label: '消费',     type: 'danger'  },

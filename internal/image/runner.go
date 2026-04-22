@@ -21,10 +21,14 @@ import (
 //	StreamFConversation (SSE) → ParseImageSSE → PollConversationForImages →
 //	ImageDownloadURL(签名 URL)
 //
-// 灰度桶未命中(preview_only)会自动换账号重试。
+// 灰度桶未命中(preview_only)与 upstream_error 都会自动换账号重试。
+type runnerAttemptFunc func(context.Context, RunOptions, *RunResult) (bool, string, error)
+
+// Runner 单次/多次生图的执行器。
 type Runner struct {
-	sched *scheduler.Scheduler
-	dao   *DAO
+	sched     *scheduler.Scheduler
+	dao       *DAO
+	runOnceFn runnerAttemptFunc // 仅测试使用
 }
 
 // NewRunner 构造 Runner。
@@ -47,16 +51,16 @@ type RunOptions struct {
 	ModelID           uint64
 	UpstreamModel     string // 默认 "auto"(由上游根据 system_hints 挑选图像模型)
 	Prompt            string
-	N                 int                // 目前上游单次返回固定,N 仅用于计费
-	MaxAttempts       int                // 灰度未命中时最大重试,默认 2
-	PerAttemptTimeout time.Duration      // 单次尝试总超时,默认 5min
-	PollMaxWait       time.Duration      // 轮询最长等待,默认 300s
-	References        []ReferenceImage   // 图生图/编辑:参考图
+	N                 int              // 目前上游单次返回固定,N 仅用于计费
+	MaxAttempts       int              // 可恢复错误的最大尝试次数,默认 2
+	PerAttemptTimeout time.Duration    // 单次尝试总超时,默认 5min
+	PollMaxWait       time.Duration    // 轮询最长等待,默认 300s
+	References        []ReferenceImage // 图生图/编辑:参考图
 }
 
 // RunResult 是单次生图的输出。
 type RunResult struct {
-	Status         string   // success / failed
+	Status         string // success / failed
 	ConversationID string
 	AccountID      uint64
 	FileIDs        []string // chatgpt.com 侧的原始 ref("sed:" 前缀表示 sediment)
@@ -64,9 +68,9 @@ type RunResult struct {
 	ContentTypes   []string
 	ErrorCode      string
 	ErrorMessage   string
-	Attempts       int   // 跨账号尝试次数(runOnce 次数)
-	TurnsInConv    int   // 当前账号内同会话 picture_v2 轮次
-	IsPreview      bool  // true=返回的是 IMG1 sediment 预览(3 轮均未命中 IMG2 灰度,已尽力)
+	Attempts       int  // 跨账号尝试次数(runOnce 次数)
+	TurnsInConv    int  // 当前账号内同会话 picture_v2 轮次
+	IsPreview      bool // true=返回的是 IMG1 sediment 预览(3 轮均未命中 IMG2 灰度,已尽力)
 	DurationMs     int64
 }
 
@@ -99,7 +103,12 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		_ = r.dao.MarkRunning(ctx, opt.TaskID, 0)
 	}
 
-	for attempt := 1; attempt <= opt.MaxAttempts; attempt++ {
+	runOnce := r.runOnce
+	if r.runOnceFn != nil {
+		runOnce = r.runOnceFn
+	}
+
+	for attempt := 1; attempt <= retryLimit(opt.MaxAttempts, ErrUpstream); attempt++ {
 		result.Attempts = attempt
 		if err := ctx.Err(); err != nil {
 			result.ErrorCode = ErrUnknown
@@ -108,7 +117,7 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		}
 
 		attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
-		ok, status, err := r.runOnce(attemptCtx, opt, result)
+		ok, status, err := runOnce(attemptCtx, opt, result)
 		cancel()
 
 		if ok {
@@ -123,12 +132,15 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		}
 		result.ErrorCode = status
 
-		// preview_only:换账号重试;其他错误直接退出
-		if status != ErrPreviewOnly {
+		limit := retryLimit(opt.MaxAttempts, status)
+		if !isRetryableTaskError(status) || attempt >= limit {
 			break
 		}
-		logger.L().Info("image runner preview_only, retry with another account",
-			zap.String("task_id", opt.TaskID), zap.Int("attempt", attempt))
+		logger.L().Info("image runner retry with another account",
+			zap.String("task_id", opt.TaskID),
+			zap.String("error_code", status),
+			zap.Int("attempt", attempt),
+			zap.Int("max_attempts", limit))
 	}
 
 	result.DurationMs = time.Since(start).Milliseconds()
@@ -143,6 +155,26 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		}
 	}
 	return result
+}
+
+func isRetryableTaskError(code string) bool {
+	switch code {
+	case ErrPreviewOnly, ErrUpstream:
+		return true
+	default:
+		return false
+	}
+}
+
+// retryLimit 返回某类错误实际允许的尝试上限。upstream_error 至少再试一次。
+func retryLimit(maxAttempts int, code string) int {
+	if maxAttempts <= 0 {
+		maxAttempts = 2
+	}
+	if code == ErrUpstream && maxAttempts < 2 {
+		return 2
+	}
+	return maxAttempts
 }
 
 // runOnce 一次完整的尝试。返回 (ok, errorCode, err)。

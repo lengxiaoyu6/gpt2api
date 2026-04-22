@@ -4,11 +4,9 @@ import { ElMessage } from 'element-plus'
 import {
   listMyModels,
   listMyUsageLogs,
-  listMyImageTasks,
   getMyUsageStats,
   type SimpleModel,
   type UsageItem,
-  type ImageTask,
   type MyStatsResp,
 } from '@/api/me'
 import { formatCredit, formatDateTime, formatErrorCode } from '@/utils/format'
@@ -62,36 +60,6 @@ async function loadChatLogs() {
 function chatPageChange(p: number) {
   chatPage.value.offset = (p - 1) * chatPage.value.limit
   loadChatLogs()
-}
-
-// ---------- 图片历史 ----------
-const imageTasks = ref<ImageTask[]>([])
-const imagePage = ref({ limit: 12, offset: 0 })
-const imageLoading = ref(false)
-const hasMoreImage = ref(false)
-
-async function loadImageTasks(reset = true) {
-  imageLoading.value = true
-  try {
-    if (reset) {
-      imagePage.value.offset = 0
-      imageTasks.value = []
-    }
-    const data = await listMyImageTasks({
-      limit: imagePage.value.limit,
-      offset: imagePage.value.offset,
-    })
-    if (reset) imageTasks.value = data.items
-    else imageTasks.value.push(...data.items)
-    hasMoreImage.value = data.items.length >= imagePage.value.limit
-  } finally {
-    imageLoading.value = false
-  }
-}
-
-function imageLoadMore() {
-  imagePage.value.offset += imagePage.value.limit
-  loadImageTasks(false)
 }
 
 // ---------- SDK 代码示例 ----------
@@ -191,7 +159,6 @@ onMounted(async () => {
   }
   loadStats()
   if (ENABLE_CHAT_MODEL) loadChatLogs()
-  loadImageTasks()
 })
 </script>
 
@@ -207,7 +174,7 @@ onMounted(async () => {
           <template v-else>
             外部调用走 <code>/v1/images/generations</code>,
           </template>
-          下面给出 curl / Python SDK 代码片段;个人用量与图片任务汇总在这里。若想在浏览器里直接体验,请打开「在线体验」。
+          下面给出 curl / Python SDK 代码片段；个人用量汇总在这里。图片任务记录请在「历史任务」菜单查看。若想在浏览器里直接体验，请打开「在线体验」。
         </p>
       </div>
       <div class="hero-stats" v-loading="statsLoading">
@@ -331,49 +298,6 @@ onMounted(async () => {
           </el-tabs>
         </div>
 
-        <div class="card-block">
-          <div class="flex-between" style="margin-bottom: 10px">
-            <h3 class="section-title">图片任务历史</h3>
-            <el-button size="small" @click="loadImageTasks(true)">刷新</el-button>
-          </div>
-          <div v-loading="imageLoading">
-            <div v-if="imageTasks.length === 0 && !imageLoading" class="empty">
-              暂无图片任务,复制上方代码调用一次即可生成记录。
-            </div>
-            <div class="grid">
-              <el-card
-                v-for="t in imageTasks"
-                :key="t.id"
-                shadow="hover"
-                class="img-card"
-              >
-                <div class="thumb">
-                  <img v-if="t.image_urls?.[0]" :src="t.image_urls[0]" :alt="t.prompt" />
-                  <div v-else class="thumb-ph">
-                    <el-icon :size="32"><PictureRounded /></el-icon>
-                    <div class="s">{{ t.status }}</div>
-                  </div>
-                </div>
-                <div class="meta">
-                  <div class="title" :title="t.prompt">{{ t.prompt || '(无 prompt)' }}</div>
-                  <div class="sub">
-                    <el-tag size="small" :type="statusTag(t.status)">{{ t.status }}</el-tag>
-                    <span>{{ t.size }}</span>
-                    <span class="mute">n={{ t.n }}</span>
-                  </div>
-                  <div class="foot">
-                    <span class="mute">{{ formatDateTime(t.created_at) }}</span>
-                    <span class="credit">{{ formatCredit(t.credit_cost) }} 积分</span>
-                  </div>
-                  <div v-if="t.error" class="err">{{ t.error }}</div>
-                </div>
-              </el-card>
-            </div>
-            <div v-if="hasMoreImage" class="pager">
-              <el-button @click="imageLoadMore">加载更多</el-button>
-            </div>
-          </div>
-        </div>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -424,35 +348,6 @@ onMounted(async () => {
 
 .mute { color: var(--el-text-color-secondary); }
 .pager { margin-top: 12px; display: flex; justify-content: flex-end; }
-.empty { padding: 24px 0; color: var(--el-text-color-secondary); text-align: center; }
-
-.grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;
-}
-.img-card {
-  :deep(.el-card__body) { padding: 0; }
-  .thumb {
-    height: 180px; display: flex; align-items: center; justify-content: center;
-    background: var(--el-fill-color-lighter);
-    img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  }
-  .thumb-ph { text-align: center; color: var(--el-text-color-secondary); .s { font-size: 12px; } }
-  .meta { padding: 10px 12px; }
-  .title {
-    font-size: 13px; font-weight: 600; margin-bottom: 6px;
-    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  }
-  .sub { display: flex; gap: 6px; font-size: 12px; align-items: center; color: var(--el-text-color-regular); }
-  .foot {
-    display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px;
-    .credit { color: #e6a23c; font-weight: 600; }
-  }
-  .err {
-    color: var(--el-color-danger); font-size: 12px; margin-top: 6px;
-    background: var(--el-color-danger-light-9); padding: 4px 6px; border-radius: 4px;
-    white-space: pre-wrap; word-break: break-word;
-  }
-}
 
 @media (max-width: 640px) {
   .hero { flex-direction: column; }

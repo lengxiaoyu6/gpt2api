@@ -7,6 +7,7 @@ export interface SimpleModel {
   slug: string
   type: 'chat' | 'image' | string
   description: string
+  image_price_per_call: number
 }
 
 export function listMyModels(): Promise<{ items: SimpleModel[]; total: number }> {
@@ -120,6 +121,25 @@ export function listMyCreditLogs(params: {
   offset?: number
 } = {}): Promise<{ items: MyCreditLog[]; total: number; limit: number; offset: number }> {
   return http.get('/api/me/credit-logs', { params })
+}
+
+export interface MyCheckinStatus {
+  enabled: boolean
+  today: string
+  checked_in: boolean
+  today_reward_credits: number
+  checked_at: string
+  last_checked_at: string
+  balance_after: number
+  awarded_credits: number
+}
+
+export function getMyCheckinStatus(): Promise<MyCheckinStatus> {
+  return http.get('/api/me/checkin')
+}
+
+export function checkinToday(): Promise<MyCheckinStatus> {
+  return http.post('/api/me/checkin')
 }
 
 // ---------- image tasks ----------

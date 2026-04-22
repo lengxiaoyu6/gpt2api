@@ -42,6 +42,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '在线体验', perm: ['self:image', 'self:usage'] } },
       { path: 'docs', component: () => import('@/views/personal/ApiDocs.vue'),
         meta: { title: '接口文档', perm: ['self:usage', 'self:image'] } },
+      { path: 'history-tasks', component: () => import('@/views/personal/HistoryTasks.vue'),
+        meta: { title: '历史任务', perm: 'self:image' } },
       // 旧路径兼容
       { path: 'playground', redirect: '/personal/docs' },
       { path: 'images', redirect: '/personal/play' },

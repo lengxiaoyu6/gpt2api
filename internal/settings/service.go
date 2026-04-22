@@ -148,6 +148,13 @@ func (s *Service) SignupBonusCredits() int64 {
 	}
 	return n
 }
+func (s *Service) DailyCheckinCredits() int64 {
+	n := s.GetInt(AuthDailyCheckinCredits)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
 func (s *Service) PasswordMinLength() int {
 	n := int(s.GetInt(AuthPasswordMinLength))
 	if n < 1 {
@@ -196,14 +203,44 @@ func (s *Service) JWTRefreshTTLSec() int {
 }
 
 // -- key defaults --
-func (s *Service) KeyDefaultDailyQuota() int64 { n := s.GetInt(KeyDefaultDailyQuota); if n < 0 { return 0 }; return n }
-func (s *Service) KeyMaxPerUser() int          { return int(s.GetInt(KeyMaxPerUser)) }
+func (s *Service) KeyDefaultDailyQuota() int64 {
+	n := s.GetInt(KeyDefaultDailyQuota)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+func (s *Service) KeyMaxPerUser() int { return int(s.GetInt(KeyMaxPerUser)) }
 
 // -- gateway --
-func (s *Service) GatewayUpstreamTimeoutSec() int { n := int(s.GetInt(GatewayUpstreamTimeoutSec)); if n <= 0 { return 60 }; return n }
-func (s *Service) GatewaySSEReadTimeoutSec() int  { n := int(s.GetInt(GatewaySSEReadTimeoutSec));  if n <= 0 { return 120 }; return n }
-func (s *Service) Cooldown429Sec() int            { n := int(s.GetInt(GatewayCooldown429Sec));     if n <= 0 { return 300 }; return n }
-func (s *Service) WarnedPauseHours() int          { n := int(s.GetInt(GatewayWarnedPauseHours));   if n <= 0 { return 24 }; return n }
+func (s *Service) GatewayUpstreamTimeoutSec() int {
+	n := int(s.GetInt(GatewayUpstreamTimeoutSec))
+	if n <= 0 {
+		return 60
+	}
+	return n
+}
+func (s *Service) GatewaySSEReadTimeoutSec() int {
+	n := int(s.GetInt(GatewaySSEReadTimeoutSec))
+	if n <= 0 {
+		return 120
+	}
+	return n
+}
+func (s *Service) Cooldown429Sec() int {
+	n := int(s.GetInt(GatewayCooldown429Sec))
+	if n <= 0 {
+		return 300
+	}
+	return n
+}
+func (s *Service) WarnedPauseHours() int {
+	n := int(s.GetInt(GatewayWarnedPauseHours))
+	if n <= 0 {
+		return 24
+	}
+	return n
+}
 func (s *Service) DailyUsageRatio() float64 {
 	f := s.GetFloat(GatewayDailyUsageRatio)
 	if f <= 0 || f > 1 {
@@ -303,10 +340,28 @@ func (s *Service) AccountDefaultClientID() string {
 }
 
 // -- billing / recharge --
-func (s *Service) RechargeEnabled() bool    { return s.GetBool(RechargeEnabled) }
-func (s *Service) RechargeMinCNY() int64    { n := s.GetInt(RechargeMinCNY); if n < 0 { return 0 }; return n }
-func (s *Service) RechargeMaxCNY() int64    { n := s.GetInt(RechargeMaxCNY); if n < 0 { return 0 }; return n }
-func (s *Service) RechargeDailyLimitCNY() int64 { n := s.GetInt(RechargeDailyLimitCNY); if n < 0 { return 0 }; return n }
+func (s *Service) RechargeEnabled() bool { return s.GetBool(RechargeEnabled) }
+func (s *Service) RechargeMinCNY() int64 {
+	n := s.GetInt(RechargeMinCNY)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+func (s *Service) RechargeMaxCNY() int64 {
+	n := s.GetInt(RechargeMaxCNY)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+func (s *Service) RechargeDailyLimitCNY() int64 {
+	n := s.GetInt(RechargeDailyLimitCNY)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
 func (s *Service) RechargeOrderExpireMin() int {
 	n := int(s.GetInt(RechargeOrderExpireMinutes))
 	if n <= 0 {

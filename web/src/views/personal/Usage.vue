@@ -202,8 +202,9 @@ const typeLabel: Record<string, string> = {
   recharge: '充值',
   consume: '消费',
   refund: '退款',
-  adjust: '调账',
-  bonus: '赠送',
+  admin_adjust: '调账',
+  redeem: '兑换码',
+  checkin: '签到',
   freeze: '冻结',
   unfreeze: '解冻',
 }

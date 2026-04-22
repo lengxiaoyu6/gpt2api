@@ -48,6 +48,9 @@ type ImagesHandler struct {
 	// ImageAccResolver 可选:代理下载上游图片时用于解出账号 AT/cookies/proxy。
 	// 未注入时 /p/img 路径会返回 503。
 	ImageAccResolver ImageAccountResolver
+
+	imageProxyCache   *imageProxyCache
+	imageProxyFetcher imageProxyFetcher
 }
 
 // ImageGenRequest OpenAI 兼容入参。
@@ -349,14 +352,14 @@ func (h *ImagesHandler) ImageTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"task_id":          t.TaskID,
-		"status":           t.Status,
-		"conversation_id":  t.ConversationID,
-		"created":          t.CreatedAt.Unix(),
-		"finished_at":      nullableUnix(t.FinishedAt),
-		"error":            t.Error,
-		"credit_cost":      t.CreditCost,
-		"data":             data,
+		"task_id":         t.TaskID,
+		"status":          t.Status,
+		"conversation_id": t.ConversationID,
+		"created":         t.CreatedAt.Unix(),
+		"finished_at":     nullableUnix(t.FinishedAt),
+		"error":           t.Error,
+		"credit_cost":     t.CreditCost,
+		"data":            data,
 	})
 }
 

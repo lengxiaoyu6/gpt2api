@@ -105,6 +105,34 @@ func (d *DAO) List(ctx context.Context, status string, keyword string, offset, l
 	return rows, total, err
 }
 
+func (d *DAO) ListDeleted(ctx context.Context, status string, keyword string, offset, limit int) ([]*Account, int64, error) {
+	var total int64
+	var err error
+	var rows []*Account
+
+	where := "deleted_at IS NOT NULL"
+	args := []interface{}{}
+	if status != "" {
+		where += " AND status = ?"
+		args = append(args, status)
+	}
+	if keyword != "" {
+		where += " AND (email LIKE ? OR notes LIKE ?)"
+		like := "%" + keyword + "%"
+		args = append(args, like, like)
+	}
+
+	if err = d.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM oai_accounts WHERE "+where, args...); err != nil {
+		return nil, 0, err
+	}
+	argsPage := append([]interface{}{}, args...)
+	argsPage = append(argsPage, limit, offset)
+	err = d.db.SelectContext(ctx, &rows,
+		"SELECT * FROM oai_accounts WHERE "+where+" ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?", argsPage...)
+	fillAll(rows)
+	return rows, total, err
+}
+
 // ListDispatchable 调度器专用:返回 status=healthy 且 cooldown 到期、AT 未过期的候选。
 func (d *DAO) ListDispatchable(ctx context.Context, limit int) ([]*Account, error) {
 	rows := make([]*Account, 0, limit)
@@ -185,6 +213,19 @@ func (d *DAO) SoftDelete(ctx context.Context, id uint64) error {
 	return err
 }
 
+func (d *DAO) Restore(ctx context.Context, id uint64) error {
+	res, err := d.db.ExecContext(ctx,
+		`UPDATE oai_accounts SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SoftDeleteByStatus 按状态批量软删。status 为空时删除全部(调用方需二次确认)。
 // 返回删除行数。
 func (d *DAO) SoftDeleteByStatus(ctx context.Context, status string) (int64, error) {
@@ -206,6 +247,38 @@ func (d *DAO) SoftDeleteByStatus(ctx context.Context, status string) (int64, err
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
+}
+
+func (d *DAO) Purge(ctx context.Context, id uint64) error {
+	tx, err := d.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	res, err := tx.ExecContext(ctx,
+		`DELETE FROM oai_accounts WHERE id = ? AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		_ = tx.Rollback()
+		return ErrNotFound
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM oai_account_cookies WHERE account_id = ?`, id); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM account_proxy_bindings WHERE account_id = ?`, id); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM account_quota_snapshots WHERE account_id = ?`, id); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // EnsureDeviceID 确保账号有 oai_device_id。

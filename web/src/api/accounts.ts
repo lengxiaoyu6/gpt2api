@@ -18,6 +18,7 @@ export interface Account {
   cooldown_until?:   { Time: string; Valid: boolean } | string | null
   last_used_at?:     { Time: string; Valid: boolean } | string | null
   today_used_date?:  { Time: string; Valid: boolean } | string | null
+  deleted_at?:       { Time: string; Valid: boolean } | string | null
 
   last_refresh_at?:  { Time: string; Valid: boolean } | string | null
   last_refresh_source: string
@@ -43,6 +44,10 @@ export function listAccounts(params: {
   page?: number; page_size?: number; status?: string; keyword?: string
 } = {}) {
   return http.get<any, Page<Account>>('/api/admin/accounts', { params })
+}
+
+export function listDeletedAccounts(params = {}) {
+  return http.get<any, Page<Account>>('/api/admin/accounts/deleted', { params })
 }
 
 export function getAccount(id: number) {
@@ -78,6 +83,12 @@ export function updateAccount(id: number, body: AccountUpdate) {
 }
 export function deleteAccount(id: number) {
   return http.delete<any, { deleted: number }>(`/api/admin/accounts/${id}`)
+}
+export function restoreAccount(id: number) {
+  return http.post<any, Account>(`/api/admin/accounts/${id}/restore`)
+}
+export function purgeAccount(id: number) {
+  return http.delete<any, { deleted: number; purged: boolean }>(`/api/admin/accounts/${id}/purge`)
 }
 export function bindProxy(id: number, proxyID: number) {
   return http.post(`/api/admin/accounts/${id}/bind-proxy`, { proxy_id: proxyID })

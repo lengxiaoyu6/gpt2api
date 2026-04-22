@@ -19,7 +19,7 @@ import (
 //
 // 注意:
 //   - 只有 GET/HEAD 的 NoRoute 请求才会被 fallback 到 index.html。其它方法保持 404。
-//   - 明确排除 /api/、/v1/、/healthz、/readyz 等 API 前缀,避免打包问题把接口 404 掩盖成 index.html。
+//   - 明确排除 /api/、/v1/、/p/、/healthz、/readyz 等 API 前缀,避免打包问题把接口 404 掩盖成 index.html。
 func mountSPA(r *gin.Engine) bool {
 	dir := resolveWebDir()
 	if dir == "" {
@@ -70,6 +70,7 @@ func mountSPA(r *gin.Engine) bool {
 var apiPrefixes = []string{
 	"/api/",
 	"/v1/",
+	"/p/",
 	"/healthz",
 	"/readyz",
 	"/assets/",

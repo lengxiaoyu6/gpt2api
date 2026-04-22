@@ -13,7 +13,7 @@ import { fetchSiteInfo } from '@/api/settings'
 export const useSiteStore = defineStore('site', () => {
   const info = ref<Record<string, string>>({
     'site.name': 'GPT2API',
-    'site.description': '企业级 OpenAI 兼容网关',
+    'site.description': '面向开发者与小规模业务的 GPT-image 中转 API 平台',
     'site.logo_url': '',
     'site.footer': '',
     'site.contact_email': '',

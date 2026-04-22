@@ -32,9 +32,11 @@ const selectedImageModel = ref('')
 const currentChatDesc = computed(
   () => chatModels.value.find((m) => m.slug === selectedChatModel.value)?.description || '',
 )
-const currentImageDesc = computed(
-  () => imageModels.value.find((m) => m.slug === selectedImageModel.value)?.description || '',
+const currentImageModel = computed(
+  () => imageModels.value.find((m) => m.slug === selectedImageModel.value),
 )
+const currentImageDesc = computed(() => currentImageModel.value?.description || '')
+const currentImageBasePrice = computed(() => currentImageModel.value?.image_price_per_call ?? 0)
 
 onMounted(async () => {
   try {
@@ -256,7 +258,7 @@ function renderMarkdown(raw: string): string {
 // 文生图(Text2Img)
 // ====================================================
 const t2iPrompt = ref('')
-const t2iSize = ref<'1024x1024' | '1792x1024' | '1024x1792'>('1024x1024')
+const t2iSize = ref<'1024x1024' | '1536x1152' | '1792x1024' | '1024x1792'>('1024x1024')
 const t2iN = ref(1)
 const t2iSending = ref(false)
 const t2iResult = ref<PlayImageData[]>([])
@@ -350,7 +352,7 @@ interface RefImage {
 }
 const refImages = ref<RefImage[]>([])
 const i2iPrompt = ref('')
-const i2iSize = ref<'1024x1024' | '1792x1024' | '1024x1792'>('1024x1024')
+const i2iSize = ref<'1024x1024' | '1536x1152' | '1792x1024' | '1024x1792'>('1024x1024')
 const i2iSending = ref(false)
 const i2iResult = ref<PlayImageData[]>([])
 const i2iPreview = ref(false)
@@ -666,6 +668,12 @@ watch(activeTab, (v) => {
                 </el-option>
               </el-select>
               <div v-if="currentImageDesc" class="side-hint">{{ currentImageDesc }}</div>
+              <div class="price-hint">
+                <span class="price-hint__title">
+                  单张基准价格：{{ formatCredit(currentImageBasePrice) }} 积分 / 张
+                </span>
+                <span class="price-hint__sub">多张生成会按张数累计扣费</span>
+              </div>
             </div>
 
             <div class="side-row">
@@ -674,6 +682,7 @@ watch(activeTab, (v) => {
                 <button
                   v-for="opt in [
                     { v: '1024x1024', l: '1:1',  w: 36, h: 36 },
+                    { v: '1536x1152', l: '4:3',  w: 44, h: 33 },
                     { v: '1792x1024', l: '16:9', w: 48, h: 28 },
                     { v: '1024x1792', l: '9:16', w: 28, h: 48 },
                   ]"
@@ -794,6 +803,13 @@ watch(activeTab, (v) => {
               <el-select v-model="selectedImageModel" placeholder="选择图片模型" size="large" style="width:100%">
                 <el-option v-for="m in imageModels" :key="m.id" :label="m.slug" :value="m.slug" />
               </el-select>
+              <div v-if="currentImageDesc" class="side-hint">{{ currentImageDesc }}</div>
+              <div class="price-hint">
+                <span class="price-hint__title">
+                  单张基准价格：{{ formatCredit(currentImageBasePrice) }} 积分 / 张
+                </span>
+                <span class="price-hint__sub">多张生成会按张数累计扣费</span>
+              </div>
             </div>
 
             <div class="side-row">
@@ -822,6 +838,7 @@ watch(activeTab, (v) => {
                 <button
                   v-for="opt in [
                     { v: '1024x1024', l: '1:1',  w: 36, h: 36 },
+                    { v: '1536x1152', l: '4:3',  w: 44, h: 33 },
                     { v: '1792x1024', l: '16:9', w: 48, h: 28 },
                     { v: '1024x1792', l: '9:16', w: 28, h: 48 },
                   ]"
@@ -1030,6 +1047,26 @@ watch(activeTab, (v) => {
 }
 .side-val { font-weight: 600; color: var(--el-color-primary); letter-spacing: 0; text-transform: none; font-size: 13px; }
 .side-hint { font-size: 12px; color: var(--el-text-color-placeholder); line-height: 1.5; }
+.price-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+}
+.price-hint__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  line-height: 1.5;
+}
+.price-hint__sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
 .side-btn { margin-top: 4px; }
 .gen-btn { box-shadow: 0 6px 18px -6px rgba(64, 158, 255, 0.55); }
 .opt-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

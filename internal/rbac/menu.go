@@ -23,16 +23,20 @@ var menuTree = []Menu{
 		Children: []Menu{
 			{Key: "personal.dashboard", Title: "总览", Icon: "House", Path: "/personal/dashboard",
 				Perms: []Permission{PermSelfProfile}},
-			{Key: "personal.keys", Title: "API Keys", Icon: "Key", Path: "/personal/keys",
-				Perms: []Permission{PermSelfKey}},
+				{Key: "personal.play", Title: "在线体验", Icon: "MagicStick", Path: "/personal/play",
+				Perms: []Permission{PermSelfImage, PermSelfUsage}},
+			
 			{Key: "personal.usage", Title: "使用记录", Icon: "Histogram", Path: "/personal/usage",
 				Perms: []Permission{PermSelfUsage}},
+			{Key: "personal.history-tasks", Title: "历史任务", Icon: "PictureRounded", Path: "/personal/history-tasks",
+				Perms: []Permission{PermSelfImage}},
 			{Key: "personal.billing", Title: "账单与充值", Icon: "Wallet", Path: "/personal/billing",
 				Perms: []Permission{PermSelfRecharge}},
-			{Key: "personal.play", Title: "在线体验", Icon: "MagicStick", Path: "/personal/play",
-				Perms: []Permission{PermSelfImage, PermSelfUsage}},
+			{Key: "personal.keys", Title: "API Keys", Icon: "Key", Path: "/personal/keys",
+				Perms: []Permission{PermSelfKey}},
 			{Key: "personal.docs", Title: "接口文档", Icon: "Document", Path: "/personal/docs",
 				Perms: []Permission{PermSelfUsage, PermSelfImage}},
+			
 		},
 	},
 	// ---- 管理员区 ----

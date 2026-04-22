@@ -18,6 +18,7 @@ import (
 	"github.com/432539/gpt2api/internal/auth"
 	"github.com/432539/gpt2api/internal/backup"
 	"github.com/432539/gpt2api/internal/billing"
+	"github.com/432539/gpt2api/internal/checkin"
 	"github.com/432539/gpt2api/internal/config"
 	"github.com/432539/gpt2api/internal/db"
 	"github.com/432539/gpt2api/internal/gateway"
@@ -200,6 +201,9 @@ func main() {
 	settingsH := settings.NewHandler(settingsSvc, mailSvc, auditDAO)
 	authSvc.SetSettings(settingsSvc)
 	authSvc.SetBilling(billEngine)
+	checkinDAO := checkin.NewDAO(sqldb, billEngine)
+	checkinSvc := checkin.NewService(checkinDAO, settingsSvc)
+	checkinH := checkin.NewHandler(checkinSvc)
 
 	// 把 settings 注入到其它受控业务(可热更)
 	keySvc.SetSettings(settingsSvc)
@@ -281,6 +285,7 @@ func main() {
 
 		MeUsageH: meUsageH,
 		MeImageH: meImageH,
+		CheckinH: checkinH,
 
 		RechargeH:      rechargeH,
 		AdminRechargeH: adminRechargeH,

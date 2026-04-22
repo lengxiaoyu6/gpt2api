@@ -235,15 +235,20 @@ func (h *AdminHandler) ListEnabledForMe(c *gin.Context) {
 		return
 	}
 	type simple struct {
-		ID          uint64 `json:"id"`
-		Slug        string `json:"slug"`
-		Type        string `json:"type"`
-		Description string `json:"description"`
+		ID                uint64 `json:"id"`
+		Slug              string `json:"slug"`
+		Type              string `json:"type"`
+		Description       string `json:"description"`
+		ImagePricePerCall int64  `json:"image_price_per_call"`
 	}
 	out := make([]simple, 0, len(rows))
 	for _, m := range rows {
 		out = append(out, simple{
-			ID: m.ID, Slug: m.Slug, Type: m.Type, Description: m.Description,
+			ID:                m.ID,
+			Slug:              m.Slug,
+			Type:              m.Type,
+			Description:       m.Description,
+			ImagePricePerCall: m.ImagePricePerCall,
 		})
 	}
 	resp.OK(c, gin.H{"items": out, "total": len(out)})

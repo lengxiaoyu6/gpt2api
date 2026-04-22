@@ -26,41 +26,42 @@ type KeyDef struct {
 // ---- key 常量 ----
 const (
 	// 通用
-	SiteName         = "site.name"
-	SiteDescription  = "site.description"
-	SiteLogoURL      = "site.logo_url"
-	SiteFooter       = "site.footer"
-	SiteContactEmail = "site.contact_email"
-	SiteDocsURL      = "site.docs_url"
-	SiteAPIBaseURL   = "site.api_base_url"
+	SiteName          = "site.name"
+	SiteDescription   = "site.description"
+	SiteLogoURL       = "site.logo_url"
+	SiteFooter        = "site.footer"
+	SiteContactEmail  = "site.contact_email"
+	SiteDocsURL       = "site.docs_url"
+	SiteAPIBaseURL    = "site.api_base_url"
 	UIDefaultPageSize = "ui.default_page_size"
 
 	// 安全与认证
-	AuthAllowRegister       = "auth.allow_register"
-	AuthRequireEmailVerify  = "auth.require_email_verify"
+	AuthAllowRegister        = "auth.allow_register"
+	AuthRequireEmailVerify   = "auth.require_email_verify"
 	AuthEmailDomainWhitelist = "auth.email_domain_whitelist"
-	AuthPasswordMinLength   = "auth.password_min_length"
-	AuthInviteCodeRequired  = "auth.invite_code_required"
-	Auth2FAEnabled          = "auth.2fa_enabled"
-	AuthJWTAccessTTLSec     = "auth.jwt_access_ttl_sec"
-	AuthJWTRefreshTTLSec    = "auth.jwt_refresh_ttl_sec"
+	AuthPasswordMinLength    = "auth.password_min_length"
+	AuthInviteCodeRequired   = "auth.invite_code_required"
+	Auth2FAEnabled           = "auth.2fa_enabled"
+	AuthJWTAccessTTLSec      = "auth.jwt_access_ttl_sec"
+	AuthJWTRefreshTTLSec     = "auth.jwt_refresh_ttl_sec"
+	AuthDailyCheckinCredits  = "auth.daily_checkin_credits"
 
 	// 用户默认值(旧 auth.* 保留兼容)
-	AuthDefaultGroupID       = "auth.default_group_id"
-	AuthSignupBonusCredits   = "auth.signup_bonus_credits"
-	LimitDefaultRPM          = "limit.default_rpm"
-	LimitDefaultTPM          = "limit.default_tpm"
-	KeyDefaultDailyQuota     = "key.default_daily_quota_credits"
-	KeyMaxPerUser            = "key.max_per_user"
+	AuthDefaultGroupID     = "auth.default_group_id"
+	AuthSignupBonusCredits = "auth.signup_bonus_credits"
+	LimitDefaultRPM        = "limit.default_rpm"
+	LimitDefaultTPM        = "limit.default_tpm"
+	KeyDefaultDailyQuota   = "key.default_daily_quota_credits"
+	KeyMaxPerUser          = "key.max_per_user"
 
 	// 网关与调度
-	GatewayUpstreamTimeoutSec = "gateway.upstream_timeout_sec"
-	GatewaySSEReadTimeoutSec  = "gateway.sse_read_timeout_sec"
-	GatewayCooldown429Sec     = "gateway.cooldown_429_sec"
-	GatewayWarnedPauseHours   = "gateway.warned_pause_hours"
-	GatewayDailyUsageRatio    = "gateway.daily_usage_ratio"
-	GatewayRetryOnFailure     = "gateway.retry_on_failure"
-	GatewayRetryMax           = "gateway.retry_max"
+	GatewayUpstreamTimeoutSec   = "gateway.upstream_timeout_sec"
+	GatewaySSEReadTimeoutSec    = "gateway.sse_read_timeout_sec"
+	GatewayCooldown429Sec       = "gateway.cooldown_429_sec"
+	GatewayWarnedPauseHours     = "gateway.warned_pause_hours"
+	GatewayDailyUsageRatio      = "gateway.daily_usage_ratio"
+	GatewayRetryOnFailure       = "gateway.retry_on_failure"
+	GatewayRetryMax             = "gateway.retry_max"
 	GatewayDispatchQueueWaitSec = "gateway.dispatch_queue_wait_sec"
 
 	// 代理管理(健康探测)
@@ -80,13 +81,13 @@ const (
 	AccountDefaultClientID       = "account.default_client_id"
 
 	// 计费与充值
-	BillingCreditPerCNY         = "billing.credit_per_cny"
-	BillingNotifyAdminOnAdjust  = "billing.notify_admin_on_adjust"
-	RechargeEnabled             = "recharge.enabled"
-	RechargeMinCNY              = "recharge.min_cny"
-	RechargeMaxCNY              = "recharge.max_cny"
-	RechargeDailyLimitCNY       = "recharge.daily_limit_cny"
-	RechargeOrderExpireMinutes  = "recharge.order_expire_minutes"
+	BillingCreditPerCNY        = "billing.credit_per_cny"
+	BillingNotifyAdminOnAdjust = "billing.notify_admin_on_adjust"
+	RechargeEnabled            = "recharge.enabled"
+	RechargeMinCNY             = "recharge.min_cny"
+	RechargeMaxCNY             = "recharge.max_cny"
+	RechargeDailyLimitCNY      = "recharge.daily_limit_cny"
+	RechargeOrderExpireMinutes = "recharge.order_expire_minutes"
 
 	// 邮件
 	MailEnabledDisplay = "mail.enabled_display"
@@ -113,6 +114,7 @@ var Defs = []KeyDef{
 	{Key: Auth2FAEnabled, Type: "bool", Category: "auth", Default: "false", Label: "二次验证 2FA", Desc: "允许用户绑定 TOTP(预留)"},
 	{Key: AuthJWTAccessTTLSec, Type: "int", Category: "auth", Default: "7200", Label: "Access Token TTL(秒)", Desc: "默认 7200(2 小时);改后新发 token 生效"},
 	{Key: AuthJWTRefreshTTLSec, Type: "int", Category: "auth", Default: "604800", Label: "Refresh Token TTL(秒)", Desc: "默认 604800(7 天)"},
+	{Key: AuthDailyCheckinCredits, Type: "int", Category: "auth", Default: "0", Label: "每日签到积分", Desc: "单位:厘,10000 = 1 积分;0 = 关闭"},
 
 	// ---------- 用户默认值 ----------
 	{Key: AuthDefaultGroupID, Type: "int", Category: "defaults", Default: "1", Label: "默认分组 ID", Desc: "新用户自动加入的分组(对应 user_groups.id)"},

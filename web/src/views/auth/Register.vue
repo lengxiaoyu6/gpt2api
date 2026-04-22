@@ -1,21 +1,42 @@
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import AuthFormCard from '@/components/auth/AuthFormCard.vue'
+import AuthHeroPanel from '@/components/auth/AuthHeroPanel.vue'
+import AuthShell from '@/components/auth/AuthShell.vue'
 import { useSiteStore } from '@/stores/site'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const store = useUserStore()
 const site = useSiteStore()
 
 const siteName = computed(() => site.get('site.name', 'GPT2API'))
+const siteDesc = computed(() =>
+  site.get('site.description', '面向开发者与小规模业务的 GPT-image 中转 API 平台'),
+)
+const siteLogo = computed(() => site.get('site.logo_url', ''))
+const siteFooter = computed(() => site.get('site.footer', ''))
 const allowRegister = computed(() => site.allowRegister())
+
+const noticeTitle = computed(() => (allowRegister.value ? '新账号赠送体验额度' : '当前采用邀请开通方式'))
+const noticeDesc = computed(() =>
+  allowRegister.value
+    ? '注册后即可进入控制台创建 API 密钥并开始图像生成调用'
+    : '可联系管理员创建账号后登录控制台使用',
+)
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
-const form = reactive({ email: '', password: '', confirm: '', nickname: '' })
+const submitError = ref('')
+const form = reactive({
+  email: '',
+  password: '',
+  confirm: '',
+  nickname: '',
+})
 
 const rules = {
   email: [
@@ -42,14 +63,15 @@ async function onSubmit() {
   if (!formRef.value) return
   const ok = await formRef.value.validate().catch(() => false)
   if (!ok) return
+  submitError.value = ''
   loading.value = true
   try {
     await store.register(form.email, form.password, form.nickname)
-    ElMessage.success('注册成功,正在登录…')
+    ElMessage.success('注册成功，正在登录…')
     await store.login(form.email, form.password)
     router.replace('/personal/dashboard')
-  } catch {
-    // toast 由拦截器处理
+  } catch (err: unknown) {
+    submitError.value = err instanceof Error ? err.message : '注册失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -57,68 +79,149 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="register-page">
-    <el-card class="form-card" shadow="hover">
-      <div class="form-title">创建 {{ siteName }} 账号</div>
-      <div class="form-sub">免费注册,立即体验</div>
-      <el-alert
-        v-if="!allowRegister"
-        type="warning"
-        :closable="false"
-        title="当前站点已关闭自助注册"
-        description="请联系管理员开通账号,或改用已有账号登录。"
-        style="margin-bottom:16px"
+  <AuthShell :site-footer="siteFooter">
+    <template #hero>
+      <AuthHeroPanel
+        :site-name="siteName"
+        :site-desc="siteDesc"
+        :site-logo="siteLogo"
+        :allow-register="allowRegister"
       />
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large"
-               :disabled="!allowRegister" @submit.prevent="onSubmit">
+    </template>
+
+    <AuthFormCard
+      title="注册并进入控制台"
+      subtitle="创建账号后即可管理 API 密钥、查看额度并发起图像生成调用"
+      :notice-title="noticeTitle"
+      :notice-desc="noticeDesc"
+      :notice-tone="allowRegister ? 'success' : 'warning'"
+    >
+      <div class="register-steps">
+        <span>注册账号</span>
+        <span>进入控制台</span>
+        <span>创建 API 密钥</span>
+      </div>
+
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        size="large"
+        :disabled="!allowRegister"
+        @submit.prevent="onSubmit"
+      >
+        <el-alert
+          v-if="submitError"
+          type="error"
+          :closable="false"
+          :title="submitError"
+          class="auth-inline-alert"
+        />
+
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" placeholder="you@example.com" autocomplete="username" />
         </el-form-item>
+
         <el-form-item label="昵称" prop="nickname">
-          <el-input v-model="form.nickname" placeholder="选填" />
+          <el-input v-model="form.nickname" placeholder="选填，用于区分项目或账户" />
         </el-form-item>
+
         <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" type="password" show-password autocomplete="new-password" />
         </el-form-item>
+
         <el-form-item label="确认密码" prop="confirm">
-          <el-input v-model="form.confirm" type="password" show-password autocomplete="new-password"
-                    @keyup.enter="onSubmit" />
+          <el-input
+            v-model="form.confirm"
+            type="password"
+            show-password
+            autocomplete="new-password"
+            @keyup.enter="onSubmit"
+          />
         </el-form-item>
-        <el-button type="primary" class="submit" :loading="loading" :disabled="!allowRegister"
-                   @click="onSubmit">
-          注册
+
+        <el-button
+          type="primary"
+          class="submit-button"
+          :loading="loading"
+          :disabled="!allowRegister"
+          @click="onSubmit"
+        >
+          注册并进入控制台
         </el-button>
-        <div class="foot">
-          已有账号?<router-link to="/login">直接登录</router-link>
-        </div>
       </el-form>
-    </el-card>
-  </div>
+
+      <template #footer>
+        <div class="auth-actions">
+          <p class="auth-tip">已有账号可直接登录控制台查看任务与调用记录</p>
+          <router-link to="/login" class="auth-link">返回登录</router-link>
+        </div>
+      </template>
+    </AuthFormCard>
+  </AuthShell>
 </template>
 
 <style scoped lang="scss">
-.register-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 24px;
-  box-sizing: border-box;
-  background: linear-gradient(135deg,#eef5ff,#f9fffb);
+.register-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 10px;
+    border: 1px solid rgba(59, 130, 246, 0.22);
+    border-radius: 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.44);
+  }
 }
-:global(html.dark) .register-page {
-  background: linear-gradient(135deg,#0d1117,#0b1f17);
+
+.auth-inline-alert {
+  margin-bottom: 16px;
 }
-.form-card {
+
+.submit-button {
   width: 100%;
-  max-width: 400px;
+  margin-top: 4px;
 }
-.form-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-.form-sub { color: var(--el-text-color-secondary); margin-bottom: 18px; font-size: 13px; }
-.submit { width: 100%; }
-.foot { margin-top: 16px; text-align: center; font-size: 13px; color: var(--el-text-color-secondary); }
+
+.auth-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.auth-tip {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
+.auth-link {
+  color: #60a5fa;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  color: #93c5fd;
+}
 
 @media (max-width: 640px) {
-  .register-page { padding: 24px 16px; }
+  .register-steps {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

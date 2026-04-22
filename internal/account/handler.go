@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -81,6 +82,29 @@ func (h *Handler) List(c *gin.Context) {
 	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "page_size": size})
 }
 
+// GET /api/admin/accounts/deleted
+func (h *Handler) ListDeleted(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if size < 1 {
+		size = 10
+	}
+	if size > 1000 {
+		size = 1000
+	}
+	status := c.Query("status")
+	keyword := c.Query("keyword")
+	list, total, err := h.svc.ListDeleted(c.Request.Context(), status, keyword, (page-1)*size, size)
+	if err != nil {
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "page_size": size})
+}
+
 // GET /api/admin/accounts/:id
 func (h *Handler) Get(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -116,6 +140,35 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 	resp.OK(c, gin.H{"deleted": id})
+}
+
+// POST /api/admin/accounts/:id/restore
+func (h *Handler) Restore(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	a, err := h.svc.Restore(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			resp.NotFound(c, err.Error())
+			return
+		}
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, a)
+}
+
+// DELETE /api/admin/accounts/:id/purge
+func (h *Handler) Purge(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err := h.svc.Purge(c.Request.Context(), id); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			resp.NotFound(c, err.Error())
+			return
+		}
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"deleted": id, "purged": true})
 }
 
 // GET /api/admin/accounts/:id/secrets

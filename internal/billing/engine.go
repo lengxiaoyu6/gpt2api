@@ -1,15 +1,17 @@
 // Package billing 实现「预扣+结算+退款」的积分计费闭环。
 //
 // 数据模型:
-//   users.credit_balance - 可用余额(厘)
-//   users.credit_frozen  - 冻结额度(厘)
-//   users.version        - 乐观锁版本号
-//   credit_transactions  - 流水(freeze/unfreeze/consume/refund ...)
+//
+//	users.credit_balance - 可用余额(厘)
+//	users.credit_frozen  - 冻结额度(厘)
+//	users.version        - 乐观锁版本号
+//	credit_transactions  - 流水(freeze/unfreeze/consume/refund ...)
 //
 // 流程:
-//   PreDeduct(userID, estCost, refID)   // balance -= est; frozen += est
-//   Settle(userID, est, actual, refID)  // frozen -= est; balance += (est-actual); 计 consume
-//   Refund(userID, est, refID)          // frozen -= est; balance += est
+//
+//	PreDeduct(userID, estCost, refID)   // balance -= est; frozen += est
+//	Settle(userID, est, actual, refID)  // frozen -= est; balance += (est-actual); 计 consume
+//	Refund(userID, est, refID)          // frozen -= est; balance += est
 package billing
 
 import (
@@ -34,6 +36,7 @@ const (
 	KindRefund   = "refund"
 	KindRecharge = "recharge"
 	KindRedeem   = "redeem"
+	KindCheckin  = "checkin"
 	KindAdjust   = "admin_adjust"
 )
 
@@ -215,6 +218,37 @@ func (e *Engine) Recharge(ctx context.Context, userID uint64, amount int64, refI
 			userID, 0, KindRecharge, amount, balanceAfter, refID, remark)
 		return err
 	})
+}
+
+// AwardCheckinTx 在外部事务内发放每日签到积分并写流水。
+func (e *Engine) AwardCheckinTx(ctx context.Context, tx *sqlx.Tx, userID uint64, amount int64, refID, remark string) (int64, error) {
+	if amount <= 0 {
+		return 0, errors.New("amount must be positive")
+	}
+	res, err := tx.ExecContext(ctx,
+		`UPDATE users SET credit_balance = credit_balance + ?, version = version + 1
+         WHERE id = ? AND deleted_at IS NULL`, amount, userID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return 0, fmt.Errorf("user %d not found", userID)
+	}
+	var balanceAfter int64
+	if err := tx.QueryRowxContext(ctx,
+		`SELECT credit_balance FROM users WHERE id = ?`, userID).Scan(&balanceAfter); err != nil {
+		return 0, err
+	}
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO credit_transactions
+         (user_id, key_id, type, amount, balance_after, ref_id, remark)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, 0, KindCheckin, amount, balanceAfter, refID, remark)
+	if err != nil {
+		return 0, err
+	}
+	return balanceAfter, nil
 }
 
 func (e *Engine) runTx(ctx context.Context, fn func(*sqlx.Tx) error) error {

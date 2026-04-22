@@ -214,6 +214,17 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 	return s.dao.SoftDelete(ctx, id)
 }
 
+func (s *Service) Restore(ctx context.Context, id uint64) (*Account, error) {
+	if err := s.dao.Restore(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.dao.GetByID(ctx, id)
+}
+
+func (s *Service) Purge(ctx context.Context, id uint64) error {
+	return s.dao.Purge(ctx, id)
+}
+
 // BulkDeleteByStatus 批量软删;status 支持 dead / suspicious / warned / throttled / all。
 func (s *Service) BulkDeleteByStatus(ctx context.Context, status string) (int64, error) {
 	if status == "all" {
@@ -228,6 +239,10 @@ func (s *Service) Get(ctx context.Context, id uint64) (*Account, error) {
 
 func (s *Service) List(ctx context.Context, status, keyword string, offset, limit int) ([]*Account, int64, error) {
 	return s.dao.List(ctx, status, keyword, offset, limit)
+}
+
+func (s *Service) ListDeleted(ctx context.Context, status, keyword string, offset, limit int) ([]*Account, int64, error) {
+	return s.dao.ListDeleted(ctx, status, keyword, offset, limit)
 }
 
 // BindProxy 绑定代理(一号一代理)。

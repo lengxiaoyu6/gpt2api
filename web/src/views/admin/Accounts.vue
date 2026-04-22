@@ -7,11 +7,19 @@ import * as proxyApi from '@/api/proxies'
 import { formatDateShort } from '@/utils/format'
 
 // ========== 列表 & 筛选 ==========
+const activeTab = ref<'active' | 'deleted'>('active')
 const loading = ref(false)
 const filter = reactive<{ status?: string; keyword?: string }>({ status: '', keyword: '' })
 const rows = ref<accountApi.Account[]>([])
 const total = ref(0)
 const pager = reactive({ page: 1, page_size: 10 })
+
+const deletedLoading = ref(false)
+const deletedFilter = reactive<{ status?: string; keyword?: string }>({ status: '', keyword: '' })
+const deletedRows = ref<accountApi.Account[]>([])
+const deletedTotal = ref(0)
+const deletedPager = reactive({ page: 1, page_size: 10 })
+
 const proxies = ref<proxyApi.Proxy[]>([])
 
 async function fetchList() {
@@ -32,6 +40,28 @@ async function fetchList() {
   }
 }
 
+async function fetchDeletedList() {
+  deletedLoading.value = true
+  try {
+    const data = await accountApi.listDeletedAccounts({
+      page: deletedPager.page,
+      page_size: deletedPager.page_size,
+      status: deletedFilter.status || undefined,
+      keyword: deletedFilter.keyword || undefined,
+    })
+    deletedRows.value = data.list || []
+    deletedTotal.value = data.total || 0
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载失败')
+  } finally {
+    deletedLoading.value = false
+  }
+}
+
+async function refreshAllAccountLists() {
+  await Promise.all([fetchList(), fetchDeletedList()])
+}
+
 async function fetchProxies() {
   try {
     const d = await proxyApi.listProxies({ page: 1, page_size: 500 })
@@ -42,13 +72,32 @@ async function fetchProxies() {
 }
 
 function onSearch() {
+  if (activeTab.value === 'deleted') {
+    deletedPager.page = 1
+    fetchDeletedList()
+    return
+  }
   pager.page = 1
   fetchList()
 }
 function onReset() {
+  if (activeTab.value === 'deleted') {
+    deletedFilter.status = ''
+    deletedFilter.keyword = ''
+    deletedPager.page = 1
+    fetchDeletedList()
+    return
+  }
   filter.status = ''
   filter.keyword = ''
   pager.page = 1
+  fetchList()
+}
+function onTabChange(name: string | number) {
+  if (name === 'deleted') {
+    fetchDeletedList()
+    return
+  }
   fetchList()
 }
 
@@ -96,7 +145,7 @@ async function onBulkDelete(scope: accountApi.BulkDeleteScope) {
   const label = BULK_DELETE_LABELS[scope] || scope
   try {
     await ElMessageBox.confirm(
-      `确认将「${label}」全部删除?此操作会软删所有匹配条目,不可在当前界面恢复。`,
+      `确认将「${label}」全部删除?此操作会软删所有匹配条目,可在已删除列表恢复或彻底删除。`,
       scope === 'all' ? '⚠ 删除全部账号' : '批量删除',
       {
         confirmButtonText: '删除',
@@ -109,7 +158,7 @@ async function onBulkDelete(scope: accountApi.BulkDeleteScope) {
     const r = await accountApi.bulkDeleteAccounts(scope)
     ElMessage.success(`已删除 ${r.deleted} 个账号`)
     pager.page = 1
-    fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败')
   }
@@ -276,16 +325,60 @@ async function submitForm() {
 
 async function onDelete(row: accountApi.Account) {
   try {
-    await ElMessageBox.confirm(`确定删除账号「${row.email}」?该操作不可恢复。`, '删除确认', {
+    await ElMessageBox.confirm(`确定删除账号「${row.email}」?该操作会移入已删除列表，之后仍可恢复。`, '删除确认', {
       confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
     })
   } catch { return }
   try {
     await accountApi.deleteAccount(row.id)
-    ElMessage.success('已删除')
-    fetchList()
+    ElMessage.success('已移入已删除列表')
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败')
+  }
+}
+
+function moveDeletedPagerBackIfNeeded() {
+  if (deletedRows.value.length === 1 && deletedPager.page > 1) {
+    deletedPager.page -= 1
+  }
+}
+
+async function onRestore(row: accountApi.Account) {
+  try {
+    await ElMessageBox.confirm(`确定恢复账号「${row.email}」?恢复后会重新回到账号列表。`, '恢复确认', {
+      confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning',
+    })
+  } catch { return }
+  try {
+    moveDeletedPagerBackIfNeeded()
+    await accountApi.restoreAccount(row.id)
+    ElMessage.success('已恢复')
+    await refreshAllAccountLists()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '恢复失败')
+  }
+}
+
+async function onPurge(row: accountApi.Account) {
+  try {
+    await ElMessageBox.confirm(
+      `确定彻底删除账号「${row.email}」?该操作会清理 cookies、代理绑定和额度快照，且无法恢复。`,
+      '彻底删除确认',
+      {
+        confirmButtonText: '彻底删除',
+        cancelButtonText: '取消',
+        type: 'error',
+      },
+    )
+  } catch { return }
+  try {
+    moveDeletedPagerBackIfNeeded()
+    await accountApi.purgeAccount(row.id)
+    ElMessage.success('已彻底删除')
+    await refreshAllAccountLists()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '彻底删除失败')
   }
 }
 
@@ -698,222 +791,317 @@ onMounted(() => {
           </div>
         </div>
         <div class="actions">
-          <el-button :loading="batchRunning === 'probe'" :disabled="loading" @click="onProbeAll">
-            全部探测
-          </el-button>
-          <el-button :loading="batchRunning === 'refresh'" :disabled="loading" @click="onRefreshAll">
-            全部刷新
-          </el-button>
-          <el-dropdown trigger="click" @command="onBulkDelete">
-            <el-button>批量删除</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="dead">删除失效账号</el-dropdown-item>
-                <el-dropdown-item command="suspicious">删除可疑/已封账号</el-dropdown-item>
-                <el-dropdown-item command="warned">删除风险账号</el-dropdown-item>
-                <el-dropdown-item command="throttled">删除限流账号</el-dropdown-item>
-                <el-dropdown-item divided command="all">
-                  <span style="color: var(--el-color-danger)">删除全部账号</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-button @click="openImport">批量导入</el-button>
-          <el-button type="primary" @click="openCreate">新建账号</el-button>
+          <template v-if="activeTab === 'active'">
+            <el-button :loading="batchRunning === 'probe'" :disabled="loading" @click="onProbeAll">
+              全部探测
+            </el-button>
+            <el-button :loading="batchRunning === 'refresh'" :disabled="loading" @click="onRefreshAll">
+              全部刷新
+            </el-button>
+            <el-dropdown trigger="click" @command="onBulkDelete">
+              <el-button>批量删除</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="dead">删除失效账号</el-dropdown-item>
+                  <el-dropdown-item command="suspicious">删除可疑/已封账号</el-dropdown-item>
+                  <el-dropdown-item command="warned">删除风险账号</el-dropdown-item>
+                  <el-dropdown-item command="throttled">删除限流账号</el-dropdown-item>
+                  <el-dropdown-item divided command="all">
+                    <span style="color: var(--el-color-danger)">删除全部账号</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-button @click="openImport">批量导入</el-button>
+            <el-button type="primary" @click="openCreate">新建账号</el-button>
+          </template>
+          <el-button v-else :loading="deletedLoading" @click="fetchDeletedList">刷新已删除列表</el-button>
         </div>
       </div>
     </div>
 
-    <!-- 筛选栏 -->
-    <div class="card-block">
-      <el-form :inline="true" size="default" class="filter-form" @submit.prevent="onSearch">
-        <el-form-item label="状态">
-          <el-select v-model="filter.status" placeholder="全部" clearable style="width: 140px">
-            <el-option label="全部" value="" />
-            <el-option label="健康" value="healthy" />
-            <el-option label="风险" value="warned" />
-            <el-option label="限流" value="throttled" />
-            <el-option label="可疑" value="suspicious" />
-            <el-option label="失效" value="dead" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="filter.keyword"
-            placeholder="邮箱 / 备注"
-            clearable
-            style="width: 260px"
-            @keyup.enter="onSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="onSearch">搜索</el-button>
-          <el-button @click="onReset">重置</el-button>
-        </el-form-item>
-        <el-form-item class="auto-refresh-item">
-          <el-tooltip
-            placement="top"
-            content="开启后:AT 距离过期 < 1 天的账号会被后台自动续期;状态为「失效 / 可疑」的账号不会刷新"
-          >
-            <el-checkbox
-              v-model="autoRefreshEnabled"
-              :disabled="autoRefreshSaving"
-              @change="onToggleAutoRefresh"
-            >
-              自动刷新 AT
-              <span class="auto-refresh-hint">(&lt; 1 天过期时)</span>
-            </el-checkbox>
-          </el-tooltip>
-        </el-form-item>
-      </el-form>
+    <div class="card-block tab-card">
+      <el-tabs v-model="activeTab" @tab-change="onTabChange">
+        <el-tab-pane label="账号列表" name="active" />
+        <el-tab-pane label="已删除" name="deleted" />
+      </el-tabs>
+      <div v-if="activeTab === 'deleted'" class="deleted-hint">已删除列表</div>
     </div>
 
-    <!-- 表格 -->
-    <div class="card-block">
-      <el-table
-        v-loading="loading" :data="rows" stripe size="default" row-key="id"
-        table-layout="auto" style="width: 100%"
-      >
-        <el-table-column label="邮箱" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
+    <template v-if="activeTab === 'active'">
+      <!-- 筛选栏 -->
+      <div class="card-block">
+        <el-form :inline="true" size="default" class="filter-form" @submit.prevent="onSearch">
+          <el-form-item label="状态">
+            <el-select v-model="filter.status" placeholder="全部" clearable style="width: 140px">
+              <el-option label="全部" value="" />
+              <el-option label="健康" value="healthy" />
+              <el-option label="风险" value="warned" />
+              <el-option label="限流" value="throttled" />
+              <el-option label="可疑" value="suspicious" />
+              <el-option label="失效" value="dead" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="关键词">
+            <el-input
+              v-model="filter.keyword"
+              placeholder="邮箱 / 备注"
+              clearable
+              style="width: 260px"
+              @keyup.enter="onSearch"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="onSearch">搜索</el-button>
+            <el-button @click="onReset">重置</el-button>
+          </el-form-item>
+          <el-form-item class="auto-refresh-item">
             <el-tooltip
-              v-if="row.notes"
               placement="top"
-              :content="row.notes"
+              content="开启后:AT 距离过期 < 1 天的账号会被后台自动续期;状态为「失效 / 可疑」的账号不会刷新"
             >
-              <span class="email">{{ row.email }}</span>
-            </el-tooltip>
-            <span v-else class="email">{{ row.email }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="76">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">{{ typeLabel(row.account_type) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="76">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="凭证" width="86">
-          <template #default="{ row }">
-            <div class="creds">
-              <el-tooltip content="存在 Refresh Token,可用 RT 自动刷新 AT" placement="top">
-                <el-tag :type="row.has_rt ? 'success' : 'info'" size="small" effect="plain">
-                  {{ row.has_rt ? 'RT' : '—' }}
-                </el-tag>
-              </el-tooltip>
-              <el-tooltip content="存在 Session Token,可用 ST 回退刷新" placement="top">
-                <el-tag :type="row.has_st ? 'success' : 'info'" size="small" effect="plain">
-                  {{ row.has_st ? 'ST' : '—' }}
-                </el-tag>
-              </el-tooltip>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="AT 过期" min-width="148" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span :class="expiresClass(row.token_expires_at)">{{ fmtTime(row.token_expires_at) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="生图剩余" width="96" align="center">
-          <template #default="{ row }">
-            <template v-if="row.image_quota_remaining >= 0">
-              <el-tooltip
-                placement="top"
-                :disabled="!asDate(row.image_quota_reset_at)"
-                :content="'下次重置:' + fmtTime(row.image_quota_reset_at)"
+              <el-checkbox
+                v-model="autoRefreshEnabled"
+                :disabled="autoRefreshSaving"
+                @change="onToggleAutoRefresh"
               >
-                <span class="quota"><b>{{ row.image_quota_remaining }}</b></span>
+                自动刷新 AT
+                <span class="auto-refresh-hint">(&lt; 1 天过期时)</span>
+              </el-checkbox>
+            </el-tooltip>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <!-- 表格 -->
+      <div class="card-block">
+        <el-table
+          v-loading="loading" :data="rows" stripe size="default" row-key="id"
+          table-layout="auto" style="width: 100%"
+        >
+          <el-table-column label="邮箱" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-tooltip
+                v-if="row.notes"
+                placement="top"
+                :content="row.notes"
+              >
+                <span class="email">{{ row.email }}</span>
+              </el-tooltip>
+              <span v-else class="email">{{ row.email }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="76">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain">{{ typeLabel(row.account_type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="76">
+            <template #default="{ row }">
+              <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="凭证" width="86">
+            <template #default="{ row }">
+              <div class="creds">
+                <el-tooltip content="存在 Refresh Token,可用 RT 自动刷新 AT" placement="top">
+                  <el-tag :type="row.has_rt ? 'success' : 'info'" size="small" effect="plain">
+                    {{ row.has_rt ? 'RT' : '—' }}
+                  </el-tag>
+                </el-tooltip>
+                <el-tooltip content="存在 Session Token,可用 ST 回退刷新" placement="top">
+                  <el-tag :type="row.has_st ? 'success' : 'info'" size="small" effect="plain">
+                    {{ row.has_st ? 'ST' : '—' }}
+                  </el-tag>
+                </el-tooltip>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="AT 过期" min-width="148" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span :class="expiresClass(row.token_expires_at)">{{ fmtTime(row.token_expires_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="生图剩余" width="96" align="center">
+            <template #default="{ row }">
+              <template v-if="row.image_quota_remaining >= 0">
+                <el-tooltip
+                  placement="top"
+                  :disabled="!asDate(row.image_quota_reset_at)"
+                  :content="'下次重置:' + fmtTime(row.image_quota_reset_at)"
+                >
+                  <span class="quota"><b>{{ row.image_quota_remaining }}</b></span>
+                </el-tooltip>
+              </template>
+              <span v-else class="muted">未探测</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="今日已用 / 上限" width="140" align="center">
+            <template #default="{ row }">
+              <el-tooltip placement="top">
+                <template #content>
+                  <div style="line-height:1.8">
+                    <div>今日已用:{{ row.today_used_count }} 张</div>
+                    <div>
+                      账号真实额度:<b>
+                        <template v-if="row.image_quota_total > 0">
+                          {{ row.image_quota_total }}
+                        </template>
+                        <template v-else>未探测</template>
+                      </b>
+                      <span v-if="row.image_quota_remaining >= 0" style="color:#a1a5ad">
+                        (剩余 {{ row.image_quota_remaining }})
+                      </span>
+                    </div>
+                    <div>熔断上限(手工):{{ row.daily_image_quota }} / 日</div>
+                  </div>
+                </template>
+                <span class="quota">
+                  <b>{{ row.today_used_count }}</b>
+                  <span class="muted"> / </span>
+                  <template v-if="row.image_quota_total > 0">
+                    <b>{{ row.image_quota_total }}</b>
+                  </template>
+                  <template v-else>
+                    <span class="muted">{{ row.daily_image_quota }}</span>
+                  </template>
+                </span>
               </el-tooltip>
             </template>
-            <span v-else class="muted">未探测</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="今日已用 / 上限" width="140" align="center">
-          <template #default="{ row }">
-            <el-tooltip placement="top">
-              <template #content>
-                <div style="line-height:1.8">
-                  <div>今日已用:{{ row.today_used_count }} 张</div>
-                  <div>
-                    账号真实额度:<b>
-                      <template v-if="row.image_quota_total > 0">
-                        {{ row.image_quota_total }}
-                      </template>
-                      <template v-else>未探测</template>
-                    </b>
-                    <span v-if="row.image_quota_remaining >= 0" style="color:#a1a5ad">
-                      (剩余 {{ row.image_quota_remaining }})
-                    </span>
-                  </div>
-                  <div>熔断上限(手工):{{ row.daily_image_quota }} / 日</div>
-                </div>
-              </template>
-              <span class="quota">
-                <b>{{ row.today_used_count }}</b>
-                <span class="muted"> / </span>
-                <template v-if="row.image_quota_total > 0">
-                  <b>{{ row.image_quota_total }}</b>
-                </template>
-                <template v-else>
-                  <span class="muted">{{ row.daily_image_quota }}</span>
-                </template>
-              </span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近刷新" min-width="148" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div class="refresh-cell">
-              <span>{{ fmtTime(row.last_refresh_at) }}</span>
-              <el-tag
-                v-if="row.last_refresh_source"
-                size="small" effect="plain"
-                :type="row.last_refresh_source === 'rt' ? 'success' : 'warning'"
-              >{{ row.last_refresh_source.toUpperCase() }}</el-tag>
-            </div>
-            <el-tooltip
-              v-if="row.refresh_error"
-              placement="top"
-              :content="row.refresh_error"
-            >
-              <div class="err">{{ row.refresh_error }}</div>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              link type="primary" size="small"
-              :loading="refreshingIds.has(row.id)"
-              @click="onRefreshOne(row)"
-            >刷新</el-button>
-            <el-button
-              link type="primary" size="small"
-              :loading="probingIds.has(row.id)"
-              @click="onProbeOne(row)"
-            >探测</el-button>
-            <el-button link type="primary" size="small" @click="openBind(row)">代理</el-button>
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger"  size="small" @click="onDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </el-table-column>
+          <el-table-column label="最近刷新" min-width="148" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="refresh-cell">
+                <span>{{ fmtTime(row.last_refresh_at) }}</span>
+                <el-tag
+                  v-if="row.last_refresh_source"
+                  size="small" effect="plain"
+                  :type="row.last_refresh_source === 'rt' ? 'success' : 'warning'"
+                >{{ row.last_refresh_source.toUpperCase() }}</el-tag>
+              </div>
+              <el-tooltip
+                v-if="row.refresh_error"
+                placement="top"
+                :content="row.refresh_error"
+              >
+                <div class="err">{{ row.refresh_error }}</div>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="240" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link type="primary" size="small"
+                :loading="refreshingIds.has(row.id)"
+                @click="onRefreshOne(row)"
+              >刷新</el-button>
+              <el-button
+                link type="primary" size="small"
+                :loading="probingIds.has(row.id)"
+                @click="onProbeOne(row)"
+              >探测</el-button>
+              <el-button link type="primary" size="small" @click="openBind(row)">代理</el-button>
+              <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
 
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="pager.page"
-          v-model:page-size="pager.page_size"
-          :total="total"
-          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @current-change="fetchList"
-          @size-change="fetchList"
-        />
+        <div class="pager">
+          <el-pagination
+            v-model:current-page="pager.page"
+            v-model:page-size="pager.page_size"
+            :total="total"
+            :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @current-change="fetchList"
+            @size-change="fetchList"
+          />
+        </div>
       </div>
-    </div>
+    </template>
+
+    <template v-else>
+      <div class="card-block">
+        <el-form :inline="true" size="default" class="filter-form" @submit.prevent="onSearch">
+          <el-form-item label="状态">
+            <el-select v-model="deletedFilter.status" placeholder="全部" clearable style="width: 140px">
+              <el-option label="全部" value="" />
+              <el-option label="健康" value="healthy" />
+              <el-option label="风险" value="warned" />
+              <el-option label="限流" value="throttled" />
+              <el-option label="可疑" value="suspicious" />
+              <el-option label="失效" value="dead" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="关键词">
+            <el-input
+              v-model="deletedFilter.keyword"
+              placeholder="邮箱 / 备注"
+              clearable
+              style="width: 260px"
+              @keyup.enter="onSearch"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="onSearch">搜索</el-button>
+            <el-button @click="onReset">重置</el-button>
+          </el-form-item>
+        </el-form>
+        <div class="deleted-sub">已删除列表用于恢复误删账号，或执行彻底删除。</div>
+      </div>
+
+      <div class="card-block">
+        <el-table
+          v-loading="deletedLoading" :data="deletedRows" stripe size="default" row-key="id"
+          table-layout="auto" style="width: 100%"
+        >
+          <el-table-column label="邮箱" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="email">{{ row.email }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain">{{ typeLabel(row.account_type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="删除时间" min-width="168" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span>{{ fmtTime(row.deleted_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="备注" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="notes-text">{{ row.notes || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="180" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="onRestore(row)">恢复</el-button>
+              <el-button link type="danger" size="small" @click="onPurge(row)">彻底删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="pager">
+          <el-pagination
+            v-model:current-page="deletedPager.page"
+            v-model:page-size="deletedPager.page_size"
+            :total="deletedTotal"
+            :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @current-change="fetchDeletedList"
+            @size-change="fetchDeletedList"
+          />
+        </div>
+      </div>
+    </template>
 
     <!-- 新建 / 编辑弹窗 -->
     <el-dialog v-model="dlg" :title="isEdit ? '编辑账号' : '新建账号'" width="720px" destroy-on-close>
@@ -1243,6 +1431,15 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .hdr { margin-bottom: 14px !important; }
+.tab-card {
+  margin-bottom: 14px !important;
+  :deep(.el-tabs__header) { margin-bottom: 0; }
+}
+.deleted-hint {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
 .hdr-left .page-sub {
   color: var(--el-text-color-secondary);
   font-size: 13px;
@@ -1269,6 +1466,14 @@ onMounted(() => {
   color: var(--el-text-color-primary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   display: inline-block; max-width: 100%;
+}
+.deleted-sub {
+  margin-top: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+.notes-text {
+  color: var(--el-text-color-secondary);
 }
 
 .refresh-cell {

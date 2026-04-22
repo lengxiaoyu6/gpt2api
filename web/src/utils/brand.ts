@@ -19,14 +19,14 @@ function _d(enc: string): string {
 // 预计算片段(XOR-key=0x4F17 9A3B, Base64)
 const _F = {
   BRAND: 'CEfOCQ5H0w==',
-  QQ_PREFIX: 'Hka63/WzfI7O8CSfbw==',
-  QQ_NUM: 'fC+oD3sh',
-  REPO_PREFIX: 'qqsa3fWHf6f/8ge7bw==',
-  REPO: 'KH7uUzp1tFggerUPfCWvCHY4/Us7JftLJg==',
-  PIC_PREFIX: 'qowk3MaQcpzJ/jiqqa0K3uujug==',
-  PIC_URL: 'J2PuSzwttRQ4YO0VP375CS5n8xUsePc=',
-  PIC_TEXT: 'P375CS5n8xUsePc=',
-  SEP: 'b9UtGw==',
+  QQ_PREFIX: '',
+  QQ_NUM: '',
+  REPO_PREFIX: '',
+  REPO: '',
+  PIC_PREFIX: '',
+  PIC_URL: '',
+  PIC_TEXT: '',
+  SEP: '',
 }
 
 // 缓存

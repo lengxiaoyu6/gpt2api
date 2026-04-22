@@ -8,6 +8,7 @@ import (
 	"github.com/432539/gpt2api/internal/audit"
 	"github.com/432539/gpt2api/internal/auth"
 	"github.com/432539/gpt2api/internal/backup"
+	"github.com/432539/gpt2api/internal/checkin"
 	"github.com/432539/gpt2api/internal/config"
 	"github.com/432539/gpt2api/internal/gateway"
 	"github.com/432539/gpt2api/internal/image"
@@ -31,19 +32,19 @@ type Deps struct {
 	AuthH *auth.Handler
 	UserH *user.Handler
 
-	KeySvc     *apikey.Service
-	KeyH       *apikey.Handler
-	ProxyH     *proxy.Handler
-	AccountH   *account.Handler
+	KeySvc   *apikey.Service
+	KeyH     *apikey.Handler
+	ProxyH   *proxy.Handler
+	AccountH *account.Handler
 
 	GatewayH *gateway.Handler
 	ImagesH  *gateway.ImagesHandler
 
-	BackupH      *backup.Handler
-	AuditH       *audit.Handler
-	AuditDAO     *audit.DAO
-	AdminUserH   *user.AdminHandler
-	AdminGroupH  *user.AdminGroupHandler
+	BackupH     *backup.Handler
+	AuditH      *audit.Handler
+	AuditDAO    *audit.DAO
+	AdminUserH  *user.AdminHandler
+	AdminGroupH *user.AdminGroupHandler
 
 	AdminModelH *model.AdminHandler
 	AdminKeyH   *apikey.AdminHandler
@@ -52,6 +53,7 @@ type Deps struct {
 	// 生成面板:当前用户视角的 usage / image 只读接口
 	MeUsageH *usage.MeHandler
 	MeImageH *image.MeHandler
+	CheckinH *checkin.Handler
 
 	RechargeH      *recharge.Handler
 	AdminRechargeH *recharge.AdminHandler
@@ -90,6 +92,10 @@ func New(d *Deps) *gin.Engine {
 		{
 			authed.GET("/me", d.UserH.Me)
 			authed.GET("/me/menu", d.UserH.Menu)
+			if d.CheckinH != nil {
+				authed.GET("/me/checkin", middleware.RequirePerm(rbac.PermSelfProfile), d.CheckinH.Status)
+				authed.POST("/me/checkin", middleware.RequirePerm(rbac.PermSelfProfile), d.CheckinH.Checkin)
+			}
 
 			// 用户端 API Key 管理(需 self:key 权限,普通用户/管理员都持有)
 			keys := authed.Group("/keys", middleware.RequirePerm(rbac.PermSelfKey))
@@ -194,6 +200,9 @@ func New(d *Deps) *gin.Engine {
 				ag.GET("/auto-refresh", d.AccountH.GetAutoRefresh)
 				ag.PUT("/auto-refresh", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.SetAutoRefresh)
 				ag.GET("", d.AccountH.List)
+				ag.GET("/deleted", d.AccountH.ListDeleted)
+				ag.POST("/:id/restore", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.Restore)
+				ag.DELETE("/:id/purge", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.Purge)
 				ag.GET("/:id", d.AccountH.Get)
 				ag.GET("/:id/secrets", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.GetSecrets)
 				ag.PATCH("/:id", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.Update)
