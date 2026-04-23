@@ -24,9 +24,14 @@ vi.mock('../api/recharge', () => ({
   redeemCode: vi.fn(),
 }))
 
+vi.mock('../api/credit', () => ({
+  listMyCreditLogs: vi.fn(),
+}))
+
 const siteApi = await import('../api/site')
 const meApi = await import('../api/me')
 const rechargeApi = await import('../api/recharge')
+const creditApi = await import('../api/credit')
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
 const { default: App } = await import('../App')
@@ -49,6 +54,12 @@ describe('wap integration', () => {
     })
     vi.mocked(meApi.listMyImageTasks).mockResolvedValue({
       items: [],
+      limit: 20,
+      offset: 0,
+    })
+    vi.mocked(creditApi.listMyCreditLogs).mockResolvedValue({
+      items: [],
+      total: 0,
       limit: 20,
       offset: 0,
     })
@@ -214,6 +225,70 @@ describe('wap integration', () => {
       expect(screen.queryByPlaceholderText('请输入兑换码')).toBeNull()
     })
     expect(screen.getAllByText('12.00').length).toBeGreaterThan(0)
+  })
+
+  test('profile available credits card opens credit log detail and can navigate back', async () => {
+    vi.mocked(creditApi.listMyCreditLogs).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          user_id: 1,
+          key_id: 0,
+          type: 'consume',
+          amount: -120000,
+          balance_after: 89900,
+          ref_id: 'img_task_1',
+          remark: '图片生成消费',
+          created_at: '2026-04-23 10:00:00',
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    useStore.setState({
+      activeTab: 'profile',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 0,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 0,
+        awarded_credits: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    } as any)
+
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: '查看可用积分使用记录' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('积分使用记录')).toBeInTheDocument()
+    })
+    expect(creditApi.listMyCreditLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
+    expect(screen.getByText('图片生成消费')).toBeInTheDocument()
+    expect(screen.getByText('-12.00')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '返回个人中心' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('个人中心')).toBeInTheDocument()
+    })
   })
 
   test('home page only renders two capability cards', () => {

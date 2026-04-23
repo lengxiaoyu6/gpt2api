@@ -197,6 +197,19 @@ export default function GenerateView() {
 
       <Card className="border-border/50 bg-secondary/20 p-4 rounded-3xl space-y-4">
         {mode === 'img' && (
+          <Card className="border-primary/20 bg-primary/8 px-4 py-3 rounded-2xl">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-sm leading-6 text-foreground/90">图生图建议在 PC 端操作，上传和结果对照体验更好</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {mode === 'img' && (
           <div
             onClick={() => fileInputRef.current?.click()}
             className="relative aspect-video rounded-2xl border-2 border-dashed border-border/50 hover:border-primary/50 transition-colors flex flex-col items-center justify-center bg-background/50 overflow-hidden cursor-pointer group"

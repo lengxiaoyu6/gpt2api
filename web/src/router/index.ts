@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import BasicLayout from '@/layouts/BasicLayout.vue'
-import BlankLayout from '@/layouts/BlankLayout.vue'
+import PublicLayout from '@/layouts/PublicLayout.vue'
 import { useUserStore } from '@/stores/user'
 
 /**
@@ -17,12 +17,14 @@ import { useUserStore } from '@/stores/user'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: BlankLayout,
+    component: PublicLayout,
     meta: { public: true },
     children: [
-      { path: '', redirect: '/personal/dashboard' },
+      { path: '', component: () => import('@/views/public/Home.vue'), meta: { public: true, title: '首页' } },
       { path: 'login', component: () => import('@/views/auth/Login.vue'), meta: { public: true, title: '登录' } },
       { path: 'register', component: () => import('@/views/auth/Register.vue'), meta: { public: true, title: '注册' } },
+      { path: 'showcase', component: () => import('@/views/public/Showcase.vue'), meta: { public: true, title: '案例库' } },
+      { path: 'pricing', component: () => import('@/views/public/Pricing.vue'), meta: { public: true, title: '定价方案' } },
     ],
   },
   {

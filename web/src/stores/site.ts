@@ -37,7 +37,7 @@ export const useSiteStore = defineStore('site', () => {
 
   function applyDocumentTitle() {
     const n = info.value['site.name'] || 'GPT2API'
-    document.title = `${n} 控制台`
+    document.title = n
   }
 
   function applyFavicon() {

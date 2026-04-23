@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useStore } from '../../store/useStore';
 import * as rechargeApi from '../../api/recharge';
+import ProfileCreditLogs from './ProfileCreditLogs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -28,6 +29,8 @@ interface ProfileViewProps {
   siteName?: string;
 }
 
+type ProfileSection = 'profile' | 'creditLogs';
+
 export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) {
   const { user, history, checkin, submitCheckin, fetchMe, fetchHistory, logout } = useStore();
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +38,7 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
+  const [activeSection, setActiveSection] = useState<ProfileSection>('profile');
 
   useEffect(() => {
     if (user) {
@@ -43,6 +47,17 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
   }, [fetchHistory, user]);
 
   if (!user) return null;
+
+  if (activeSection === 'creditLogs') {
+    return (
+      <div className="px-4 py-8">
+        <ProfileCreditLogs
+          balance={user.credit_balance}
+          onBack={() => setActiveSection('profile')}
+        />
+      </div>
+    );
+  }
 
   const handleClaimPoints = async () => {
     if (!checkin?.enabled || checkin.checked_in || submitting) {
@@ -158,18 +173,26 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
       </section>
 
       <section className="grid grid-cols-2 gap-4">
-        {[
-          { label: '今日奖励', count: formattedTodayReward, unit: '分' },
-          { label: '可用积分', count: formattedBalance, unit: '点' },
-        ].map((stat, i) => (
-          <div key={i} className="bg-secondary/30 rounded-2xl p-4 text-center space-y-1">
-            <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{stat.label}</span>
-            <div className="flex items-baseline justify-center gap-0.5">
-              <span className="text-lg font-black">{stat.count}</span>
-              <span className="text-[10px] opacity-50 font-bold">{stat.unit}</span>
-            </div>
+        <div className="bg-secondary/30 rounded-2xl p-4 text-center space-y-1">
+          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">今日奖励</span>
+          <div className="flex items-baseline justify-center gap-0.5">
+            <span className="text-lg font-black">{formattedTodayReward}</span>
+            <span className="text-[10px] opacity-50 font-bold">分</span>
           </div>
-        ))}
+        </div>
+
+        <button
+          type="button"
+          aria-label="查看可用积分使用记录"
+          onClick={() => setActiveSection('creditLogs')}
+          className="bg-secondary/30 rounded-2xl p-4 text-center space-y-1 transition-colors hover:bg-secondary/50"
+        >
+          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">可用积分</span>
+          <div className="flex items-baseline justify-center gap-0.5">
+            <span className="text-lg font-black">{formattedBalance}</span>
+            <span className="text-[10px] opacity-50 font-bold">点</span>
+          </div>
+        </button>
       </section>
 
       <section className="bg-secondary/20 rounded-3xl p-2 space-y-1 border border-border/50">
