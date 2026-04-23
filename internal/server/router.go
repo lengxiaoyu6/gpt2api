@@ -209,6 +209,7 @@ func New(d *Deps) *gin.Engine {
 				ug := admin.Group("/users", middleware.RequirePerm(rbac.PermUserRead, rbac.PermUserWrite))
 				{
 					ug.GET("", d.AdminUserH.List)
+					ug.POST("", middleware.RequirePerm(rbac.PermUserWrite), d.AdminUserH.Create)
 					ug.GET("/:id", d.AdminUserH.Get)
 					ug.PATCH("/:id", middleware.RequirePerm(rbac.PermUserWrite), d.AdminUserH.Update)
 					ug.POST("/:id/reset-password",
