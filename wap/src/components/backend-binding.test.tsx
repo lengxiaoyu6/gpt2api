@@ -18,6 +18,15 @@ vi.mock('motion/react', async () => {
   }
 })
 
+vi.mock('../api/me', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/me')>()
+  return {
+    ...actual,
+    changeMyPassword: vi.fn(),
+  }
+})
+
+const meApi = await import('../api/me')
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
 const { default: AuthOverlay } = await import('./AuthOverlay')
@@ -568,5 +577,77 @@ describe('wap backend bindings', () => {
 
     expect(await screen.findByText('敬请期待')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '知道了' })).toBeInTheDocument()
+  })
+
+  test('profile security center submits password change and forces relogin', async () => {
+    const forceRelogin = vi.fn()
+    ;(meApi as any).changeMyPassword.mockResolvedValue({ updated: true })
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 500,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 89900,
+        awarded_credits: 0,
+      },
+      history: [],
+      historyLoaded: true,
+      fetchHistory: vi.fn().mockResolvedValue([]),
+      submitCheckin: vi.fn().mockResolvedValue({
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 500,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 89900,
+        awarded_credits: 0,
+      }),
+      logout: vi.fn(),
+      forceRelogin,
+    } as any)
+
+    render(<ProfileView />)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '安全中心' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('修改密码')).toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByPlaceholderText('请输入原密码'), {
+      target: { value: 'old-password' },
+    })
+    fireEvent.change(within(dialog).getByPlaceholderText('请输入新密码'), {
+      target: { value: 'new-password-123' },
+    })
+    fireEvent.change(within(dialog).getByPlaceholderText('请再次输入新密码'), {
+      target: { value: 'new-password-123' },
+    })
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认修改' }))
+
+    await waitFor(() =>
+      expect((meApi as any).changeMyPassword).toHaveBeenCalledWith({
+        old_password: 'old-password',
+        new_password: 'new-password-123',
+      }),
+    )
+    await waitFor(() => expect(forceRelogin).toHaveBeenCalledWith('profile'))
   })
 })

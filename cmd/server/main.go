@@ -268,7 +268,7 @@ func main() {
 		JWT:    jm,
 
 		AuthH: auth.NewHandler(authSvc),
-		UserH: user.NewHandler(userDAO),
+		UserH: user.NewHandler(userDAO, authSvc),
 
 		KeySvc:   keySvc,
 		KeyH:     apikey.NewHandler(keySvc),

@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useStore } from '../../store/useStore';
 import * as rechargeApi from '../../api/recharge';
+import * as meApi from '../../api/me';
 import ProfileCreditLogs from './ProfileCreditLogs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,12 +33,19 @@ interface ProfileViewProps {
 type ProfileSection = 'profile' | 'creditLogs';
 
 export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) {
-  const { user, history, checkin, submitCheckin, fetchMe, fetchHistory, logout } = useStore();
+  const { user, history, checkin, submitCheckin, fetchMe, fetchHistory, logout, forceRelogin } = useStore();
   const [submitting, setSubmitting] = useState(false);
   const [membershipDialogOpen, setMembershipDialogOpen] = useState(false);
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [securityDialogOpen, setSecurityDialogOpen] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    old_password: '',
+    new_password: '',
+    confirm_password: '',
+  });
   const [activeSection, setActiveSection] = useState<ProfileSection>('profile');
 
   useEffect(() => {
@@ -50,7 +58,7 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
 
   if (activeSection === 'creditLogs') {
     return (
-      <div className="px-4 py-8">
+      <div className="px-4 pt-6 pb-4">
         <ProfileCreditLogs
           balance={user.credit_balance}
           onBack={() => setActiveSection('profile')}
@@ -107,10 +115,57 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
     }
   };
 
+  const handlePasswordFieldChange = (field: 'old_password' | 'new_password' | 'confirm_password', value: string) => {
+    setPasswordForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.old_password) {
+      toast.error('请输入原密码');
+      return;
+    }
+    if (!passwordForm.new_password) {
+      toast.error('请输入新密码');
+      return;
+    }
+    if (passwordForm.new_password.length < 6) {
+      toast.error('新密码至少 6 位');
+      return;
+    }
+    if (!passwordForm.confirm_password) {
+      toast.error('请再次输入新密码');
+      return;
+    }
+    if (passwordForm.confirm_password !== passwordForm.new_password) {
+      toast.error('两次输入的新密码不一致');
+      return;
+    }
+
+    setPasswordSubmitting(true);
+    try {
+      await meApi.changeMyPassword({
+        old_password: passwordForm.old_password,
+        new_password: passwordForm.new_password,
+      });
+      setSecurityDialogOpen(false);
+      setPasswordForm({
+        old_password: '',
+        new_password: '',
+        confirm_password: '',
+      });
+      toast.success('密码修改成功，请重新登录');
+      forceRelogin('profile');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '密码修改失败，请稍后重试');
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
+
   const menuItems = [
     { label: '我的会员', icon: CreditCard, color: 'text-amber-500', bg: 'bg-amber-500/10', extra: '超值特惠', onClick: () => setMembershipDialogOpen(true) },
     { label: '充值积分', icon: Coins, color: 'text-indigo-500', bg: 'bg-indigo-500/10', onClick: () => setRedeemDialogOpen(true) },
-    { label: '安全中心', icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { label: '安全中心', icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10', onClick: () => setSecurityDialogOpen(true) },
     { label: '帮助与反馈', icon: HelpCircle, color: 'text-sky-500', bg: 'bg-sky-500/10' },
   ];
 
@@ -118,7 +173,7 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
   const formattedTodayReward = formatCredit(checkin?.today_reward_credits ?? 0);
 
   return (
-    <div className="px-4 py-8 space-y-8 animate-in slide-in-from-bottom-10 duration-500">
+    <div className="px-4 pt-6 pb-4 space-y-8 animate-in slide-in-from-bottom-10 duration-500">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black tracking-tight">个人中心</h1>
         <Button variant="ghost" size="icon" className="rounded-full">
@@ -295,7 +350,71 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
         </DialogContent>
       </Dialog>
 
-      <div className="text-center opacity-30 pb-12">
+      <Dialog open={securityDialogOpen} onOpenChange={setSecurityDialogOpen}>
+        <DialogContent className="max-w-md rounded-[28px] border-border/60 bg-background/95 p-0 shadow-2xl backdrop-blur" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle className="text-xl font-black tracking-tight">修改密码</DialogTitle>
+            <DialogDescription>
+              修改账号登录密码后，当前登录态会立即清理。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="profile-old-password" className="text-sm font-bold text-foreground">原密码</label>
+              <Input
+                id="profile-old-password"
+                type="password"
+                value={passwordForm.old_password}
+                onChange={(e) => handlePasswordFieldChange('old_password', e.target.value)}
+                placeholder="请输入原密码"
+                className="h-12 rounded-2xl border-border/60 bg-secondary/20 px-4 text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="profile-new-password" className="text-sm font-bold text-foreground">新密码</label>
+              <Input
+                id="profile-new-password"
+                type="password"
+                value={passwordForm.new_password}
+                onChange={(e) => handlePasswordFieldChange('new_password', e.target.value)}
+                placeholder="请输入新密码"
+                className="h-12 rounded-2xl border-border/60 bg-secondary/20 px-4 text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="profile-confirm-password" className="text-sm font-bold text-foreground">确认新密码</label>
+              <Input
+                id="profile-confirm-password"
+                type="password"
+                value={passwordForm.confirm_password}
+                onChange={(e) => handlePasswordFieldChange('confirm_password', e.target.value)}
+                placeholder="请再次输入新密码"
+                className="h-12 rounded-2xl border-border/60 bg-secondary/20 px-4 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleChangePassword();
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="mt-6 rounded-b-[28px] border-border/60 bg-secondary/20 px-6 py-4">
+            <Button variant="outline" className="h-11 rounded-2xl" onClick={() => setSecurityDialogOpen(false)}>
+              取消
+            </Button>
+            <Button className="h-11 rounded-2xl" disabled={passwordSubmitting} onClick={() => void handleChangePassword()}>
+              {passwordSubmitting ? '提交中...' : '确认修改'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="text-center opacity-30 pb-6">
         <div className="flex items-center justify-center gap-2 mb-2">
           <Sparkles className="w-3 h-3" />
           <p className="text-[10px] font-black tracking-[4px] uppercase">{siteName}</p>

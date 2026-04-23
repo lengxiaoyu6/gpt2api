@@ -142,6 +142,13 @@ export function checkinToday(): Promise<MyCheckinStatus> {
   return http.post('/api/me/checkin')
 }
 
+export function changeMyPassword(req: {
+  old_password: string
+  new_password: string
+}): Promise<{ updated: boolean }> {
+  return http.post('/api/me/change-password', req)
+}
+
 // ---------- image tasks ----------
 
 export interface ImageTask {

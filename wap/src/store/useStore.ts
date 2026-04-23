@@ -5,20 +5,13 @@ import * as authApi from '../api/auth'
 import { REFRESH_KEY, setUnauthorizedHandler, TOKEN_KEY } from '../api/http'
 import * as meApi from '../api/me'
 import * as siteApi from '../api/site'
+import { ASPECT_RATIO_TO_SIZE, applyRatioPrefix, type AspectRatio, type UpscaleLevel } from '../features/image/options'
 
 export type TabKey = 'home' | 'generate' | 'history' | 'profile'
 export type BootstrapStatus = 'idle' | 'loading' | 'ready' | 'error'
-export type AspectRatio = '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
+export type { AspectRatio, UpscaleLevel } from '../features/image/options'
 
 export interface HistoryRecord extends meApi.ImageTask {}
-
-export const ASPECT_RATIO_TO_SIZE: Record<AspectRatio, string> = {
-  '1:1': '1024x1024',
-  '4:3': '1536x1152',
-  '3:4': '1152x1536',
-  '16:9': '1792x1024',
-  '9:16': '1024x1792',
-}
 
 const defaultSiteInfo: Record<string, string> = {
   'site.name': 'GPT2API',
@@ -83,14 +76,15 @@ interface AppState {
   login: (input: authApi.LoginReq) => Promise<void>
   register: (input: authApi.RegisterReq) => Promise<void>
   logout: () => void
+  forceRelogin: (tab: TabKey) => void
   fetchMe: () => Promise<authApi.UserInfo | null>
   fetchCheckin: () => Promise<meApi.CheckinStatus | null>
   fetchImageModels: () => Promise<meApi.ImageModel[]>
   fetchHistory: (force?: boolean) => Promise<HistoryRecord[]>
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
-  generateImage: (input: { prompt: string; aspectRatio: AspectRatio; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
-  editImage: (input: { prompt: string; aspectRatio: AspectRatio; file: File; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  generateImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  editImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; file: File; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
   openAuthForTab: (tab: TabKey) => void
   closeAuth: () => void
   setActiveTab: (tab: TabKey) => void
@@ -198,6 +192,25 @@ export const useStore = create<AppState>()(
         })
       },
 
+      forceRelogin(tab) {
+        clearTokens()
+        set({
+          user: null,
+          role: '',
+          permissions: [],
+          checkin: null,
+          imageModels: [],
+          selectedImageModel: null,
+          history: [],
+          historyLoaded: false,
+          historyLoading: false,
+          authOverlayOpen: true,
+          activeTab: 'home',
+          pendingTab: tab,
+          bootstrapStatus: 'ready',
+        })
+      },
+
       async fetchMe() {
         const data = await meApi.getMe()
         set({
@@ -259,8 +272,9 @@ export const useStore = create<AppState>()(
         const result = await meApi.playGenerateImage(
           {
             model,
-            prompt: input.prompt,
+            prompt: applyRatioPrefix(input.prompt, input.aspectRatio),
             size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
+            upscale: input.upscale || undefined,
             n: normalizeImageCount(input.count),
           },
           input.signal,
@@ -276,10 +290,11 @@ export const useStore = create<AppState>()(
         }
         const result = await meApi.playEditImage(
           model,
-          input.prompt,
+          applyRatioPrefix(input.prompt, input.aspectRatio),
           input.file,
           {
             size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
+            upscale: input.upscale || undefined,
             n: normalizeImageCount(input.count),
             signal: input.signal,
           },

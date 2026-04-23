@@ -168,8 +168,14 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (*user.
 
 // HashPassword 对外暴露 bcrypt 哈希(cost 由 service 持有),admin 重置密码走这里。
 func (s *Service) HashPassword(plain string) (string, error) {
-	if len(plain) < 6 {
-		return "", errors.New("password too short")
+	min := 6
+	if s.settings != nil {
+		if v := s.settings.PasswordMinLength(); v > 0 {
+			min = v
+		}
+	}
+	if len(plain) < min {
+		return "", ErrPasswordTooShort
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(plain), s.bcryptCost)
 	if err != nil {

@@ -56,7 +56,7 @@ export default function App() {
   const siteName = siteInfo['site.name'] || 'GPT2API';
 
   return (
-    <div className="min-h-screen bg-background text-foreground transition-colors duration-300 font-sans selection:bg-primary/30">
+    <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300 font-sans selection:bg-primary/30">
       <Toaster position="top-center" richColors />
 
       <header className="fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 h-16 flex items-center justify-between">
@@ -80,7 +80,7 @@ export default function App() {
         )}
       </header>
 
-      <main className="pt-16 pb-24 min-h-screen">
+      <main className="flex-1 pt-16 pb-[calc(4rem+env(safe-area-inset-bottom))]">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

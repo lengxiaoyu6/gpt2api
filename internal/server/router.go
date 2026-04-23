@@ -95,6 +95,7 @@ func New(d *Deps) *gin.Engine {
 		{
 			authed.GET("/me", d.UserH.Me)
 			authed.GET("/me/menu", d.UserH.Menu)
+			authed.POST("/me/change-password", middleware.RequirePerm(rbac.PermSelfProfile), d.UserH.ChangePassword)
 			if d.CheckinH != nil {
 				authed.GET("/me/checkin", middleware.RequirePerm(rbac.PermSelfProfile), d.CheckinH.Status)
 				authed.POST("/me/checkin", middleware.RequirePerm(rbac.PermSelfProfile), d.CheckinH.Checkin)
@@ -164,6 +165,9 @@ func New(d *Deps) *gin.Engine {
 
 		// 公开接口(无需 JWT)
 		pub := api.Group("/public")
+		if d.AdminModelH != nil {
+			pub.GET("/models", d.AdminModelH.ListEnabledForPublic)
+		}
 		if d.SettingsH != nil {
 			pub.GET("/site-info", d.SettingsH.Public)
 		}

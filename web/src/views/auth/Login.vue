@@ -61,8 +61,6 @@ async function onSubmit() {
 <template>
     <div class="auth-page">
         <div class="auth-card">
-            <router-link to="/" class="auth-back">返回首页</router-link>
-
             <div class="auth-copy">
                 <p class="auth-copy__eyebrow">{{ siteName }}</p>
                 <h1>欢迎回来</h1>
@@ -84,15 +82,15 @@ async function onSubmit() {
                     class="auth-form__alert" />
 
                 <el-form-item label="邮箱" prop="email">
-                    <el-input v-model="form.email" placeholder="name@company.com" autocomplete="username" />
+                    <el-input v-model="form.email" placeholder="" autocomplete="username" />
                 </el-form-item>
 
-                <el-form-item label="访问密码" prop="password">
+                <el-form-item label="登录密码" prop="password">
                     <el-input
                         v-model="form.password"
                         type="password"
                         show-password
-                        placeholder="••••••••"
+                        placeholder=""
                         autocomplete="current-password"
                         @keyup.enter="onSubmit" />
                 </el-form-item>

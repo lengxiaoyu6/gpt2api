@@ -254,6 +254,35 @@ func (h *AdminHandler) ListEnabledForMe(c *gin.Context) {
 	resp.OK(c, gin.H{"items": out, "total": len(out)})
 }
 
+// GET /api/public/models
+// 公开视角,只返回 enabled 模型及定价字段,用于首页定价展示。
+func (h *AdminHandler) ListEnabledForPublic(c *gin.Context) {
+	rows, err := h.dao.ListEnabled(c.Request.Context())
+	if err != nil {
+		resp.Internal(c, err.Error())
+		return
+	}
+	type publicModel struct {
+		Slug         string `json:"slug"`
+		Type         string `json:"type"`
+		Description  string `json:"description"`
+		PricePerCall int64  `json:"price_per_call"`
+	}
+	out := make([]publicModel, 0, len(rows))
+	for _, m := range rows {
+		if m.Type != TypeImage {
+			continue
+		}
+		out = append(out, publicModel{
+			Slug:         m.Slug,
+			Type:         m.Type,
+			Description:  m.Description,
+			PricePerCall: m.ImagePricePerCall,
+		})
+	}
+	resp.OK(c, gin.H{"items": out, "total": len(out)})
+}
+
 // ---- 内部 ----
 
 func (h *AdminHandler) reloadRegistry(c *gin.Context) {

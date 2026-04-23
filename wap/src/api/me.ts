@@ -52,6 +52,7 @@ export interface PlayImageRequest {
   n?: number
   size?: string
   reference_images?: string[]
+  upscale?: '' | '2k' | '4k'
 }
 
 export interface PlayImageData {
@@ -77,6 +78,10 @@ export function getMyCheckinStatus() {
 
 export function checkinToday() {
   return http.post('/api/me/checkin') as Promise<CheckinStatus>
+}
+
+export function changeMyPassword(req: { old_password: string; new_password: string }) {
+  return http.post('/api/me/change-password', req) as Promise<{ updated: boolean }>
 }
 
 export function listMyModels() {
@@ -124,13 +129,14 @@ export async function playEditImage(
   model: string,
   prompt: string,
   file: File,
-  opts?: { n?: number; size?: string; signal?: AbortSignal },
+  opts?: { n?: number; size?: string; upscale?: '' | '2k' | '4k'; signal?: AbortSignal },
 ) {
   const fd = new FormData()
   fd.append('model', model)
   fd.append('prompt', prompt)
   if (opts?.size) fd.append('size', opts.size)
   if (opts?.n) fd.append('n', String(opts.n))
+  if (opts?.upscale) fd.append('upscale', opts.upscale)
   fd.append('image', file, file.name)
 
   const resp = await fetch(buildApiURL('/api/me/playground/image-edit'), {

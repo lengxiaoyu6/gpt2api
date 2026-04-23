@@ -44,6 +44,18 @@ function resetStore() {
   localStorage.clear()
 }
 
+function hasTextContent(text: string, tagName?: string) {
+  return (_: string, node: Element | null) => {
+    if (!node?.textContent?.includes(text)) {
+      return false
+    }
+    if (!tagName) {
+      return true
+    }
+    return node.tagName === tagName.toUpperCase()
+  }
+}
+
 describe('wap integration', () => {
   beforeEach(() => {
     resetStore()
@@ -157,6 +169,52 @@ describe('wap integration', () => {
     expect(screen.getAllByText('星河图像').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('© 星河图像')).toBeInTheDocument()
     expect(screen.queryByText('Creative Intelligent Systems')).toBeNull()
+  })
+
+  test('profile layout keeps bottom spacing compact when content is short', () => {
+    useStore.setState({
+      activeTab: 'profile',
+      siteInfo: {
+        'site.name': '星河图像',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+      },
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 0,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 0,
+        awarded_credits: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+
+    const main = screen.getByRole('main')
+    expect(main.className).toContain('flex-1')
+    expect(main.className).not.toContain('min-h-screen')
+
+    const profileFooter = screen.getByText('© 星河图像').parentElement
+    expect(profileFooter).not.toBeNull()
+    expect(profileFooter?.className).toContain('pb-6')
+    expect(profileFooter?.className).not.toContain('pb-12')
   })
 
   test('profile recharge entry opens redeem dialog and submits redeem code', async () => {
@@ -363,7 +421,22 @@ describe('wap integration', () => {
 
     const ratioDesc = screen.getByText('社交媒体')
     expect(ratioDesc.className).not.toContain('text-white')
+    expect(screen.getByRole('button', { name: '21:9 超宽屏' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2:3 竖版' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2K 高清' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '4K 高清' })).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地', 'p'))).toBeInTheDocument()
+    expect(screen.getByText('Catmull-Rom 插值')).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('注意:这是传统算法放大,不是 AI 超分,', 'p'))).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('4K 首次加载约 +0.5~1.5s,之后命中缓存。', 'p'))).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
+    expect(screen.getByText(hasTextContent('上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地', 'p'))).toBeInTheDocument()
+    expect(screen.getByText('Catmull-Rom 插值')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '文生图' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '21:9 超宽屏' }))
+    fireEvent.click(screen.getByRole('button', { name: '4K 高清' }))
     fireEvent.click(screen.getByRole('button', { name: '4 张' }))
     expect(screen.getByText('当前 4 张，预计消耗 1.20 积分')).toBeInTheDocument()
 
@@ -375,7 +448,8 @@ describe('wap integration', () => {
     await waitFor(() => {
       expect(generateImage).toHaveBeenCalledWith({
         prompt: '未来城市夜景',
-        aspectRatio: '1:1',
+        aspectRatio: '21:9',
+        upscale: '4k',
         count: 4,
       })
     })

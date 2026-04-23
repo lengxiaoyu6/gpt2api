@@ -150,36 +150,126 @@ describe('useStore backend integration', () => {
     expect((useStore.getState() as any).user?.credit_balance).toBe(88)
   })
 
-  test('generateImage uses mapped size 1792x1024 for 16:9, forwards count and refreshes me plus history', async () => {
+  test('forceRelogin clears session state and reopens auth overlay for target tab', () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    localStorage.setItem('gpt2api.refresh', 'refresh-token')
+    useStore.setState({
+      bootstrapStatus: 'loading',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 88,
+        credit_frozen: 0,
+      },
+      role: 'user',
+      permissions: ['self:profile'],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: true,
+        today_reward_credits: 5,
+        checked_at: '2026-04-22T09:00:00Z',
+        last_checked_at: '2026-04-22T09:00:00Z',
+        balance_after: 88,
+        awarded_credits: 5,
+      },
+      imageModels: [{ id: 1, slug: 'gpt-image-1', type: 'image', description: 'img', image_price_per_call: 5 }],
+      selectedImageModel: 'gpt-image-1',
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+      historyLoaded: true,
+      historyLoading: true,
+      activeTab: 'profile',
+      pendingTab: 'history',
+      authOverlayOpen: false,
+    } as any)
+
+    const state = useStore.getState() as any
+    state.forceRelogin('profile')
+
+    const next = useStore.getState() as any
+    expect(localStorage.getItem('gpt2api.access')).toBeNull()
+    expect(localStorage.getItem('gpt2api.refresh')).toBeNull()
+    expect(next.user).toBeNull()
+    expect(next.role).toBe('')
+    expect(next.permissions).toEqual([])
+    expect(next.checkin).toBeNull()
+    expect(next.imageModels).toEqual([])
+    expect(next.selectedImageModel).toBeNull()
+    expect(next.history).toEqual([])
+    expect(next.historyLoaded).toBe(false)
+    expect(next.historyLoading).toBe(false)
+    expect(next.activeTab).toBe('home')
+    expect(next.pendingTab).toBe('profile')
+    expect(next.authOverlayOpen).toBe(true)
+    expect(next.bootstrapStatus).toBe('ready')
+  })
+
+  test('generateImage maps 21:9, applies ratio prefix, forwards upscale and refreshes me plus history', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
     await state.fetchImageModels()
 
-    await state.generateImage({ prompt: 'night city', aspectRatio: '16:9', count: 4 })
+    await state.generateImage({
+      prompt: 'future skyline',
+      aspectRatio: '21:9',
+      upscale: '4k',
+      count: 4,
+    })
 
     expect(meApi.playGenerateImage).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'gpt-image-1', prompt: 'night city', size: '1792x1024', n: 4 }),
+      expect.objectContaining({
+        model: 'gpt-image-1',
+        prompt: 'Make the aspect ratio 21:9 , future skyline',
+        size: '1792x1024',
+        upscale: '4k',
+        n: 4,
+      }),
       undefined,
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
   })
 
-  test('editImage uses mapped size 1024x1792 for 9:16, forwards count and refreshes me plus history', async () => {
+  test('editImage maps 2:3, applies ratio prefix, forwards upscale and refreshes me plus history', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
     await state.fetchImageModels()
     const file = new File(['demo'], 'demo.png', { type: 'image/png' })
 
-    await state.editImage({ prompt: 'repaint', aspectRatio: '9:16', file, count: 3 })
+    await state.editImage({
+      prompt: 'portrait relight',
+      aspectRatio: '2:3',
+      upscale: '2k',
+      file,
+      count: 3,
+    })
 
     expect(meApi.playEditImage).toHaveBeenCalledWith(
       'gpt-image-1',
-      'repaint',
+      'Make the aspect ratio 2:3 , portrait relight',
       file,
-      expect.objectContaining({ size: '1024x1792', n: 3 }),
+      expect.objectContaining({ size: '1024x1792', upscale: '2k', n: 3 }),
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)

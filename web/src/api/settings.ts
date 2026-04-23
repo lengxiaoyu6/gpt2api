@@ -30,3 +30,14 @@ export function sendTestEmail(to: string): Promise<{ sent: boolean; to: string }
 export function fetchSiteInfo(): Promise<Record<string, string>> {
   return http.get('/api/public/site-info')
 }
+
+export interface PublicModel {
+  slug: string
+  type: 'chat' | 'image' | string
+  description: string
+  price_per_call: number
+}
+
+export function fetchPublicModels(): Promise<{ items: PublicModel[]; total: number }> {
+  return http.get('/api/public/models')
+}

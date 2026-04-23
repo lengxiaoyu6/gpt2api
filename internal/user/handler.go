@@ -1,6 +1,8 @@
 package user
 
 import (
+	"context"
+	"errors"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -10,12 +12,22 @@ import (
 	"github.com/432539/gpt2api/pkg/resp"
 )
 
-// Handler 用户相关接口。
-type Handler struct {
-	dao *DAO
+// SelfDAO 约束当前用户视角所需的数据访问能力。
+type SelfDAO interface {
+	GetByID(ctx context.Context, id uint64) (*User, error)
+	ListCreditLogs(ctx context.Context, userID uint64, limit, offset int) ([]CreditLog, int64, error)
+	ResetPassword(ctx context.Context, id uint64, hash string) error
 }
 
-func NewHandler(dao *DAO) *Handler { return &Handler{dao: dao} }
+// Handler 用户相关接口。
+type Handler struct {
+	dao  SelfDAO
+	auth PasswordService
+}
+
+func NewHandler(dao SelfDAO, authSvc PasswordService) *Handler {
+	return &Handler{dao: dao, auth: authSvc}
+}
 
 // Me 当前登录用户信息。响应同时包含该用户拥有的权限清单(用于前端路由守卫)。
 func (h *Handler) Me(c *gin.Context) {
@@ -92,4 +104,49 @@ func (h *Handler) CreditLogs(c *gin.Context) {
 		"limit":  limit,
 		"offset": offset,
 	})
+}
+
+type changePasswordReq struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required"`
+}
+
+// ChangePassword POST /api/me/change-password
+func (h *Handler) ChangePassword(c *gin.Context) {
+	uid := middleware.UserID(c)
+	if uid == 0 {
+		resp.Unauthorized(c, "not logged in")
+		return
+	}
+	if h.auth == nil {
+		resp.Internal(c, "password service not configured")
+		return
+	}
+	var req changePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.auth.VerifyPassword(c.Request.Context(), uid, req.OldPassword); err != nil {
+		resp.Forbidden(c, "old password mismatch")
+		return
+	}
+	if req.OldPassword == req.NewPassword {
+		resp.BadRequest(c, "new password must differ from old password")
+		return
+	}
+	hash, err := h.auth.HashPassword(req.NewPassword)
+	if err != nil {
+		resp.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.dao.ResetPassword(c.Request.Context(), uid, hash); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			resp.NotFound(c, "user not found")
+			return
+		}
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"updated": true})
 }

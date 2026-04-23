@@ -8,9 +8,19 @@ import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn, formatCredit } from '@/lib/utils';
-import { useStore, type AspectRatio } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
+import {
+  getRatioPreviewStyle,
+  IMAGE_RATIO_OPTIONS,
+  OUTPUT_SIZE_OPTIONS,
+  type AspectRatio,
+  type UpscaleLevel,
+} from '../../features/image/options';
 
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
+const UPSCALE_HINT_LEAD = '上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地';
+const UPSCALE_HINT_WARN = '注意:这是传统算法放大,不是 AI 超分,';
+const UPSCALE_HINT_TAIL = '不会补出新的纹理或毛发,只会让画面更大更平滑。4K 首次加载约 +0.5~1.5s,之后命中缓存。';
 
 export default function GenerateView() {
   const {
@@ -26,7 +36,10 @@ export default function GenerateView() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImages, setResultImages] = useState<string[]>([]);
   const [isPreviewResult, setIsPreviewResult] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+  const [textAspectRatio, setTextAspectRatio] = useState<AspectRatio>('1:1');
+  const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('1:1');
+  const [textUpscale, setTextUpscale] = useState<UpscaleLevel>('');
+  const [imageUpscale, setImageUpscale] = useState<UpscaleLevel>('');
   const [imageCount, setImageCount] = useState<1 | 2 | 3 | 4>(1);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [sourceImagePreview, setSourceImagePreview] = useState<string | null>(null);
@@ -35,19 +48,13 @@ export default function GenerateView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
 
-  const ratios: ReadonlyArray<{ label: AspectRatio; value: AspectRatio; desc: string }> = [
-    { label: '1:1', value: '1:1', desc: '社交媒体' },
-    { label: '4:3', value: '4:3', desc: '经典画幅' },
-    { label: '3:4', value: '3:4', desc: '人像摄影' },
-    { label: '16:9', value: '16:9', desc: '电影宽屏' },
-    { label: '9:16', value: '9:16', desc: '短视频' },
-  ];
-
   const currentModel = imageModels.find((item) => item.slug === selectedImageModel);
   const currentPrice = currentModel?.image_price_per_call ?? 5;
   const totalPrice = currentPrice * imageCount;
   const currentModelLabel = currentModel?.description?.trim() || currentModel?.slug || '暂无可用模型';
   const imageNotice = siteInfo['site.image_notice']?.trim() || '';
+  const activeAspectRatio = mode === 'txt' ? textAspectRatio : imageAspectRatio;
+  const activeUpscale = mode === 'txt' ? textUpscale : imageUpscale;
 
   useEffect(() => {
     return () => {
@@ -108,10 +115,16 @@ export default function GenerateView() {
     clearResults();
     try {
       const response = mode === 'txt'
-        ? await generateImage({ prompt: nextPrompt, aspectRatio, count: imageCount })
+        ? await generateImage({
+            prompt: nextPrompt,
+            aspectRatio: textAspectRatio,
+            upscale: textUpscale,
+            count: imageCount,
+          })
         : await editImage({
             prompt: nextPrompt || '增强细节，提升画面质感',
-            aspectRatio,
+            aspectRatio: imageAspectRatio,
+            upscale: imageUpscale,
             file: sourceFile as File,
             count: imageCount,
           });
@@ -149,6 +162,22 @@ export default function GenerateView() {
 
     setSourceFile(file);
     setSourceImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleAspectRatioChange = (ratio: AspectRatio) => {
+    if (mode === 'txt') {
+      setTextAspectRatio(ratio);
+      return;
+    }
+    setImageAspectRatio(ratio);
+  };
+
+  const handleUpscaleChange = (value: UpscaleLevel) => {
+    if (mode === 'txt') {
+      setTextUpscale(value);
+      return;
+    }
+    setImageUpscale(value);
   };
 
   return (
@@ -349,26 +378,76 @@ export default function GenerateView() {
           <div className="space-y-3">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">画布比例</p>
             <div className="grid grid-cols-5 gap-2">
-              {ratios.map((r) => {
-                const isActive = aspectRatio === r.value;
+              {IMAGE_RATIO_OPTIONS.map((option) => {
+                const isActive = activeAspectRatio === option.ratio;
                 return (
                   <button
                     type="button"
-                    key={r.value}
-                    onClick={() => setAspectRatio(r.value)}
-                    className={`flex flex-col items-center justify-center py-2.5 rounded-xl border transition-all ${
+                    key={option.ratio}
+                    aria-label={`${option.ratio} ${option.label}`}
+                    onClick={() => handleAspectRatioChange(option.ratio)}
+                    className={cn(
+                      'flex flex-col items-center justify-center rounded-xl border px-1 py-2.5 transition-all',
                       isActive
                         ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                        : 'bg-background/50 border-border/50 hover:border-primary/30'
-                    }`}
+                        : 'bg-background/50 border-border/50 hover:border-primary/30',
+                    )}
                   >
-                    <span className="text-[10px] font-black">{r.label}</span>
-                    <span className={`text-[8px] mt-0.5 ${isActive ? 'opacity-80 text-foreground/80' : 'opacity-60 text-muted-foreground'}`}>
-                      {r.desc}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'mb-1 rounded-sm border transition-colors',
+                        isActive ? 'border-primary/60 bg-primary/20' : 'border-border/80 bg-muted/30',
+                      )}
+                      style={getRatioPreviewStyle(option)}
+                    />
+                    <span className="text-[10px] font-black">{option.ratio}</span>
+                    <span className="text-[9px] font-semibold leading-tight">{option.label}</span>
+                    <span className={cn('mt-0.5 text-[8px]', isActive ? 'opacity-80 text-foreground/80' : 'opacity-60 text-muted-foreground')}>
+                      {option.desc}
                     </span>
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">输出尺寸</p>
+            <div className="grid grid-cols-3 gap-2">
+              {OUTPUT_SIZE_OPTIONS.map((option) => {
+                const isActive = activeUpscale === option.value;
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    aria-label={option.label}
+                    onClick={() => handleUpscaleChange(option.value)}
+                    className={cn(
+                      'rounded-2xl border px-2 py-3 text-center transition-all',
+                      isActive
+                        ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                        : 'border-border/50 bg-background/50 hover:border-primary/30',
+                    )}
+                  >
+                    <span className="block text-[11px] font-bold">{option.label}</span>
+                    <span className={cn('mt-1 block text-[9px]', isActive ? 'text-foreground/80' : 'text-muted-foreground')}>
+                      {option.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-[10px] leading-5 text-foreground/80">
+              <p>
+                {UPSCALE_HINT_LEAD}
+                <b className="font-semibold text-foreground">Catmull-Rom 插值</b>
+                放大并以 PNG 输出。
+              </p>
+              <p className="mt-1">
+                <span className="font-semibold text-amber-700 dark:text-amber-300">{UPSCALE_HINT_WARN}</span>
+                {UPSCALE_HINT_TAIL}
+              </p>
             </div>
           </div>
 
@@ -382,11 +461,12 @@ export default function GenerateView() {
                     key={count}
                     type="button"
                     onClick={() => setImageCount(count)}
-                    className={`rounded-2xl border px-3 py-3 text-sm font-bold transition-all ${
+                    className={cn(
+                      'rounded-2xl border px-3 py-3 text-sm font-bold transition-all',
                       isActive
                         ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                        : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                    }`}
+                        : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                    )}
                   >
                     {count} 张
                   </button>

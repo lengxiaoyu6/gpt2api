@@ -23,6 +23,8 @@ var menuTree = []Menu{
 		Children: []Menu{
 			{Key: "personal.dashboard", Title: "总览", Icon: "House", Path: "/personal/dashboard",
 				Perms: []Permission{PermSelfProfile}},
+			{Key: "personal.security", Title: "安全中心", Icon: "Lock", Path: "/personal/security",
+				Perms: []Permission{PermSelfProfile}},
 			{Key: "personal.play", Title: "在线体验", Icon: "MagicStick", Path: "/personal/play",
 				Perms: []Permission{PermSelfImage, PermSelfUsage}},
 
