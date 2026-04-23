@@ -35,8 +35,21 @@ const (
 	ErrUpstream        = "upstream_error"
 	ErrPollTimeout     = "poll_timeout"
 	ErrDownload        = "download_failed"
+	ErrArchive         = "archive_failed"
 	ErrInvalidResponse = "invalid_response"
 )
+
+const (
+	StorageModeLocal = "local"
+	StorageModeCloud = "cloud"
+)
+
+func NormalizeStorageMode(mode string) string {
+	if mode == StorageModeCloud {
+		return StorageModeCloud
+	}
+	return StorageModeLocal
+}
 
 // Task 对应 image_tasks 表。
 type Task struct {
@@ -50,6 +63,7 @@ type Task struct {
 	N               int       `db:"n"`
 	Size            string    `db:"size"`
 	Upscale         string    `db:"upscale"` // '' | '2k' | '4k',ImageProxy 读取后对原图做 Catmull-Rom 放大
+	StorageMode     string    `db:"storage_mode"`
 	Status          string    `db:"status"`
 	ConversationID  string    `db:"conversation_id"`
 	FileIDs         []byte    `db:"file_ids"`    // JSON 数组字符串
@@ -71,6 +85,7 @@ type Result struct {
 	ErrorCode      string         `json:"error_code,omitempty"`
 	ErrorMessage   string         `json:"error_message,omitempty"`
 	CreditCost     int64          `json:"credit_cost"`
+	StorageMode    string         `json:"storage_mode,omitempty"`
 }
 
 // ResultImage 单张生图。

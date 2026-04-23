@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -11,12 +13,44 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/432539/gpt2api/internal/config"
+	"github.com/432539/gpt2api/internal/imagestore"
 	"github.com/432539/gpt2api/internal/scheduler"
+	"github.com/432539/gpt2api/internal/settings"
 	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 	"github.com/432539/gpt2api/pkg/logger"
 )
 
 type runnerAttemptFunc func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error)
+
+type runnerDAO interface {
+	MarkRunning(ctx context.Context, taskID string, accountID uint64) error
+	SetAccount(ctx context.Context, taskID string, accountID uint64) error
+	MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, storageMode string, creditCost int64) error
+	MarkFailed(ctx context.Context, taskID, errorCode string) error
+}
+
+type runnerImageStore interface {
+	SaveTaskImages(ctx context.Context, taskID string, images []imagestore.SourceImage) ([]imagestore.SavedImage, error)
+}
+
+type runnerSettings interface {
+	ImageStorageMode() string
+	CloudConfig() string
+}
+
+type runnerCloudUploader interface {
+	Upload(ctx context.Context, src imagestore.SourceImage, channel string) (string, error)
+}
+
+type runnerSanyueCloudUploader struct {
+	uploader *imagestore.SanyueImgHubUploader
+}
+
+func (u runnerSanyueCloudUploader) Upload(ctx context.Context, src imagestore.SourceImage, channel string) (string, error) {
+	return u.uploader.UploadToChannel(ctx, src, channel)
+}
+
+type runnerDownloadFunc func(ctx context.Context, signedURL string) ([]byte, string, error)
 
 // Runner 单次/多次生图的执行器。封装完整的 chatgpt.com 协议链路:
 //
@@ -26,15 +60,27 @@ type runnerAttemptFunc func(ctx context.Context, opt RunOptions, result *RunResu
 // IMG2 已正式上线,不再做"灰度命中判定 / preview_only 换账号重试"这些节流操作,
 // 拿到任意 file-service / sediment 引用即算成功,以速度和效率优先。
 type Runner struct {
-	sched     *scheduler.Scheduler
-	dao       *DAO
-	cfg       config.ImageConfig
-	runOnceFn runnerAttemptFunc // 仅测试使用
+	sched         *scheduler.Scheduler
+	dao           runnerDAO
+	cfg           config.ImageConfig
+	files         runnerImageStore
+	settings      runnerSettings
+	cloudUploader runnerCloudUploader
+	downloadFn    runnerDownloadFunc
+	runOnceFn     runnerAttemptFunc // 仅测试使用
 }
 
 // NewRunner 构造 Runner。
-func NewRunner(sched *scheduler.Scheduler, dao *DAO, cfg config.ImageConfig) *Runner {
-	return &Runner{sched: sched, dao: dao, cfg: cfg}
+func NewRunner(sched *scheduler.Scheduler, dao *DAO, cfg config.ImageConfig, files ...runnerImageStore) *Runner {
+	r := &Runner{sched: sched, dao: dao, cfg: cfg}
+	if len(files) > 0 {
+		r.files = files[0]
+	}
+	return r
+}
+
+func (r *Runner) SetSettings(s runnerSettings) {
+	r.settings = s
 }
 
 // ReferenceImage 是图生图/编辑的一张参考图输入。
@@ -67,10 +113,12 @@ type RunResult struct {
 	FileIDs        []string // chatgpt.com 侧的原始 ref("sed:" 前缀表示 sediment)
 	SignedURLs     []string // 直接可访问的签名 URL(15 分钟有效)
 	ContentTypes   []string
+	StorageMode    string
 	ErrorCode      string
 	ErrorMessage   string
 	Attempts       int // 跨账号尝试次数(runOnce 次数)
 	DurationMs     int64
+	archiveImages  []imagestore.SourceImage
 }
 
 // Run 执行生图。会同步阻塞直到完成/失败;调用方自行做超时控制(传 ctx)。
@@ -78,7 +126,7 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 	start := time.Now()
 	opt = r.normalizeOptions(opt)
 
-	result := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown}
+	result := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown, StorageMode: r.storageMode()}
 
 	// 仅当有 DAO 和 taskID 时才落库
 	if r.dao != nil && opt.TaskID != "" {
@@ -103,6 +151,12 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		cancel()
 
 		if ok {
+			if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
+				result.Status = StatusFailed
+				result.ErrorCode = ErrArchive
+				result.ErrorMessage = err.Error()
+				break
+			}
 			result.Status = StatusSuccess
 			result.ErrorCode = ""
 			result.ErrorMessage = ""
@@ -133,12 +187,158 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 	if r.dao != nil && opt.TaskID != "" {
 		if result.Status == StatusSuccess {
 			_ = r.dao.MarkSuccess(ctx, opt.TaskID, result.ConversationID,
-				result.FileIDs, result.SignedURLs, 0 /* credit_cost 由网关负责写 */)
+				result.FileIDs, result.SignedURLs, result.StorageMode, 0 /* credit_cost 由网关负责写 */)
 		} else {
 			_ = r.dao.MarkFailed(ctx, opt.TaskID, result.ErrorCode)
 		}
 	}
 	return result
+}
+
+func (r *Runner) archiveResultImages(ctx context.Context, taskID string, result *RunResult) error {
+	result.StorageMode = r.storageMode()
+	if result.StorageMode == StorageModeCloud {
+		images, err := r.archiveSourceImages(ctx, result)
+		if err != nil {
+			return err
+		}
+		return r.uploadCloudImages(ctx, images, result)
+	}
+	if r.files == nil || taskID == "" {
+		return nil
+	}
+	images, err := r.archiveSourceImages(ctx, result)
+	if err != nil {
+		return err
+	}
+	if len(images) == 0 {
+		return errors.New("no archive images")
+	}
+	_, err = r.files.SaveTaskImages(ctx, taskID, images)
+	return err
+}
+
+func (r *Runner) archiveSourceImages(ctx context.Context, result *RunResult) ([]imagestore.SourceImage, error) {
+	if len(result.archiveImages) > 0 {
+		return result.archiveImages, nil
+	}
+	return r.downloadArchiveImages(ctx, result)
+}
+
+func (r *Runner) uploadCloudImages(ctx context.Context, images []imagestore.SourceImage, result *RunResult) error {
+	uploader, err := r.resolveCloudUploader()
+	if err != nil {
+		return err
+	}
+	if len(images) == 0 {
+		return errors.New("no archive images")
+	}
+	urls := make([]string, 0, len(images))
+	channels := r.cloudUploadChannels()
+	for _, src := range images {
+		uploadedURL, err := r.uploadCloudImage(ctx, uploader, src, channels)
+		if err != nil {
+			return err
+		}
+		urls = append(urls, uploadedURL)
+	}
+	result.SignedURLs = urls
+	return nil
+}
+
+func (r *Runner) uploadCloudImage(ctx context.Context, uploader runnerCloudUploader, src imagestore.SourceImage, channels []string) (string, error) {
+	var lastErr error
+	for _, channel := range channels {
+		uploadedURL, err := uploader.Upload(ctx, src, channel)
+		if err == nil {
+			return uploadedURL, nil
+		}
+		lastErr = err
+		logger.L().Warn("image runner cloud upload failed",
+			zap.Int("idx", src.Index),
+			zap.String("channel", channel),
+			zap.Error(err))
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", errors.New("cloud upload failed")
+}
+
+func (r *Runner) downloadArchiveImages(ctx context.Context, result *RunResult) ([]imagestore.SourceImage, error) {
+	if len(result.SignedURLs) == 0 {
+		return nil, errors.New("no signed urls")
+	}
+	download := r.downloadFn
+	if download == nil {
+		download = defaultRunnerDownload
+	}
+	images := make([]imagestore.SourceImage, 0, len(result.SignedURLs))
+	for idx, signedURL := range result.SignedURLs {
+		data, contentType, err := download(ctx, signedURL)
+		if err != nil {
+			return nil, err
+		}
+		if contentType == "" && idx < len(result.ContentTypes) {
+			contentType = result.ContentTypes[idx]
+		}
+		images = append(images, imagestore.SourceImage{
+			Index:       idx,
+			Data:        data,
+			ContentType: contentType,
+		})
+	}
+	return images, nil
+}
+
+func (r *Runner) storageMode() string {
+	if r.settings == nil {
+		return StorageModeLocal
+	}
+	return NormalizeStorageMode(r.settings.ImageStorageMode())
+}
+
+func (r *Runner) resolveCloudUploader() (runnerCloudUploader, error) {
+	if r.cloudUploader != nil {
+		return r.cloudUploader, nil
+	}
+	if r.settings == nil {
+		return nil, errors.New("cloud storage settings not configured")
+	}
+	cfg, err := settings.ParseSanyueImgHubConfig(r.settings.CloudConfig())
+	if err != nil {
+		return nil, err
+	}
+	if err := settings.ValidateStorageSnapshot(map[string]string{
+		settings.StorageImageMode:   StorageModeCloud,
+		settings.StorageCloudConfig: r.settings.CloudConfig(),
+	}); err != nil {
+		return nil, err
+	}
+	return runnerSanyueCloudUploader{uploader: imagestore.NewSanyueImgHubUploader(imagestore.SanyueImgHubUploaderOptions{
+		UploadURL:      cfg.UploadURL,
+		AuthCode:       cfg.AuthCode,
+		ServerCompress: cfg.ServerCompress,
+		ReturnFormat:   cfg.ReturnFormat,
+		UploadChannel:  cfg.UploadChannel,
+	})}, nil
+}
+
+func (r *Runner) cloudUploadChannels() []string {
+	preferred := settings.SanyueUploadChannelTelegram
+	if r.settings != nil {
+		cfg, err := settings.ParseSanyueImgHubConfig(r.settings.CloudConfig())
+		if err == nil && settings.IsSupportedSanyueUploadChannel(cfg.UploadChannel) {
+			preferred = settings.NormalizeSanyueUploadChannel(cfg.UploadChannel)
+		}
+	}
+	if preferred == settings.SanyueUploadChannelHuggingFace {
+		return []string{settings.SanyueUploadChannelHuggingFace}
+	}
+	return []string{
+		settings.SanyueUploadChannelTelegram,
+		settings.SanyueUploadChannelHuggingFace,
+	}
 }
 
 // retryLimit 返回某类错误实际允许的尝试上限。upstream_error 至少再试一次。
@@ -425,6 +625,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// 6) 对每个 ref 取签名 URL
 	var signedURLs []string
 	var contentTypes []string
+	var successfulRefs []string
 	for _, ref := range fileRefs {
 		url, err := cli.ImageDownloadURL(ctx, convID, ref)
 		if err != nil {
@@ -433,10 +634,31 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 			continue
 		}
 		signedURLs = append(signedURLs, url)
+		successfulRefs = append(successfulRefs, ref)
 		contentTypes = append(contentTypes, "image/png")
 	}
 	if len(signedURLs) == 0 {
 		return false, ErrDownload, errors.New("all download urls failed")
+	}
+
+	if r.files != nil {
+		archiveImages := make([]imagestore.SourceImage, 0, len(signedURLs))
+		for idx, signedURL := range signedURLs {
+			body, contentType, err := cli.FetchImage(ctx, signedURL, 16*1024*1024)
+			if err != nil {
+				return false, ErrArchive, err
+			}
+			if contentType == "" && idx < len(contentTypes) {
+				contentType = contentTypes[idx]
+			}
+			contentTypes[idx] = contentType
+			archiveImages = append(archiveImages, imagestore.SourceImage{
+				Index:       idx,
+				Data:        body,
+				ContentType: contentType,
+			})
+		}
+		result.archiveImages = archiveImages
 	}
 
 	logger.L().Info("image runner result summary",
@@ -448,7 +670,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 		zap.Int("signed_count", len(signedURLs)),
 	)
 
-	result.FileIDs = fileRefs
+	result.FileIDs = successfulRefs
 	result.SignedURLs = signedURLs
 	result.ContentTypes = contentTypes
 	return true, "", nil
@@ -478,4 +700,28 @@ func (r *Runner) classifyUpstream(err error) string {
 // GenerateTaskID 生成对外 task_id。
 func GenerateTaskID() string {
 	return "img_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:24]
+}
+
+func defaultRunnerDownload(ctx context.Context, signedURL string) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signedURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", chatgpt.DefaultUserAgent)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 400 {
+		return nil, "", fmt.Errorf("download image failed: status=%d", res.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, 16*1024*1024+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(body) > 16*1024*1024 {
+		return nil, "", errors.New("image exceeds max bytes")
+	}
+	return body, res.Header.Get("Content-Type"), nil
 }

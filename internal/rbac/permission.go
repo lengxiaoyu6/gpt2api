@@ -28,11 +28,11 @@ type Permission string
 
 const (
 	// --- 普通用户(self) ---
-	PermSelfProfile = Permission("self:profile")       // 看/改自己资料
-	PermSelfKey     = Permission("self:key")           // 管自己 API Key
-	PermSelfUsage   = Permission("self:usage")         // 查自己 usage/账单
-	PermSelfRecharge = Permission("self:recharge")     // 充值/查自己订单
-	PermSelfImage    = Permission("self:image")        // 自己生图任务
+	PermSelfProfile  = Permission("self:profile")  // 看/改自己资料
+	PermSelfKey      = Permission("self:key")      // 管自己 API Key
+	PermSelfUsage    = Permission("self:usage")    // 查自己 usage/账单
+	PermSelfRecharge = Permission("self:recharge") // 充值/查自己订单
+	PermSelfImage    = Permission("self:image")    // 自己生图任务
 
 	// --- 管理员(admin) ---
 	// 用户管理
@@ -62,8 +62,9 @@ const (
 	PermAuditRead    = Permission("audit:read")
 
 	// 系统
-	PermSystemSetting = Permission("system:setting") // 改系统配置
-	PermSystemBackup  = Permission("system:backup")  // 数据库备份/恢复(超高危)
+	PermSystemSetting   = Permission("system:setting") // 改系统配置
+	PermSystemBackup    = Permission("system:backup")  // 数据库备份/恢复(超高危)
+	PermSystemImageFile = Permission("system:image_file")
 )
 
 // rolePermissions 是角色到权限集合的静态映射。
@@ -87,7 +88,7 @@ var rolePermissions = map[string][]Permission{
 		PermModelRead, PermModelWrite,
 		PermGroupWrite, PermRechargeManage,
 		PermUsageReadAll, PermStatsReadAll, PermAuditRead,
-		PermSystemSetting, PermSystemBackup,
+		PermSystemSetting, PermSystemBackup, PermSystemImageFile,
 	},
 }
 

@@ -1,4 +1,4 @@
-import { buildApiURL, http, TOKEN_KEY } from './http'
+import { authorizedFetch, http } from './http'
 import type { UserInfo } from './auth'
 
 export interface MeResp {
@@ -96,10 +96,6 @@ export function getMyImageTask(taskID: string) {
   return http.get(`/api/me/images/tasks/${taskID}`) as Promise<ImageTask>
 }
 
-function readToken() {
-  return localStorage.getItem(TOKEN_KEY) || ''
-}
-
 async function parseError(resp: Response, fallback: string) {
   try {
     const body = await resp.json()
@@ -110,11 +106,10 @@ async function parseError(resp: Response, fallback: string) {
 }
 
 export async function playGenerateImage(req: PlayImageRequest, signal?: AbortSignal) {
-  const resp = await fetch(buildApiURL('/api/me/playground/image'), {
+  const resp = await authorizedFetch('/api/me/playground/image', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${readToken()}`,
     },
     body: JSON.stringify(req),
     signal,
@@ -139,11 +134,8 @@ export async function playEditImage(
   if (opts?.upscale) fd.append('upscale', opts.upscale)
   fd.append('image', file, file.name)
 
-  const resp = await fetch(buildApiURL('/api/me/playground/image-edit'), {
+  const resp = await authorizedFetch('/api/me/playground/image-edit', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${readToken()}`,
-    },
     body: fd,
     signal: opts?.signal,
   })

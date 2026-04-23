@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+type stubHistoryImageStore struct {
+	original map[string]bool
+	thumb    map[string]bool
+}
+
+func (s stubHistoryImageStore) HasOriginal(taskID string, idx int) (bool, error) {
+	return s.original[fileKey(taskID, idx)], nil
+}
+
+func (s stubHistoryImageStore) HasThumb(taskID string, idx int) (bool, error) {
+	return s.thumb[fileKey(taskID, idx)], nil
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -15,9 +28,10 @@ func mustJSON(t *testing.T, v any) []byte {
 	return b
 }
 
-func TestToViewUsesSignedProxyURLsForHistoryTasks(t *testing.T) {
+func TestBuildHistoryImageURLsUsesLocalFilesAndThumbFallback(t *testing.T) {
 	task := &Task{
-		TaskID: "img_hist_123",
+		TaskID:      "img_hist_123",
+		StorageMode: StorageModeLocal,
 		ResultURLs: mustJSON(t, []string{
 			"https://chatgpt.com/backend-api/estuary/content?id=1",
 			"https://files.oaiusercontent.com/file-2",
@@ -25,41 +39,66 @@ func TestToViewUsesSignedProxyURLsForHistoryTasks(t *testing.T) {
 		FileIDs: mustJSON(t, []string{"sed:file-1", "file-2"}),
 	}
 
-	view := toView(task)
-	if len(view.ImageURLs) != 2 {
-		t.Fatalf("expected 2 image urls, got %d", len(view.ImageURLs))
+	images, thumbs := buildHistoryImageURLs(task, stubHistoryImageStore{
+		original: map[string]bool{
+			fileKey("img_hist_123", 0): true,
+			fileKey("img_hist_123", 1): true,
+		},
+		thumb: map[string]bool{
+			fileKey("img_hist_123", 0): true,
+		},
+	})
+	if len(images) != 2 || len(thumbs) != 2 {
+		t.Fatalf("unexpected counts: images=%d thumbs=%d", len(images), len(thumbs))
 	}
-	for i, url := range view.ImageURLs {
-		wantPrefix := "/p/img/img_hist_123/" + string(rune('0'+i))
-		if !strings.HasPrefix(url, wantPrefix) {
-			t.Fatalf("image url %d = %q, want prefix %q", i, url, wantPrefix)
-		}
-		if !strings.Contains(url, "exp=") || !strings.Contains(url, "sig=") {
-			t.Fatalf("image url %d = %q, want signed proxy query", i, url)
-		}
+	if !strings.HasPrefix(images[0], "/p/img/img_hist_123/0") {
+		t.Fatalf("unexpected image url 0: %q", images[0])
 	}
-	if len(view.FileIDs) != 2 || view.FileIDs[0] != "file-1" || view.FileIDs[1] != "file-2" {
-		t.Fatalf("unexpected file ids: %#v", view.FileIDs)
+	if !strings.HasPrefix(thumbs[0], "/p/thumb/img_hist_123/0") {
+		t.Fatalf("unexpected thumb url 0: %q", thumbs[0])
+	}
+	if images[1] != thumbs[1] {
+		t.Fatalf("expected thumb fallback to original, got image=%q thumb=%q", images[1], thumbs[1])
 	}
 }
 
-func TestToViewFallsBackToStoredURLCountWhenFileIDsMissing(t *testing.T) {
+func TestBuildHistoryImageURLsReturnsExpiredPlaceholderWhenOriginalMissing(t *testing.T) {
 	task := &Task{
-		TaskID: "img_hist_456",
+		TaskID:      "img_hist_456",
+		StorageMode: StorageModeLocal,
 		ResultURLs: mustJSON(t, []string{
 			"https://chatgpt.com/backend-api/estuary/content?id=1",
 			"https://chatgpt.com/backend-api/estuary/content?id=2",
 		}),
 	}
 
-	view := toView(task)
-	if len(view.ImageURLs) != 2 {
-		t.Fatalf("expected 2 image urls, got %d", len(view.ImageURLs))
+	images, thumbs := buildHistoryImageURLs(task, stubHistoryImageStore{})
+	if len(images) != 2 || len(thumbs) != 2 {
+		t.Fatalf("unexpected counts: images=%d thumbs=%d", len(images), len(thumbs))
 	}
-	for i, url := range view.ImageURLs {
-		wantPrefix := "/p/img/img_hist_456/" + string(rune('0'+i))
-		if !strings.HasPrefix(url, wantPrefix) {
-			t.Fatalf("image url %d = %q, want prefix %q", i, url, wantPrefix)
-		}
+	if images[0] != "" || thumbs[0] != "" {
+		t.Fatalf("expected empty urls when original missing, got image=%q thumb=%q", images[0], thumbs[0])
+	}
+}
+
+func TestBuildHistoryImageURLsReturnsCloudRemoteURLsWithoutThumbs(t *testing.T) {
+	task := &Task{
+		TaskID:      "img_hist_cloud",
+		StorageMode: StorageModeCloud,
+		ResultURLs: mustJSON(t, []string{
+			"https://cdn.example.com/1.png",
+			"https://cdn.example.com/2.png",
+		}),
+	}
+
+	images, thumbs := buildHistoryImageURLs(task, stubHistoryImageStore{})
+	if len(images) != 2 {
+		t.Fatalf("unexpected image count: %d", len(images))
+	}
+	if len(thumbs) != 0 {
+		t.Fatalf("expected empty thumbs, got %d", len(thumbs))
+	}
+	if images[0] != "https://cdn.example.com/1.png" || images[1] != "https://cdn.example.com/2.png" {
+		t.Fatalf("unexpected images: %#v", images)
 	}
 }

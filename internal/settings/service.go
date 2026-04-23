@@ -132,6 +132,17 @@ func (s *Service) GetFloat(key string) float64 {
 // -- site --
 func (s *Service) SiteName() string { return firstNonEmpty(s.GetString(SiteName), "GPT2API") }
 
+// -- storage --
+func (s *Service) ImageStorageMode() string {
+	mode := strings.ToLower(strings.TrimSpace(s.GetString(StorageImageMode)))
+	if mode == "cloud" {
+		return "cloud"
+	}
+	return "local"
+}
+
+func (s *Service) CloudConfig() string { return strings.TrimSpace(s.GetString(StorageCloudConfig)) }
+
 // -- auth --
 func (s *Service) AllowRegister() bool { return s.GetBool(AuthAllowRegister) }
 func (s *Service) DefaultGroupID() uint64 {
@@ -287,6 +298,7 @@ func (s *Service) ProbeTimeoutSec() int {
 	}
 	return n
 }
+
 // ProbeTargetURL 返回管理员配置的探测目标原值。
 // 留空不再在此层硬塞 gstatic,而是把"空"的语义向下透传给 Prober,
 // 由 Prober 走内置候选链(见 defaultProbeTargets)。

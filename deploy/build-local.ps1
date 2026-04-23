@@ -58,5 +58,18 @@ try {
     Pop-Location
 }
 
+Write-Host "[build-local] step4 = npm run build (wap)"
+Push-Location (Join-Path $root "wap")
+try {
+    if (-not (Test-Path node_modules)) {
+        npm install --no-audit --no-fund --loglevel=error
+        if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+    }
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
+} finally {
+    Pop-Location
+}
+
 Write-Host "[build-local] done. artifacts:"
-Get-Item deploy/bin/gpt2api, deploy/bin/goose, web/dist/index.html | Format-Table -AutoSize
+Get-Item deploy/bin/gpt2api, deploy/bin/goose, web/dist/index.html, wap/dist/index.html | Format-Table -AutoSize

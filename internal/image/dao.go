@@ -24,12 +24,12 @@ func NewDAO(db *sqlx.DB) *DAO { return &DAO{db: db} }
 func (d *DAO) Create(ctx context.Context, t *Task) error {
 	res, err := d.db.ExecContext(ctx, `
 INSERT INTO image_tasks
-  (task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
+  (task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, storage_mode, status,
    conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
    created_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
 		t.TaskID, t.UserID, t.KeyID, t.ModelID, t.AccountID,
-		t.Prompt, t.N, t.Size, ValidateUpscale(t.Upscale),
+		t.Prompt, t.N, t.Size, ValidateUpscale(t.Upscale), NormalizeStorageMode(t.StorageMode),
 		nullEmpty(t.Status, StatusQueued),
 		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs),
 		t.Error, t.EstimatedCredit, t.CreditCost,
@@ -62,7 +62,7 @@ func (d *DAO) SetAccount(ctx context.Context, taskID string, accountID uint64) e
 }
 
 // MarkSuccess 更新成功状态。
-func (d *DAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, creditCost int64) error {
+func (d *DAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, storageMode string, creditCost int64) error {
 	fidB, _ := json.Marshal(fileIDs)
 	urlB, _ := json.Marshal(resultURLs)
 	_, err := d.db.ExecContext(ctx, `
@@ -71,9 +71,10 @@ UPDATE image_tasks
        conversation_id=?,
        file_ids=?,
        result_urls=?,
+       storage_mode=?,
        credit_cost=?,
        finished_at=NOW()
- WHERE task_id=?`, convID, fidB, urlB, creditCost, taskID)
+ WHERE task_id=?`, convID, fidB, urlB, NormalizeStorageMode(storageMode), creditCost, taskID)
 	return err
 }
 
@@ -98,7 +99,7 @@ func (d *DAO) Get(ctx context.Context, taskID string) (*Task, error) {
 	var t Task
 	err := d.db.GetContext(ctx, &t, `
 SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
-       conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
+       storage_mode, conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE task_id = ?`, taskID)
@@ -119,7 +120,7 @@ func (d *DAO) ListByUser(ctx context.Context, userID uint64, limit, offset int) 
 	var out []Task
 	err := d.db.SelectContext(ctx, &out, `
 SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
-       conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
+       storage_mode, conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE user_id = ?

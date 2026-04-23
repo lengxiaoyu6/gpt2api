@@ -15,8 +15,29 @@ export const http: AxiosInstance = axios.create({
   baseURL,
   timeout: 30_000,
 })
+export const refreshHTTP: AxiosInstance = axios.create({
+  baseURL,
+  timeout: 30_000,
+})
 
 let unauthorizedHandler: (() => void) | null = null
+let refreshPromise: Promise<string> | null = null
+
+interface RetryAxiosRequestConfig extends AxiosRequestConfig {
+  _retry?: boolean
+  _skipAuthRefresh?: boolean
+}
+
+interface AuthorizedFetchInit extends RequestInit {
+  _retry?: boolean
+}
+
+function ensureAxiosHeaders(headers?: AxiosRequestConfig['headers']) {
+  if (headers instanceof AxiosHeaders) {
+    return headers
+  }
+  return new AxiosHeaders(headers as any)
+}
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler
@@ -28,10 +49,64 @@ export function buildApiURL(path: string) {
   return `${baseURL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
 }
 
+function readAccessToken() {
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+
+function readRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY) || ''
+}
+
+function persistTokens(token: { access_token: string; refresh_token: string }) {
+  localStorage.setItem(TOKEN_KEY, token.access_token)
+  localStorage.setItem(REFRESH_KEY, token.refresh_token)
+}
+
+function clearTokens() {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(REFRESH_KEY)
+}
+
+function isAuthEndpoint(url?: string) {
+  const value = (url || '').toLowerCase()
+  return value.includes('/api/auth/login')
+    || value.includes('/api/auth/register')
+    || value.includes('/api/auth/refresh')
+}
+
+function handleUnauthorized() {
+  clearTokens()
+  unauthorizedHandler?.()
+}
+
+async function refreshAccessToken() {
+  const refreshToken = readRefreshToken()
+  if (!refreshToken) {
+    throw new Error('missing refresh token')
+  }
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await refreshHTTP.post('/api/auth/refresh', {
+        refresh_token: refreshToken,
+      })
+      const payload = response.data as ApiEnvelope<{ access_token: string; refresh_token: string }>
+      const token = payload?.data
+      if (!payload || payload.code !== 0 || !token?.access_token || !token?.refresh_token) {
+        throw new Error(payload?.message || 'refresh failed')
+      }
+      persistTokens(token)
+      return token.access_token
+    })().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
+
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = readAccessToken()
   if (token) {
-    const headers = AxiosHeaders.from(config.headers)
+    const headers = ensureAxiosHeaders(config.headers)
     headers.set('Authorization', `Bearer ${token}`)
     config.headers = headers
   }
@@ -53,9 +128,22 @@ http.interceptors.response.use(
     const status = error.response?.status
     const detail = error.response?.data?.message || error.message || '网络异常'
     if (status === 401) {
-      localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem(REFRESH_KEY)
-      unauthorizedHandler?.()
+      const originalConfig = error.config as RetryAxiosRequestConfig | undefined
+      if (originalConfig && !originalConfig._retry && !originalConfig._skipAuthRefresh && !isAuthEndpoint(originalConfig.url) && readRefreshToken()) {
+        originalConfig._retry = true
+        return refreshAccessToken()
+          .then((accessToken) => {
+            const headers = ensureAxiosHeaders(originalConfig.headers)
+            headers.set('Authorization', `Bearer ${accessToken}`)
+            originalConfig.headers = headers
+            return http.request(originalConfig)
+          })
+          .catch((refreshError) => {
+            handleUnauthorized()
+            return Promise.reject(refreshError instanceof Error ? refreshError : new Error(detail))
+          })
+      }
+      handleUnauthorized()
     }
     return Promise.reject(new Error(detail))
   },
@@ -63,4 +151,30 @@ http.interceptors.response.use(
 
 export function request<T = unknown>(config: AxiosRequestConfig) {
   return http.request(config) as Promise<T>
+}
+
+export async function authorizedFetch(input: string, init: AuthorizedFetchInit = {}) {
+  const requestURL = buildApiURL(input)
+  const headers = new Headers(init.headers)
+  const accessToken = readAccessToken()
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`)
+  }
+  const response = await fetch(requestURL, { ...init, headers })
+  if (response.status !== 401 || init._retry || isAuthEndpoint(requestURL) || !readRefreshToken()) {
+    return response
+  }
+  try {
+    await refreshAccessToken()
+    const retryHeaders = new Headers(init.headers)
+    const nextToken = readAccessToken()
+    if (nextToken) {
+      retryHeaders.set('Authorization', `Bearer ${nextToken}`)
+    }
+    const retryInit: AuthorizedFetchInit = { ...init, _retry: true, headers: retryHeaders }
+    return await fetch(requestURL, retryInit)
+  } catch {
+    handleUnauthorized()
+    return response
+  }
 }

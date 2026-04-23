@@ -18,7 +18,6 @@ import {
   Gift,
   CreditCard,
   ShieldCheck,
-  HelpCircle,
   LogOut,
   Sparkles,
   Zap,
@@ -166,7 +165,6 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
     { label: '我的会员', icon: CreditCard, color: 'text-amber-500', bg: 'bg-amber-500/10', extra: '超值特惠', onClick: () => setMembershipDialogOpen(true) },
     { label: '充值积分', icon: Coins, color: 'text-indigo-500', bg: 'bg-indigo-500/10', onClick: () => setRedeemDialogOpen(true) },
     { label: '安全中心', icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10', onClick: () => setSecurityDialogOpen(true) },
-    { label: '帮助与反馈', icon: HelpCircle, color: 'text-sky-500', bg: 'bg-sky-500/10' },
   ];
 
   const formattedBalance = formatCredit(user.credit_balance);

@@ -1,24 +1,3 @@
-// images_proxy.go —— 图片返回防盗链代理。
-//
-// 背景:chatgpt.com 返回给我们的图片下载 URL 有两种:
-//  1. file-service 直出:https://files.oaiusercontent.com/...(签名直链,15 分钟有效,浏览器可直接访问)
-//  2. sediment / estuary:https://chatgpt.com/backend-api/estuary/content?...
-//     这种 URL **必须带 Authorization: Bearer <AT>** 才能下载,
-//     直接把它塞进 <img src> 返回给前端,浏览器 100% 403。
-//
-// 方案:后端不再把上游 URL 直接暴露给客户端,改成生成一个自家签名 URL:
-//
-//	GET /p/img/<task_id>/<idx>?exp=<unix_ms>&sig=<hex>
-//
-// 请求到达时,后端:
-//  1. 校验 exp 未过期 + sig 匹配(HMAC-SHA256,进程级随机 secret);
-//  2. 用 DAO 按 task_id 查任务,找到 file_ids[idx] / account_id / conversation_id;
-//  3. 用账号 AT + deviceID + proxy 构造一个 chatgpt.Client;
-//  4. 调 ImageDownloadURL 拿当前有效的上游签名 URL;
-//  5. 调 FetchImage 把字节拉下来,按 Content-Type 原样写回给浏览器。
-//
-// 这样前端只看见自家 host 的 URL,不再受防盗链 / Authorization 困扰;
-// 上游签名 URL 过期也不怕,每次访问都现取。
 package gateway
 
 import (
@@ -26,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +13,6 @@ import (
 
 	"github.com/432539/gpt2api/internal/image"
 	"github.com/432539/gpt2api/internal/imageproxy"
-	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 	"github.com/432539/gpt2api/pkg/logger"
 )
 
@@ -52,18 +31,31 @@ type ImageAccountResolver interface {
 	ProxyURL(ctx context.Context, accountID uint64) string
 }
 
+type localProxyImageStore interface {
+	ReadOriginal(taskID string, idx int) ([]byte, string, bool, error)
+	ReadThumb(taskID string, idx int) ([]byte, string, bool, error)
+}
+
 // ImageProxyTTL 单条签名 URL 的默认有效期(24h,够前端离线展示一段时间)。
 const ImageProxyTTL = imageproxy.DefaultTTL
 
 // BuildImageProxyURL 生成代理 URL。返回绝对 path(不含 host),调用方可以直接拼或交给前端同 origin 使用。
 //
 // 默认 ttl=24h。前端展示一张历史图片,最多走一次上游获取 bytes,之后浏览器缓存即可。
-func BuildImageProxyURL(taskID string, idx int, ttl time.Duration) string {
-	return imageproxy.BuildURL(taskID, idx, ttl)
+func BuildImageProxyURL(taskID string, idx int, resource string, ttl time.Duration) string {
+	return imageproxy.BuildURL(taskID, idx, resource, ttl)
 }
 
 // ImageProxy 按签名代理下载上游图片。无需 API Key,只靠 URL 签名校验。
 func (h *ImagesHandler) ImageProxy(c *gin.Context) {
+	h.serveProxyImage(c, imageproxy.ResourceOriginal)
+}
+
+func (h *ImagesHandler) ThumbProxy(c *gin.Context) {
+	h.serveProxyImage(c, imageproxy.ResourceThumb)
+}
+
+func (h *ImagesHandler) serveProxyImage(c *gin.Context, resource string) {
 	taskID := c.Param("task_id")
 	idxStr := c.Param("idx")
 	expStr := c.Query("exp")
@@ -83,7 +75,8 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	if !imageproxy.Verify(taskID, idx, expMs, sig) {
+	resource = imageproxy.NormalizeResource(resource)
+	if !imageproxy.Verify(taskID, idx, resource, expMs, sig) {
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
@@ -97,33 +90,28 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	fids := t.DecodeFileIDs()
-	if idx >= len(fids) {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
-	}
-	ref := fids[idx] // 可能是 "sed:xxxx" 或 "xxxx"
-	if t.AccountID == 0 || h.ImageAccResolver == nil {
-		c.AbortWithStatus(http.StatusServiceUnavailable)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-	defer cancel()
-
-	body, ct, err := h.loadProxyImage(ctx, t, idx, ref)
+	body, ct, err := h.loadProxyImage(c.Request.Context(), t, idx, resource)
 	if err != nil {
+		if err == errProxyImageNotFound {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		logger.L().Warn("image proxy load local image",
+			zap.Error(err),
+			zap.String("task_id", taskID),
+			zap.Int("idx", idx),
+			zap.String("resource", resource))
 		c.AbortWithStatus(http.StatusBadGateway)
 		return
 	}
 
 	scale := image.ValidateUpscale(t.Upscale)
-	if scale != "" {
+	if resource == imageproxy.ResourceOriginal && scale != "" {
 		cacheKey := fmt.Sprintf("%s|%d|%s", taskID, idx, scale)
 		if data, ctCache, ok := imageUpscaleCache.Get(cacheKey); ok {
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Header("X-Upscale", scale+";cache=hit")
-			c.Data(http.StatusOK, ctCache, data)
+			writeInlineImage(c, http.StatusOK, ctCache, data)
 			return
 		}
 
@@ -139,7 +127,7 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 			if ct == "" {
 				ct = "image/png"
 			}
-			c.Data(http.StatusOK, ct, body)
+			writeInlineImage(c, http.StatusOK, ct, body)
 			return
 		}
 		if upCT != "" {
@@ -156,7 +144,7 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 		if ct == "" {
 			ct = "image/png"
 		}
-		c.Data(http.StatusOK, ct, body)
+		writeInlineImage(c, http.StatusOK, ct, body)
 		return
 	}
 
@@ -164,45 +152,17 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 		ct = "image/png"
 	}
 	c.Header("Cache-Control", "private, max-age=1800")
-	c.Data(http.StatusOK, ct, body)
+	writeInlineImage(c, http.StatusOK, ct, body)
 }
 
-func (h *ImagesHandler) fetchProxyImageFromUpstream(ctx context.Context, t *image.Task, ref string) ([]byte, string, error) {
-	at, deviceID, cookies, err := h.ImageAccResolver.AuthToken(ctx, t.AccountID)
-	if err != nil {
-		logger.L().Warn("image proxy resolve account",
-			zap.Error(err), zap.Uint64("account_id", t.AccountID))
-		return nil, "", err
-	}
-	proxyURL := h.ImageAccResolver.ProxyURL(ctx, t.AccountID)
-
-	cli, err := chatgpt.New(chatgpt.Options{
-		AuthToken: at,
-		DeviceID:  deviceID,
-		ProxyURL:  proxyURL,
-		Cookies:   cookies,
-		Timeout:   h.upstreamTimeout(),
-	})
-	if err != nil {
-		logger.L().Warn("image proxy build client", zap.Error(err))
-		return nil, "", err
-	}
-
-	signedURL, err := cli.ImageDownloadURL(ctx, t.ConversationID, ref)
-	if err != nil {
-		logger.L().Warn("image proxy download_url",
-			zap.Error(err), zap.String("task_id", t.TaskID), zap.String("ref", ref))
-		return nil, "", err
-	}
-
-	body, ct, err := cli.FetchImage(ctx, signedURL, 16*1024*1024)
-	if err != nil {
-		logger.L().Warn("image proxy fetch",
-			zap.Error(err), zap.String("task_id", t.TaskID))
-		return nil, "", err
+func writeInlineImage(c *gin.Context, status int, contentType string, body []byte) {
+	ct := strings.TrimSpace(contentType)
+	if ct == "" && len(body) > 0 {
+		ct = http.DetectContentType(body)
 	}
 	if ct == "" {
 		ct = "image/png"
 	}
-	return body, ct, nil
+	c.Header("Content-Disposition", "inline")
+	c.Data(status, ct, body)
 }

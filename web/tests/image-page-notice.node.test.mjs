@@ -25,6 +25,17 @@ test('后台系统设置页为生图页公告使用多行输入框', () => {
   assert.match(settingsVue, /:rows="isTextarea\(it\) \? 3 : undefined"/)
 })
 
+test('后台系统设置页将首页 Showcase 图片渲染为多行输入框', () => {
+  const modelGo = read('internal/settings/model.go')
+  const settingsVue = read('web/src/views/admin/Settings.vue')
+  assert.match(modelGo, /SiteShowcaseURLs\s+=\s+"site\.showcase_urls"/)
+  assert.match(modelGo, /Label:\s*"首页 Showcase 图片"/)
+  assert.match(modelGo, /Type:\s*"string"/)
+  assert.match(settingsVue, /function isTextarea\(it: SettingItem\)/)
+  assert.match(settingsVue, /it\.key === 'site\.showcase_urls'/)
+  assert.match(settingsVue, /:rows="isTextarea\(it\) \? 3 : undefined"/)
+})
+
 test('Web 生图页读取并展示生图页公告', () => {
   const playVue = read('web/src/views/personal/OnlinePlay.vue')
   assert.match(playVue, /useSiteStore/)

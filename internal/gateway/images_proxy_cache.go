@@ -2,11 +2,16 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/432539/gpt2api/internal/image"
+	"github.com/432539/gpt2api/internal/imageproxy"
 )
 
 const (
@@ -16,15 +21,7 @@ const (
 
 var defaultImageBytesCache = newImageProxyCache(defaultImageProxyCacheTTL, defaultImageProxyCacheMaxEntries)
 
-type imageProxyFetcher interface {
-	Fetch(ctx context.Context, task *image.Task, ref string) ([]byte, string, error)
-}
-
-type imageProxyFetchFunc func(ctx context.Context, task *image.Task, ref string) ([]byte, string, error)
-
-func (f imageProxyFetchFunc) Fetch(ctx context.Context, task *image.Task, ref string) ([]byte, string, error) {
-	return f(ctx, task, ref)
-}
+var errProxyImageNotFound = errors.New("proxy image not found")
 
 type cachedProxyImage struct {
 	body        []byte
@@ -121,26 +118,77 @@ func (h *ImagesHandler) proxyImageCache() *imageProxyCache {
 	return defaultImageBytesCache
 }
 
-func (h *ImagesHandler) proxyImageFetcher() imageProxyFetcher {
-	if h != nil && h.imageProxyFetcher != nil {
-		return h.imageProxyFetcher
-	}
-	return imageProxyFetchFunc(h.fetchProxyImageFromUpstream)
-}
-
-func (h *ImagesHandler) loadProxyImage(ctx context.Context, task *image.Task, idx int, ref string) ([]byte, string, error) {
-	cacheKey := fmt.Sprintf("%s:%d", task.TaskID, idx)
+func (h *ImagesHandler) loadProxyImage(ctx context.Context, task *image.Task, idx int, resource string) ([]byte, string, error) {
+	cacheKey := fmt.Sprintf("%s:%d:%s", task.TaskID, idx, imageproxy.NormalizeResource(resource))
 	cache := h.proxyImageCache()
 	if body, contentType, ok := cache.get(cacheKey); ok {
 		return body, contentType, nil
 	}
 
-	body, contentType, err := h.proxyImageFetcher().Fetch(ctx, task, ref)
+	body, contentType, ok, err := h.readLocalProxyImage(ctx, task, idx, resource)
 	if err != nil {
 		return nil, "", err
 	}
+	if !ok && image.NormalizeStorageMode(task.StorageMode) == image.StorageModeCloud {
+		body, contentType, ok, err = h.readCloudProxyImage(ctx, task, idx, resource)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	if !ok {
+		return nil, "", errProxyImageNotFound
+	}
 	cache.set(cacheKey, body, contentType)
 	return cloneBytes(body), contentType, nil
+}
+
+func (h *ImagesHandler) readLocalProxyImage(ctx context.Context, task *image.Task, idx int, resource string) ([]byte, string, bool, error) {
+	_ = ctx
+	if h == nil || h.LocalImageStore == nil {
+		return nil, "", false, nil
+	}
+	if imageproxy.NormalizeResource(resource) == imageproxy.ResourceThumb {
+		return h.LocalImageStore.ReadThumb(task.TaskID, idx)
+	}
+	return h.LocalImageStore.ReadOriginal(task.TaskID, idx)
+}
+
+func (h *ImagesHandler) readCloudProxyImage(ctx context.Context, task *image.Task, idx int, resource string) ([]byte, string, bool, error) {
+	if imageproxy.NormalizeResource(resource) != imageproxy.ResourceOriginal {
+		return nil, "", false, nil
+	}
+	urls := task.DecodeResultURLs()
+	if idx < 0 || idx >= len(urls) {
+		return nil, "", false, nil
+	}
+	remoteURL := strings.TrimSpace(urls[idx])
+	if remoteURL == "" {
+		return nil, "", false, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
+	if err != nil {
+		return nil, "", false, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", false, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= http.StatusBadRequest {
+		return nil, "", false, fmt.Errorf("fetch cloud image failed: status=%d", res.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, 16*1024*1024+1))
+	if err != nil {
+		return nil, "", false, err
+	}
+	if len(body) > 16*1024*1024 {
+		return nil, "", false, errors.New("cloud image exceeds max bytes")
+	}
+	contentType := strings.TrimSpace(res.Header.Get("Content-Type"))
+	if contentType == "" && len(body) > 0 {
+		contentType = http.DetectContentType(body)
+	}
+	return body, contentType, true, nil
 }
 
 func cloneBytes(src []byte) []byte {

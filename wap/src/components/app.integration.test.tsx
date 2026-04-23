@@ -111,6 +111,13 @@ describe('wap integration', () => {
     expect(screen.getByText('8.99')).toBeInTheDocument()
   })
 
+  test('bottom navigation uses 生图 label', () => {
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: '生图' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '生成' })).toBeNull()
+  })
+
   test('home footer uses site name from site info', () => {
     useStore.setState({
       siteInfo: {
@@ -215,6 +222,41 @@ describe('wap integration', () => {
     expect(profileFooter).not.toBeNull()
     expect(profileFooter?.className).toContain('pb-6')
     expect(profileFooter?.className).not.toContain('pb-12')
+  })
+
+  test('profile menu does not render help entry', () => {
+    useStore.setState({
+      activeTab: 'profile',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 0,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 0,
+        awarded_credits: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+
+    expect(screen.getByText('我的会员')).toBeInTheDocument()
+    expect(screen.getByText('充值积分')).toBeInTheDocument()
+    expect(screen.getByText('安全中心')).toBeInTheDocument()
+    expect(screen.queryByText('帮助与反馈')).toBeNull()
   })
 
   test('profile recharge entry opens redeem dialog and submits redeem code', async () => {
@@ -349,14 +391,33 @@ describe('wap integration', () => {
     })
   })
 
-  test('home page only renders two capability cards', () => {
+  test('home page renders video capability card and coming soon dialog', async () => {
     render(<HomeView onStartGeneration={() => {}} />)
+
+    const heroSection = screen.getByAltText('Hero').closest('section')
 
     expect(screen.getByText('文生图')).toBeInTheDocument()
     expect(screen.getByText('图生图')).toBeInTheDocument()
+    expect(screen.getByText('生成视频')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.queryByText('极致优化')).toBeNull()
     expect(screen.queryByText('灵感图鉴')).toBeNull()
     expect(screen.queryByText('更多作品')).toBeNull()
+    expect(heroSection?.className).toContain('h-[320px]')
+
+    fireEvent.click(screen.getByText('生成视频'))
+
+    expect(await screen.findByText('敬请期待')).toBeInTheDocument()
+  })
+
+  test('home capability card triggers generation when clicking card content', () => {
+    const onStartGeneration = vi.fn()
+
+    render(<HomeView onStartGeneration={onStartGeneration} />)
+
+    fireEvent.click(screen.getByText('文生图'))
+
+    expect(onStartGeneration).toHaveBeenCalledTimes(1)
   })
 
   test('generate page supports model selection, count pricing copy and multi-image results', async () => {

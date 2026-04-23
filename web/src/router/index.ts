@@ -83,6 +83,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '审计日志', perm: 'audit:read' } },
       { path: 'backup', component: () => import('@/views/admin/Backup.vue'),
         meta: { title: '数据备份', perm: 'system:backup' } },
+      { path: 'image-files', component: () => import('@/views/admin/ImageFiles.vue'),
+        meta: { title: '图片文件', perm: 'system:image_file' } },
       { path: 'settings', component: () => import('@/views/admin/Settings.vue'),
         meta: { title: '系统设置', perm: 'system:setting' } },
     ],

@@ -23,6 +23,7 @@ import (
 	"github.com/432539/gpt2api/internal/db"
 	"github.com/432539/gpt2api/internal/gateway"
 	"github.com/432539/gpt2api/internal/image"
+	"github.com/432539/gpt2api/internal/imagestore"
 	modelpkg "github.com/432539/gpt2api/internal/model"
 	"github.com/432539/gpt2api/internal/proxy"
 	gwratelimit "github.com/432539/gpt2api/internal/ratelimit"
@@ -144,11 +145,13 @@ func main() {
 	}
 
 	imageDAO := image.NewDAO(sqldb)
-	imageRunner := image.NewRunner(sched, imageDAO, cfg.Image)
+	imageFiles := imagestore.NewLocal(imagestore.LocalOptions{RootDir: "storage/images"})
+	imageRunner := image.NewRunner(sched, imageDAO, cfg.Image, imageFiles)
 	imagesH := &gateway.ImagesHandler{
-		Handler: gwH,
-		Runner:  imageRunner,
-		DAO:     imageDAO,
+		Handler:         gwH,
+		Runner:          imageRunner,
+		DAO:             imageDAO,
+		LocalImageStore: imageFiles,
 	}
 	gwH.Images = imagesH // chat/completions 识别到图像模型时转派
 
@@ -173,7 +176,8 @@ func main() {
 	usageQDAO := usage.NewQueryDAO(sqldb)
 	adminUsageH := usage.NewAdminHandler(usageQDAO)
 	meUsageH := usage.NewMeHandler(usageQDAO)
-	meImageH := image.NewMeHandler(imageDAO)
+	meImageH := image.NewMeHandler(imageDAO, imageFiles)
+	imageFilesH := imagestore.NewHandler(imageFiles)
 
 	mailSvc := mailer.New(mailer.Config{
 		Host:     cfg.SMTP.Host,
@@ -199,6 +203,7 @@ func main() {
 	if err := settingsSvc.Reload(context.Background()); err != nil {
 		log.Warn("settings reload failed, using defaults", zap.Error(err))
 	}
+	imageRunner.SetSettings(settingsSvc)
 	settingsH := settings.NewHandler(settingsSvc, mailSvc, auditDAO)
 	authSvc.SetSettings(settingsSvc)
 	authSvc.SetBilling(billEngine)
@@ -275,8 +280,9 @@ func main() {
 		ProxyH:   proxyH,
 		AccountH: accountH,
 
-		GatewayH: gwH,
-		ImagesH:  imagesH,
+		GatewayH:    gwH,
+		ImagesH:     imagesH,
+		ImageFilesH: imageFilesH,
 
 		BackupH:     backupH,
 		AuditH:      auditH,
@@ -297,7 +303,8 @@ func main() {
 		RedeemH:        redeemH,
 		AdminRedeemH:   adminRedeemH,
 
-		SettingsH: settingsH,
+		SettingsH:   settingsH,
+		SettingsSvc: settingsSvc,
 	}
 
 	r := server.New(deps)

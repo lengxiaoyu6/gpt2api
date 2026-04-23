@@ -24,12 +24,31 @@ const features = [
     { icon: 'Connection', title: '简单易用', desc: '兼容标准接口结构，脚本、服务端与工作台均可快速接入。' },
 ];
 
-const previews = [
+const defaultPreviews = [
     'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=800&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=800&auto=format&fit=crop',
 ];
+
+const showcasePreviews = computed(() => {
+    const raw = site.get('site.showcase_urls', '');
+    const seen = new Set<string>();
+    return raw
+        .split(/\r?\n/)
+        .map((url) => url.trim())
+        .filter(Boolean)
+        .filter((url) => /^https?:\/\//i.test(url))
+        .filter((url) => {
+            if (seen.has(url)) {
+                return false;
+            }
+            seen.add(url);
+            return true;
+        });
+});
+
+const previews = computed(() => (showcasePreviews.value.length > 0 ? showcasePreviews.value : defaultPreviews));
 </script>
 
 <template>
@@ -93,7 +112,7 @@ const previews = [
             <div class="section-head">
                 <div>
                     <p class="section-head__eyebrow">Showcase</p>
-                    <h2>前沿生图展示</h2>
+                    <h2>前沿生图展示（展示图已压缩处理）</h2>
                 </div>
             </div>
 

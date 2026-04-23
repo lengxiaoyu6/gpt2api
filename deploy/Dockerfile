@@ -5,7 +5,8 @@
 # 构建前请先在宿主机生成以下产物(见 deploy/build-local.ps1 / build-local.sh):
 #   deploy/bin/gpt2api           Linux/amd64 可执行
 #   deploy/bin/goose             Linux/amd64 可执行
-#   web/dist/                    前端 Vite 产物
+#   web/dist/                    Web 前端产物
+#   wap/dist/                    WAP 前端产物
 #
 # 这样容器内除了 alpine 的 apk 装几个小工具,不需要任何外网访问。
 # 在网络通畅的 CI 环境里,你也可以用旧版的两阶段 Dockerfile。
@@ -29,6 +30,7 @@ RUN chmod +x /app/gpt2api /usr/local/bin/goose
 
 # 前端构建产物 —— 被 Go server 以 SPA 方式托管
 COPY web/dist /app/web/dist
+COPY wap/dist /app/wap/dist
 
 # Migrations、默认配置、entrypoint
 COPY sql     /app/sql

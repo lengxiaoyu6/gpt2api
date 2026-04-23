@@ -9,18 +9,137 @@
 //     避免前端/客户端乱写键污染表
 package settings
 
-import "strings"
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strings"
+)
+
+type OptionDef struct {
+	Label    string `json:"label"`
+	Value    string `json:"value"`
+	Disabled bool   `json:"disabled,omitempty"`
+}
+
+const (
+	SanyueUploadChannelTelegram    = "telegram"
+	SanyueUploadChannelHuggingFace = "huggingface"
+	DefaultSanyueImgHubConfigJSON  = `{"upload_url":"https://img2.oaiapis.com/upload","auth_code":"","server_compress":false,"return_format":"full","upload_channel":"telegram"}`
+)
+
+type SanyueImgHubConfig struct {
+	UploadURL      string `json:"upload_url"`
+	AuthCode       string `json:"auth_code"`
+	ServerCompress bool   `json:"server_compress"`
+	ReturnFormat   string `json:"return_format"`
+	UploadChannel  string `json:"upload_channel"`
+}
+
+func DefaultSanyueImgHubConfig() SanyueImgHubConfig {
+	return SanyueImgHubConfig{
+		UploadURL:      "https://img2.oaiapis.com/upload",
+		AuthCode:       "",
+		ServerCompress: false,
+		ReturnFormat:   "full",
+		UploadChannel:  SanyueUploadChannelTelegram,
+	}
+}
+
+func NormalizeSanyueUploadChannel(channel string) string {
+	normalized := strings.ToLower(strings.TrimSpace(channel))
+	switch normalized {
+	case "", SanyueUploadChannelTelegram:
+		return SanyueUploadChannelTelegram
+	case SanyueUploadChannelHuggingFace:
+		return SanyueUploadChannelHuggingFace
+	default:
+		return normalized
+	}
+}
+
+func IsSupportedSanyueUploadChannel(channel string) bool {
+	switch NormalizeSanyueUploadChannel(channel) {
+	case SanyueUploadChannelTelegram, SanyueUploadChannelHuggingFace:
+		return true
+	default:
+		return false
+	}
+}
+
+func ParseSanyueImgHubConfig(raw string) (SanyueImgHubConfig, error) {
+	if strings.TrimSpace(raw) == "" {
+		raw = DefaultSanyueImgHubConfigJSON
+	}
+	type rawConfig struct {
+		UploadURL      string          `json:"upload_url"`
+		AuthCode       string          `json:"auth_code"`
+		ServerCompress json.RawMessage `json:"server_compress"`
+		ReturnFormat   string          `json:"return_format"`
+		UploadChannel  string          `json:"upload_channel"`
+	}
+	var parsed rawConfig
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return SanyueImgHubConfig{}, fmt.Errorf("storage.cloud_config invalid json: %w", err)
+	}
+	serverCompress := false
+	if len(parsed.ServerCompress) == 0 {
+		parsed.ServerCompress = []byte("false")
+	}
+	if err := json.Unmarshal(parsed.ServerCompress, &serverCompress); err != nil {
+		return SanyueImgHubConfig{}, fmt.Errorf("storage.cloud_config server_compress must be bool")
+	}
+	return SanyueImgHubConfig{
+		UploadURL:      strings.TrimSpace(parsed.UploadURL),
+		AuthCode:       strings.TrimSpace(parsed.AuthCode),
+		ServerCompress: serverCompress,
+		ReturnFormat:   strings.TrimSpace(parsed.ReturnFormat),
+		UploadChannel:  NormalizeSanyueUploadChannel(parsed.UploadChannel),
+	}, nil
+}
+
+func ValidateStorageSnapshot(snapshot map[string]string) error {
+	mode := strings.ToLower(strings.TrimSpace(snapshot[StorageImageMode]))
+	if mode == "" {
+		mode = "local"
+	}
+	if mode != "cloud" {
+		return nil
+	}
+	cfg, err := ParseSanyueImgHubConfig(snapshot[StorageCloudConfig])
+	if err != nil {
+		return err
+	}
+	if cfg.UploadURL == "" {
+		return fmt.Errorf("storage.cloud_config upload_url required")
+	}
+	u, err := url.Parse(cfg.UploadURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("storage.cloud_config upload_url must be http or https")
+	}
+	if cfg.AuthCode == "" {
+		return fmt.Errorf("storage.cloud_config auth_code required")
+	}
+	if cfg.ReturnFormat == "" {
+		return fmt.Errorf("storage.cloud_config return_format required")
+	}
+	if !IsSupportedSanyueUploadChannel(cfg.UploadChannel) {
+		return fmt.Errorf("storage.cloud_config upload_channel must be telegram or huggingface")
+	}
+	return nil
+}
 
 // Keys 允许的全部 key + 类型 schema(类型仅用于校验/解析)。
 // 默认值仅在 DB 里缺失时使用(migration 已种子化,通常不会用到)。
 type KeyDef struct {
 	Key      string
-	Type     string // "string" | "bool" | "int" | "float" | "email" | "url"
-	Category string // "site" | "auth" | "defaults" | "gateway" | "billing" | "mail"
+	Type     string // "string" | "bool" | "int" | "float" | "email" | "url" | "select"
+	Category string // "site" | "auth" | "defaults" | "gateway" | "billing" | "mail" | "storage"
 	Default  string
 	Label    string
 	Desc     string
 	Public   bool // true 则 /api/public/site-info 会返回给匿名访问者
+	Options  []OptionDef
 }
 
 // ---- key 常量 ----
@@ -34,6 +153,8 @@ const (
 	SiteContactEmail  = "site.contact_email"
 	SiteDocsURL       = "site.docs_url"
 	SiteAPIBaseURL    = "site.api_base_url"
+	SiteWAPDomain     = "site.wap_domain"
+	SiteShowcaseURLs  = "site.showcase_urls"
 	UIDefaultPageSize = "ui.default_page_size"
 
 	// 安全与认证
@@ -92,6 +213,10 @@ const (
 
 	// 邮件
 	MailEnabledDisplay = "mail.enabled_display"
+
+	// 存储
+	StorageImageMode   = "storage.image_storage_mode"
+	StorageCloudConfig = "storage.cloud_config"
 )
 
 // Defs 所有合法 key 的 schema。前端编辑页按 category + order 展示。
@@ -105,6 +230,8 @@ var Defs = []KeyDef{
 	{Key: SiteContactEmail, Type: "email", Category: "site", Default: "", Label: "联系邮箱", Desc: "对外展示的客服邮箱", Public: true},
 	{Key: SiteDocsURL, Type: "url", Category: "site", Default: "", Label: "文档链接", Desc: "留空则前端隐藏「文档」入口", Public: true},
 	{Key: SiteAPIBaseURL, Type: "url", Category: "site", Default: "", Label: "API Base URL", Desc: "展示给用户的 /v1 入口;留空=当前站点地址", Public: true},
+	{Key: SiteWAPDomain, Type: "string", Category: "site", Default: "", Label: "WAP 域名", Desc: "移动端入口域名,如 imgwap.domain.com", Public: true},
+	{Key: SiteShowcaseURLs, Type: "string", Category: "site", Default: "", Label: "首页 Showcase 图片", Desc: "公开首页展示图,每行一个 http 或 https 图片 URL", Public: true},
 	{Key: UIDefaultPageSize, Type: "int", Category: "site", Default: "20", Label: "默认每页条数", Desc: "后台表格默认分页(5~100)"},
 
 	// ---------- 安全与认证 ----------
@@ -163,6 +290,13 @@ var Defs = []KeyDef{
 
 	// ---------- 邮件 ----------
 	{Key: MailEnabledDisplay, Type: "string", Category: "mail", Default: "auto", Label: "邮件开关展示", Desc: "auto/true/false;实际是否发邮件由 SMTP 配置决定"},
+
+	// ---------- 存储 ----------
+	{Key: StorageImageMode, Type: "select", Category: "storage", Default: "local", Label: "图片存储模式", Desc: "用于切换本地存储或云存储配置", Options: []OptionDef{
+		{Label: "本地存储", Value: "local"},
+		{Label: "云存储", Value: "cloud"},
+	}},
+	{Key: StorageCloudConfig, Type: "sanyue_img_hub", Category: "storage", Default: DefaultSanyueImgHubConfigJSON, Label: "Sanyue-ImgHub", Desc: "Sanyue-ImgHub 上传地址、鉴权码、服务端压缩、返回格式与上传通道配置"},
 }
 
 // DefByKey 快速查一条 schema。

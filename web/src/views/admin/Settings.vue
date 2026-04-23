@@ -10,6 +10,7 @@ import {
   Connection,
   Wallet,
   Message as MailIcon,
+  Picture,
 } from '@element-plus/icons-vue'
 import {
   listSettings,
@@ -26,6 +27,24 @@ const items = ref<SettingItem[]>([])
 // 本地编辑态,key -> value(string)
 const draft = reactive<Record<string, string>>({})
 
+type SanyueImgHubDraft = {
+  uploadUrl: string
+  authCode: string
+  serverCompress: boolean
+  returnFormat: string
+  uploadChannel: 'telegram' | 'huggingface'
+}
+
+const defaultSanyueImgHubDraft: SanyueImgHubDraft = {
+  uploadUrl: 'https://img2.oaiapis.com/upload',
+  authCode: '',
+  serverCompress: false,
+  returnFormat: 'full',
+  uploadChannel: 'telegram',
+}
+
+const sanyueCloudConfigKey = 'storage.cloud_config'
+
 const tabs = [
   { name: 'site', label: '通用设置', icon: Setting },
   { name: 'auth', label: '安全与认证', icon: Lock },
@@ -33,12 +52,13 @@ const tabs = [
   { name: 'gateway', label: '网关服务', icon: Connection },
   { name: 'billing', label: '计费与充值', icon: Wallet },
   { name: 'mail', label: '邮件设置', icon: MailIcon },
+  { name: 'storage', label: '存储设置', icon: Picture },
 ] as const
 const activeTab = ref<(typeof tabs)[number]['name']>('site')
 
 const grouped = computed(() => {
   const map: Record<string, SettingItem[]> = {
-    site: [], auth: [], defaults: [], gateway: [], billing: [], mail: [],
+    site: [], auth: [], defaults: [], gateway: [], billing: [], mail: [], storage: [],
   }
   for (const it of items.value) {
     // 旧 category "limit" 归并到 defaults 显示
@@ -76,11 +96,45 @@ function reset() {
 function isBool(it: SettingItem) { return it.type === 'bool' }
 function isInt(it: SettingItem) { return it.type === 'int' }
 function isFloat(it: SettingItem) { return it.type === 'float' }
-function isTextarea(it: SettingItem) { return it.key === 'site.image_notice' }
+function isSelect(it: SettingItem) { return it.type === 'select' }
+function isSanyueImgHub(it: SettingItem) { return it.type === 'sanyue_img_hub' && it.key === sanyueCloudConfigKey }
+function isTextarea(it: SettingItem) { return it.key === 'site.image_notice' || it.key === 'site.showcase_urls' }
 function inputType(it: SettingItem) {
   if (it.type === 'email') return 'email'
   if (it.type === 'url') return 'url'
   return 'text'
+}
+
+function parseSanyueImgHubDraft(raw: string): SanyueImgHubDraft {
+  const next = { ...defaultSanyueImgHubDraft }
+  if (!raw) return next
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.upload_url === 'string') next.uploadUrl = parsed.upload_url
+    if (typeof parsed?.auth_code === 'string') next.authCode = parsed.auth_code
+    if (typeof parsed?.server_compress === 'boolean') next.serverCompress = parsed.server_compress
+    if (typeof parsed?.return_format === 'string') next.returnFormat = parsed.return_format
+    if (parsed?.upload_channel === 'huggingface') next.uploadChannel = 'huggingface'
+    if (parsed?.upload_channel === 'telegram') next.uploadChannel = 'telegram'
+  } catch {
+    return next
+  }
+  return next
+}
+
+function stringifySanyueImgHubDraft(value: SanyueImgHubDraft): string {
+  return JSON.stringify({
+    upload_url: value.uploadUrl.trim(),
+    auth_code: value.authCode,
+    server_compress: Boolean(value.serverCompress),
+    return_format: value.returnFormat.trim(),
+    upload_channel: value.uploadChannel,
+  })
+}
+
+function updateSanyueImgHubField(key: string, patch: Partial<SanyueImgHubDraft>) {
+  const current = parseSanyueImgHubDraft(draft[key] ?? '')
+  draft[key] = stringifySanyueImgHubDraft({ ...current, ...patch })
 }
 
 async function save() {
@@ -189,8 +243,49 @@ onMounted(load)
                 :label="it.label || it.key"
               >
                 <div class="field-wrap">
+                  <template v-if="isSanyueImgHub(it)">
+                    <div class="sanyue-grid">
+                      <el-input
+                        :model-value="parseSanyueImgHubDraft(draft[it.key]).uploadUrl"
+                        placeholder="https://img2.oaiapis.com/upload"
+                        clearable
+                        @update:model-value="(v) => updateSanyueImgHubField(it.key, { uploadUrl: String(v ?? '') })"
+                      />
+                      <el-input
+                        :model-value="parseSanyueImgHubDraft(draft[it.key]).authCode"
+                        placeholder="请输入 authCode"
+                        type="password"
+                        show-password
+                        clearable
+                        @update:model-value="(v) => updateSanyueImgHubField(it.key, { authCode: String(v ?? '') })"
+                      />
+                      <el-switch
+                        :model-value="parseSanyueImgHubDraft(draft[it.key]).serverCompress"
+                        @update:model-value="(v) => updateSanyueImgHubField(it.key, { serverCompress: Boolean(v) })"
+                      />
+                      <el-input
+                        :model-value="parseSanyueImgHubDraft(draft[it.key]).returnFormat"
+                        placeholder="full"
+                        clearable
+                        @update:model-value="(v) => updateSanyueImgHubField(it.key, { returnFormat: String(v ?? '') })"
+                      />
+                      <el-select
+                        :model-value="parseSanyueImgHubDraft(draft[it.key]).uploadChannel"
+                        style="width: 100%"
+                        @update:model-value="(v) => updateSanyueImgHubField(it.key, { uploadChannel: v === 'huggingface' ? 'huggingface' : 'telegram' })"
+                      >
+                        <el-option label="telegram" value="telegram" />
+                        <el-option label="huggingface" value="huggingface" />
+                      </el-select>
+                    </div>
+                    <div class="hint">上传地址</div>
+                    <div class="hint">鉴权码，仅在云存储模式下生效</div>
+                    <div class="hint">serverCompress</div>
+                    <div class="hint">returnFormat</div>
+                    <div class="hint">uploadChannel</div>
+                  </template>
                   <el-switch
-                    v-if="isBool(it)"
+                    v-else-if="isBool(it)"
                     :model-value="draft[it.key] === 'true'"
                     @update:model-value="(v) => (draft[it.key] = v ? 'true' : 'false')"
                   />
@@ -213,6 +308,15 @@ onMounted(load)
                     style="width: 240px"
                     @update:model-value="(v) => (draft[it.key] = String(v ?? 0))"
                   />
+                  <el-select v-else-if="isSelect(it)" v-model="draft[it.key]" style="width: 240px">
+                    <el-option
+                      v-for="opt in it.options || []"
+                      :key="opt.value"
+                      :label="opt.label"
+                      :value="opt.value"
+                      :disabled="opt.disabled"
+                    />
+                  </el-select>
                   <el-input
                     v-else
                     v-model="draft[it.key]"
@@ -279,6 +383,11 @@ onMounted(load)
 }
 .field-wrap {
   width: 100%;
+}
+.sanyue-grid {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
 }
 .hint {
   margin-top: 4px;

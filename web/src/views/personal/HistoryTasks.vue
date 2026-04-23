@@ -22,9 +22,10 @@ const previewIndex = ref(0);
 
 const flattenedImageTasks = computed<FlattenedImageTask[]>(() =>
     imageTasks.value.flatMap((task) => {
-        const urls = task.image_urls?.length ? task.image_urls : [''];
-        const imageTotal = task.image_urls?.length || 0;
-        return urls.map((imageURL, index) => ({
+        const urls = task.thumb_urls?.length ? task.thumb_urls : task.image_urls;
+        const imageTotal = urls?.length || task.image_urls?.length || 0;
+        const safeURLs = urls?.length ? urls : [''];
+        return safeURLs.map((imageURL, index) => ({
             task,
             image_url: imageURL,
             image_index: index,
@@ -59,10 +60,15 @@ function imageLoadMore() {
 }
 
 function openPreview(urls: string[], idx = 0) {
-    if (!urls.length) return;
+    if (!urls.length || !urls[idx]) return;
     previewList.value = urls;
     previewIndex.value = idx;
     previewVisible.value = true;
+}
+
+function emptyImageLabel(task: ImageTask) {
+    if (task.status === 'success') return '已过期';
+    return statusLabel(task.status);
 }
 
 async function onDeleteTask(task: ImageTask) {
@@ -149,7 +155,7 @@ onMounted(() => {
                             </div>
                             <div v-else class="thumb-ph">
                                 <el-icon :size="32"><PictureRounded /></el-icon>
-                                <div class="s">{{ statusLabel(item.task.status) }}</div>
+                                <div class="s">{{ emptyImageLabel(item.task) }}</div>
                             </div>
                         </div>
                         <div class="meta">

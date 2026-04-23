@@ -37,6 +37,10 @@ export function register(req: { email: string; password: string; nickname?: stri
   return http.post('/api/auth/register', req)
 }
 
+export function refresh(refreshToken: string): Promise<TokenPair> {
+  return http.post('/api/auth/refresh', { refresh_token: refreshToken })
+}
+
 export interface MeResp {
   user: UserInfo
   role: string

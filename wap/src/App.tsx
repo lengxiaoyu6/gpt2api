@@ -48,7 +48,7 @@ export default function App() {
 
   const navItems: ReadonlyArray<{ id: TabKey; icon: React.ComponentType<{ className?: string }>; label: string }> = [
     { id: 'home', icon: HomeIcon, label: '首页' },
-    { id: 'generate', icon: Wand2, label: '生成' },
+    { id: 'generate', icon: Wand2, label: '生图' },
     { id: 'history', icon: HistoryIcon, label: '记录' },
     { id: 'profile', icon: UserIcon, label: '我的' },
   ];

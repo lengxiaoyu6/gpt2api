@@ -1,13 +1,20 @@
 import { http } from './http'
 
+export interface SettingOption {
+  label: string
+  value: string
+  disabled?: boolean
+}
+
 // 系统设置 KV 条目(管理端用,带 schema)。
 export interface SettingItem {
   key: string
   value: string
-  type: 'string' | 'bool' | 'int' | 'email' | 'url' | string
-  category: 'site' | 'auth' | 'limit' | 'mail' | string
+  type: 'string' | 'bool' | 'int' | 'float' | 'email' | 'url' | 'select' | 'sanyue_img_hub' | string
+  category: 'site' | 'auth' | 'defaults' | 'gateway' | 'billing' | 'mail' | 'storage' | string
   label: string
   desc: string
+  options?: SettingOption[]
 }
 
 export function listSettings(): Promise<{ items: SettingItem[] }> {

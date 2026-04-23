@@ -1,4 +1,4 @@
-import { http } from './http'
+import { authorizedFetch, http } from './http'
 
 // ---------- models (enabled, for 面板下拉) ----------
 
@@ -165,6 +165,7 @@ export interface ImageTask {
   error?: string
   credit_cost: number
   image_urls: string[]
+  thumb_urls: string[]
   file_ids?: string[]
   created_at: string
   started_at?: string | null
@@ -222,12 +223,10 @@ export async function streamPlayChat(
   onDelta: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = localStorage.getItem('gpt2api.access') || ''
-  const resp = await fetch('/api/me/playground/chat', {
+  const resp = await authorizedFetch('/api/me/playground/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ ...req, stream: true }),
     signal,
@@ -295,12 +294,10 @@ export async function playGenerateImage(
   req: PlayImageRequest,
   signal?: AbortSignal,
 ): Promise<PlayImageResponse> {
-  const token = localStorage.getItem('gpt2api.access') || ''
-  const resp = await fetch('/api/me/playground/image', {
+  const resp = await authorizedFetch('/api/me/playground/image', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(req),
     signal,
@@ -327,7 +324,6 @@ export async function playEditImage(
   opts?: { n?: number; size?: string; upscale?: '' | '2k' | '4k'; signal?: AbortSignal },
 ): Promise<PlayImageResponse> {
   if (!files.length) throw new Error('至少需要选择一张参考图')
-  const token = localStorage.getItem('gpt2api.access') || ''
   const fd = new FormData()
   fd.append('model', model)
   fd.append('prompt', prompt)
@@ -338,11 +334,8 @@ export async function playEditImage(
     // OpenAI 规范:第一张用 `image`,后续用 `image[]`;服务端两个字段都认。
     fd.append(idx === 0 ? 'image' : 'image[]', f, f.name)
   })
-  const resp = await fetch('/api/me/playground/image-edit', {
+  const resp = await authorizedFetch('/api/me/playground/image-edit', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
     body: fd,
     signal: opts?.signal,
   })

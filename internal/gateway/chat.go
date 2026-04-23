@@ -53,6 +53,8 @@ type Handler struct {
 	Settings interface {
 		GatewayUpstreamTimeoutSec() int
 		GatewaySSEReadTimeoutSec() int
+		ImageStorageMode() string
+		CloudConfig() string
 	}
 }
 

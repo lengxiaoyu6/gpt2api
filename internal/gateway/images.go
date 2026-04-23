@@ -19,6 +19,7 @@ import (
 	"github.com/432539/gpt2api/internal/apikey"
 	"github.com/432539/gpt2api/internal/billing"
 	"github.com/432539/gpt2api/internal/image"
+	"github.com/432539/gpt2api/internal/imageproxy"
 	modelpkg "github.com/432539/gpt2api/internal/model"
 	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 	"github.com/432539/gpt2api/internal/usage"
@@ -48,9 +49,9 @@ type ImagesHandler struct {
 	// ImageAccResolver 可选:代理下载上游图片时用于解出账号 AT/cookies/proxy。
 	// 未注入时 /p/img 路径会返回 503。
 	ImageAccResolver ImageAccountResolver
+	LocalImageStore  localProxyImageStore
 
-	imageProxyCache   *imageProxyCache
-	imageProxyFetcher imageProxyFetcher
+	imageProxyCache *imageProxyCache
 }
 
 // ImageGenRequest OpenAI 兼容入参。
@@ -91,6 +92,41 @@ type ImageGenResponse struct {
 	Created int64          `json:"created"`
 	Data    []ImageGenData `json:"data"`
 	TaskID  string         `json:"task_id,omitempty"`
+}
+
+func buildAPIImageData(taskID, storageMode string, urls, fileIDs []string) []ImageGenData {
+	count := len(urls)
+	if len(fileIDs) > count {
+		count = len(fileIDs)
+	}
+	if count == 0 {
+		return nil
+	}
+	data := make([]ImageGenData, 0, count)
+	mode := image.NormalizeStorageMode(storageMode)
+	for i := 0; i < count; i++ {
+		url := ""
+		if mode == image.StorageModeCloud {
+			if i < len(urls) {
+				url = strings.TrimSpace(urls[i])
+			}
+		} else {
+			url = BuildImageProxyURL(taskID, i, imageproxy.ResourceOriginal, ImageProxyTTL)
+		}
+		d := ImageGenData{URL: url}
+		if i < len(fileIDs) {
+			d.FileID = strings.TrimPrefix(fileIDs[i], "sed:")
+		}
+		data = append(data, d)
+	}
+	return data
+}
+
+func (h *ImagesHandler) currentStorageMode() string {
+	if h == nil || h.Settings == nil {
+		return image.StorageModeLocal
+	}
+	return image.NormalizeStorageMode(h.Settings.ImageStorageMode())
 }
 
 // ImageGenerations POST /v1/images/generations。
@@ -223,6 +259,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		N:               req.N,
 		Size:            req.Size,
 		Upscale:         req.Upscale,
+		StorageMode:     h.currentStorageMode(),
 		Status:          image.StatusDispatched,
 		EstimatedCredit: cost,
 	}
@@ -304,14 +341,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	out := ImageGenResponse{
 		Created: time.Now().Unix(),
 		TaskID:  taskID,
-		Data:    make([]ImageGenData, 0, len(res.SignedURLs)),
-	}
-	for i := range res.SignedURLs {
-		d := ImageGenData{URL: BuildImageProxyURL(taskID, i, ImageProxyTTL)}
-		if i < len(res.FileIDs) {
-			d.FileID = strings.TrimPrefix(res.FileIDs[i], "sed:")
-		}
-		out.Data = append(out.Data, d)
+		Data:    buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs),
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -347,15 +377,8 @@ func (h *ImagesHandler) ImageTask(c *gin.Context) {
 	}
 
 	urls := t.DecodeResultURLs()
-	data := make([]ImageGenData, 0, len(urls))
 	fileIDs := t.DecodeFileIDs()
-	for i := range urls {
-		d := ImageGenData{URL: BuildImageProxyURL(t.TaskID, i, ImageProxyTTL)}
-		if i < len(fileIDs) {
-			d.FileID = strings.TrimPrefix(fileIDs[i], "sed:")
-		}
-		data = append(data, d)
-	}
+	data := buildAPIImageData(t.TaskID, t.StorageMode, urls, fileIDs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"task_id":         t.TaskID,
@@ -450,6 +473,7 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 			Prompt:          prompt,
 			N:               1,
 			Size:            "1024x1024",
+			StorageMode:     h.currentStorageMode(),
 			Status:          image.StatusDispatched,
 			EstimatedCredit: cost,
 		})
@@ -494,12 +518,13 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 	rec.DurationMs = int(time.Since(startAt).Milliseconds())
 
 	// 以 chat 响应返回(content 里内嵌 markdown 图片)。
+	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
 	var sb strings.Builder
-	for i := range res.SignedURLs {
+	for i, item := range data {
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString(fmt.Sprintf("![generated](%s)", BuildImageProxyURL(taskID, i, ImageProxyTTL)))
+		sb.WriteString(fmt.Sprintf("![generated](%s)", item.URL))
 	}
 	resp := ChatCompletionResponse{
 		ID:      "chatcmpl-" + uuid.NewString(),
@@ -763,6 +788,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 			N:               n,
 			Size:            size,
 			Upscale:         upscale,
+			StorageMode:     h.currentStorageMode(),
 			Status:          image.StatusDispatched,
 			EstimatedCredit: cost,
 		})
@@ -811,14 +837,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	out := ImageGenResponse{
 		Created: time.Now().Unix(),
 		TaskID:  taskID,
-		Data:    make([]ImageGenData, 0, len(res.SignedURLs)),
-	}
-	for i := range res.SignedURLs {
-		d := ImageGenData{URL: BuildImageProxyURL(taskID, i, ImageProxyTTL)}
-		if i < len(res.FileIDs) {
-			d.FileID = strings.TrimPrefix(res.FileIDs[i], "sed:")
-		}
-		out.Data = append(out.Data, d)
+		Data:    buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs),
 	}
 	c.JSON(http.StatusOK, out)
 }

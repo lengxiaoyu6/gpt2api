@@ -222,13 +222,14 @@ cd gpt2api
 
 ### 3. 本地预编译(**必做,容器内不会帮你 build**)
 
-这一步会产出三个东西,镜像 COPY 进去就能直接起:
+这一步会产出四个东西,镜像 COPY 进去就能直接起:
 
 | 产物 | 路径 | 由谁产出 |
 |------|------|---------|
 | 后端二进制(linux/amd64) | `deploy/bin/gpt2api` | `go build ./cmd/server` |
 | 迁移工具(linux/amd64) | `deploy/bin/goose` | `go build github.com/pressly/goose/v3/cmd/goose@v3.20.0` |
-| 前端产物 | `web/dist/` | `cd web && npm install && npm run build` |
+| Web 前端产物 | `web/dist/` | `cd web && npm install && npm run build` |
+| WAP 前端产物 | `wap/dist/` | `cd wap && npm install && npm run build` |
 
 仓库已经把**这三步打包到一个脚本**,一条命令搞定:
 
@@ -254,10 +255,20 @@ powershell -NoProfile -File deploy\build-local.ps1
 -rwxr-xr-x ... deploy/bin/gpt2api       ~32M
 -rwxr-xr-x ... deploy/bin/goose         ~34M
 -rw-r--r-- ... web/dist/index.html
+-rw-r--r-- ... wap/dist/index.html
 ```
 
 > 改完后端代码后**只需重跑 `build-local` 再 `docker compose build server`**;改前端只跑 `npm run build` + `docker compose build server` 即可。  
 > 有同事反馈 `go get` / `npm install` 慢,可以先 `go env -w GOPROXY=https://goproxy.cn,direct` 和 `npm config set registry https://registry.npmmirror.com`。
+
+如果部署结构为 Docker 外层再接 Nginx，推荐保留单个后端容器，由 Nginx 按域名反代到同一个 `server:8080`，并透传 `Host`。后台系统设置中的 `site.wap_domain` 用于登记移动端域名，例如：
+
+```text
+img.domain.com     -> web 站点
+imgwap.domain.com  -> wap 站点
+```
+
+Go 服务会依据 `Host` 在 `web/dist` 与 `wap/dist` 之间选择站点目录。由于访问域名不同，Web 与 WAP 的浏览器登录态、Cookie 与本地存储天然隔离。
 
 ### 4. 配置 `.env` 与启动容器
 
@@ -679,6 +690,9 @@ gpt2api/
 │   │   ├── views/personal/       # 用户侧页面
 │   │   ├── views/admin/          # 管理员页面
 │   │   └── router/
+│   └── dist/                     # 构建产物(Dockerfile 会 COPY 进镜像)
+├── wap/                        # WAP 前端源码
+│   ├── src/
 │   └── dist/                     # 构建产物(Dockerfile 会 COPY 进镜像)
 ├── API_NOTES.md                # chatgpt.com 逆向接口备忘
 ├── RISK_AND_SAAS.md            # 风控 / 防封号原则

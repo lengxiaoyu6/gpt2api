@@ -33,6 +33,7 @@ type itemView struct {
 	Category string `json:"category"`
 	Label    string `json:"label"`
 	Desc     string `json:"desc"`
+	Options  []OptionDef `json:"options,omitempty"`
 }
 
 // List GET /api/admin/settings
@@ -42,7 +43,7 @@ func (h *Handler) List(c *gin.Context) {
 	for _, d := range Defs {
 		items = append(items, itemView{
 			Key: d.Key, Value: snap[d.Key], Type: d.Type,
-			Category: d.Category, Label: d.Label, Desc: d.Desc,
+			Category: d.Category, Label: d.Label, Desc: d.Desc, Options: d.Options,
 		})
 	}
 	resp.OK(c, gin.H{"items": items})
@@ -60,22 +61,47 @@ func (h *Handler) Update(c *gin.Context) {
 		resp.BadRequest(c, "items required")
 		return
 	}
-	// 白名单过滤 + 类型轻校验(严重错误直接拒,warning 放行由前端提示)
+	merged := h.svc.Snapshot()
+	// 白名单过滤 + 基础类型校验;随后按合并后的快照做存储设置整体验证。
 	for k, v := range req.Items {
 		if !IsAllowedKey(k) {
 			resp.BadRequest(c, "unknown key: "+k)
 			return
 		}
-		if def, _ := DefByKey(k); def.Type == "int" {
+		def, _ := DefByKey(k)
+		if def.Type == "int" {
 			if v == "" {
-				req.Items[k] = "0"
-				continue
+				v = "0"
+				req.Items[k] = v
 			}
 			if _, err := parseInt64(v); err != nil {
 				resp.BadRequest(c, k+" must be integer")
 				return
 			}
 		}
+		if def.Type == "select" {
+			valid := false
+			for _, opt := range def.Options {
+				if opt.Value != v {
+					continue
+				}
+				if opt.Disabled {
+					resp.BadRequest(c, k+" option disabled: "+v)
+					return
+				}
+				valid = true
+				break
+			}
+			if !valid {
+				resp.BadRequest(c, k+" must be one of the allowed options")
+				return
+			}
+		}
+		merged[k] = v
+	}
+	if err := ValidateStorageSnapshot(merged); err != nil {
+		resp.BadRequest(c, err.Error())
+		return
 	}
 	if err := h.svc.Set(c.Request.Context(), req.Items); err != nil {
 		resp.Internal(c, err.Error())

@@ -9,13 +9,14 @@
 ## ⚠️ 架构说明:宿主预编译 + 容器运行
 
 本仓库的 `Dockerfile` 是**零外网依赖的"预构建 + 运行时"镜像**(规避国内拉 `proxy.golang.org` / `npm registry` 卡死)。  
-镜像里**不会**帮你 `go build` / `npm install`,而是直接 `COPY` 宿主机上已经编译好的三个产物:
+镜像里**不会**帮你 `go build` / `npm install`,而是直接 `COPY` 宿主机上已经编译好的四个产物:
 
 | 产物 | 路径 |
 |------|------|
 | 后端(linux/amd64) | `deploy/bin/gpt2api` |
 | 迁移工具(linux/amd64) | `deploy/bin/goose` |
-| 前端 Vite 产物 | `web/dist/` |
+| Web 前端产物 | `web/dist/` |
+| WAP 前端产物 | `wap/dist/` |
 
 所以**第一次部署 / 代码更新后,都要先在宿主机跑一次预编译脚本**,再 `docker compose build server`。
 
@@ -31,7 +32,7 @@
 
 ### 1. 预编译(必做一次)
 
-一条命令搞定后端 + goose + 前端三个产物:
+一条命令搞定后端 + goose + Web + WAP 四个产物:
 
 ```bash
 # Linux / macOS / WSL
@@ -44,7 +45,7 @@ powershell -NoProfile -File deploy\build-local.ps1
 结束后检查:
 
 ```bash
-ls -lh deploy/bin/gpt2api deploy/bin/goose web/dist/index.html
+ls -lh deploy/bin/gpt2api deploy/bin/goose web/dist/index.html wap/dist/index.html
 ```
 
 ### 2. 配置与启动
@@ -57,6 +58,10 @@ docker compose up -d
 docker compose logs -f server  # 观察迁移 + 启动日志
 ```
 
+如果前面还有一层 Nginx，推荐继续由 Nginx 终止 TLS，再把两个域名都反代到同一个 `server:8080`。Go 服务会根据请求头 `Host` 在 `web/dist` 与 `wap/dist` 之间选择站点。
+
+后台系统设置新增 `site.wap_domain`，填入示例值 `imgwap.domain.com` 后，访问 `img.domain.com` 进入 Web 站点，访问 `imgwap.domain.com` 进入 WAP 站点。两端域名不同，浏览器登录态与本地存储也会自然分开。
+
 > **⚠️ 没有默认账号 / 密码。** 启动完成后打开 `http://<服务器IP>:8080/register` 注册,
 > **第一个注册的账号自动成为 admin**;之后的注册都是普通用户。建议首位 admin 登录后去
 > **管理后台 → 系统设置**关闭"允许开放注册"。详见仓库根 `README.md`「5. 首次登录」。
@@ -65,7 +70,7 @@ docker compose logs -f server  # 观察迁移 + 启动日志
 
 | 场景 | 做什么 |
 |------|--------|
-| 只改了前端 | `cd web && npm run build` → `cd ../deploy && docker compose build server && docker compose up -d server` |
+| 只改了前端 | `cd web && npm run build`、`cd ../wap && npm run build` → `cd ../deploy && docker compose build server && docker compose up -d server` |
 | 只改了后端 | `bash deploy/build-local.sh` → `cd deploy && docker compose build server && docker compose up -d server` |
 | `git pull` 新版 | `bash deploy/build-local.sh` → `docker compose build server && docker compose up -d server` |
 | 只改了 `.env` | `docker compose up -d`(环境变量变化 compose 会自动感知并重建容器) |
@@ -151,4 +156,3 @@ docker compose exec server mysqldump -hmysql -ugpt2api -p \
 - `server` 可直接 `docker compose up -d --scale server=3`(需前面加 nginx/traefik)
 - `backups` 卷改成共享存储(NFS / S3 fuse),否则每个副本只能看到自己创建的备份
 - Redis 分布式锁已天然支持多副本,MySQL 和 JWT 密钥需统一
-

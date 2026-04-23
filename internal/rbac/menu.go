@@ -44,7 +44,7 @@ var menuTree = []Menu{
 	{
 		Key: "admin", Title: "后台管理", Icon: "Setting", Path: "/admin",
 		Perms: []Permission{PermUserRead, PermAccountRead, PermProxyRead,
-			PermUsageReadAll, PermSystemBackup}, // 任一 admin 权限即可看到大入口
+			PermUsageReadAll, PermSystemBackup, PermSystemImageFile}, // 任一 admin 权限即可看到大入口
 		Children: []Menu{
 			{Key: "admin.users", Title: "用户管理", Icon: "UserFilled", Path: "/admin/users",
 				Perms: []Permission{PermUserRead}},
@@ -70,6 +70,8 @@ var menuTree = []Menu{
 				Perms: []Permission{PermAuditRead}},
 			{Key: "admin.backup", Title: "数据备份", Icon: "FolderOpened", Path: "/admin/backup",
 				Perms: []Permission{PermSystemBackup}},
+			{Key: "admin.image-files", Title: "图片文件", Icon: "Picture", Path: "/admin/image-files",
+				Perms: []Permission{PermSystemImageFile}},
 			{Key: "admin.settings", Title: "系统设置", Icon: "Tools", Path: "/admin/settings",
 				Perms: []Permission{PermSystemSetting}},
 		},

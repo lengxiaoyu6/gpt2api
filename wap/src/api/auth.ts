@@ -42,3 +42,7 @@ export function login(req: LoginReq) {
 export function register(req: RegisterReq) {
   return http.post('/api/auth/register', req) as Promise<UserInfo>
 }
+
+export function refresh(refreshToken: string) {
+  return http.post('/api/auth/refresh', { refresh_token: refreshToken }) as Promise<TokenPair>
+}

@@ -109,6 +109,19 @@ test('首页 terminal 仅保留请求示例，不再展示 response 行', () => 
   assert.doesNotMatch(homeVue, /response:/)
 })
 
+test('公开首页 Showcase 从后端公开配置读取图片 URL 列表', () => {
+  const homeVue = read('web/src/views/public/Home.vue')
+  const siteStoreTs = read('web/src/stores/site.ts')
+
+  assert.match(siteStoreTs, /'site\.showcase_urls':\s*''/)
+  assert.match(homeVue, /site\.get\('site\.showcase_urls', ''\)/)
+  assert.match(homeVue, /const raw = site\.get\('site\.showcase_urls', ''\)/)
+  assert.match(homeVue, /const seen = new Set<string>\(\)/)
+  assert.match(homeVue, /split\(\/\\r\?\\n\/\)/)
+  assert.match(homeVue, /test\(url\)/)
+  assert.doesNotMatch(homeVue, /return \[url\]/)
+})
+
 
 test('公开布局使用纵向容器让页脚在短页面贴住底部', () => {
   const layoutVue = read('web/src/layouts/PublicLayout.vue')

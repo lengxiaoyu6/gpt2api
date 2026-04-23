@@ -12,6 +12,7 @@ import (
 	"github.com/432539/gpt2api/internal/config"
 	"github.com/432539/gpt2api/internal/gateway"
 	"github.com/432539/gpt2api/internal/image"
+	"github.com/432539/gpt2api/internal/imagestore"
 	"github.com/432539/gpt2api/internal/middleware"
 	"github.com/432539/gpt2api/internal/model"
 	"github.com/432539/gpt2api/internal/proxy"
@@ -38,8 +39,9 @@ type Deps struct {
 	ProxyH   *proxy.Handler
 	AccountH *account.Handler
 
-	GatewayH *gateway.Handler
-	ImagesH  *gateway.ImagesHandler
+	GatewayH    *gateway.Handler
+	ImagesH     *gateway.ImagesHandler
+	ImageFilesH *imagestore.Handler
 
 	BackupH     *backup.Handler
 	AuditH      *audit.Handler
@@ -61,7 +63,8 @@ type Deps struct {
 	RedeemH        *redeem.Handler
 	AdminRedeemH   *redeem.AdminHandler
 
-	SettingsH *settings.Handler
+	SettingsH   *settings.Handler
+	SettingsSvc *settings.Service
 }
 
 // New 构建 gin.Engine 并挂载所有路由。
@@ -353,6 +356,17 @@ func New(d *Deps) *gin.Engine {
 					bg.POST("/upload", d.BackupH.Upload)
 				}
 			}
+
+			if d.ImageFilesH != nil {
+				ig := admin.Group("/system/image-files", middleware.RequirePerm(rbac.PermSystemImageFile))
+				{
+					ig.GET("/stats", d.ImageFilesH.Stats)
+					ig.GET("/original", d.ImageFilesH.ListOriginal)
+					ig.GET("/thumb", d.ImageFilesH.ListThumb)
+					ig.POST("/original/delete", d.ImageFilesH.DeleteOriginal)
+					ig.POST("/thumb/delete", d.ImageFilesH.DeleteThumb)
+				}
+			}
 		}
 	}
 
@@ -372,10 +386,11 @@ func New(d *Deps) *gin.Engine {
 	// ---- 图片代理(签名 URL,无需 API Key,对 <img src> 友好)----
 	if d.ImagesH != nil {
 		r.GET("/p/img/:task_id/:idx", d.ImagesH.ImageProxy)
+		r.GET("/p/thumb/:task_id/:idx", d.ImagesH.ThumbProxy)
 	}
 
 	// ---- 前端 SPA(可选;找不到 dist 就跳过) ----
-	mountSPA(r)
+	mountSPA(r, d.SettingsSvc)
 
 	return r
 }
