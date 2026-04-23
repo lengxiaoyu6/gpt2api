@@ -835,6 +835,25 @@ bcrypt 同明文每次生成的 hash 不同都能互相校验,上面的 hash 字
 如果你确实需要"补细节",请自行接入 Real-ESRGAN / SwinIR / GFPGAN 等 AI 超分模型(通常需要 GPU 或 ONNX Runtime),或等待后续 Roadmap 里的 M14。详细原理见 [8.2 4K / 2K 高清输出](#82-4k--2k-高清输出本地-catmull-rom-放大)。
 </details>
 
+<details>
+<summary><b>Q10. GPT 账号池批量删除后再导入报 <code>Error 1062 Duplicate entry xxx for key 'oai_accounts.uk_email'</code>?</b></summary>
+
+这是 **v0.x 初期 schema 的遗留 bug**,已在迁移 `20260423000004_accounts_uk_email_soft_delete_aware.sql` 修复。升级后重导不再冲突,无需手工清理。
+
+**为什么会冲突?** `oai_accounts` 的删除是软删除(只置 `deleted_at`,不真删行),方便审计回溯;但初始 schema 对 `email` 建的是**纯列**唯一索引 `uk_email`,没考虑"软删应当释放 email 槽位"。结果软删后那个 email 仍占着唯一键,再导入同 email 立刻 1062。
+
+**修复做法**:MySQL 原生不支持 Postgres 那种 `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL` 的部分索引,所以引入一个 STORED 生成列:
+
+```sql
+active_email = CASE WHEN deleted_at IS NULL THEN email ELSE NULL END
+UNIQUE KEY uk_active_email (active_email)
+```
+
+MySQL 的唯一索引允许多个 NULL 共存:活行 `active_email = email` → 唯一性生效;软删行 `active_email = NULL` → 互不冲突,也不和活行冲突。再导入同 email 完全放行。
+
+**升级步骤**:`git pull` → `docker compose build server` → `docker compose up -d`,容器内 goose 会自动跑这条迁移。老库那些被软删卡住的行**迁移生效后自动"让位"**,不需要你手工 `UPDATE` 或 `DELETE` 清理。
+</details>
+
 ---
 
 ## 十三、Roadmap
