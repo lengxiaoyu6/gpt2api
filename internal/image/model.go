@@ -25,17 +25,18 @@ const (
 
 // 错误码(短字符串,便于排查 & 计费对账)。
 const (
-	ErrUnknown         = "unknown"
-	ErrNoAccount       = "no_available_account"
-	ErrAuthRequired    = "auth_required"
-	ErrRateLimited     = "rate_limited"
-	ErrPOWTimeout      = "pow_timeout"
-	ErrPOWFailed       = "pow_failed"
-	ErrTurnstile       = "turnstile_required"
-	ErrUpstream        = "upstream_error"
-	ErrPollTimeout     = "poll_timeout"
-	ErrDownload        = "download_failed"
-	ErrInvalidResponse = "invalid_response"
+	ErrUnknown          = "unknown"
+	ErrNoAccount        = "no_available_account"
+	ErrAuthRequired     = "auth_required"
+	ErrRateLimited      = "rate_limited"
+	ErrNetworkTransient = "network_transient" // 瞬态网络错误(EOF / reset),可自动重试
+	ErrPOWTimeout       = "pow_timeout"
+	ErrPOWFailed        = "pow_failed"
+	ErrTurnstile        = "turnstile_required"
+	ErrUpstream         = "upstream_error"
+	ErrPollTimeout      = "poll_timeout"
+	ErrDownload         = "download_failed"
+	ErrInvalidResponse  = "invalid_response"
 )
 
 // Task 对应 image_tasks 表。

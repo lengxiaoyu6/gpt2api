@@ -132,12 +132,14 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		}
 		result.ErrorCode = status
 
-		// 仅对"账号级硬错误"做一次跨账号重试:限流 / 无账号 / 鉴权失败。
-		// 其他错误(poll 超时 / 上游 5xx / 网络错)直接抛给用户,不再悄悄吞掉时间。
+		// 仅对可重试错误做跨账号重试:限流 / 无账号 / 鉴权失败 / 瞬态网络断连。
+		// 其他错误(poll 超时 / 上游 5xx)直接抛给用户,不再悄悄吞掉时间。
 		if attempt >= opt.MaxAttempts {
 			break
 		}
-		if status != ErrRateLimited && status != ErrNoAccount && status != ErrAuthRequired {
+		retryable := status == ErrRateLimited || status == ErrNoAccount ||
+			status == ErrAuthRequired || status == ErrNetworkTransient
+		if !retryable {
 			break
 		}
 		logger.L().Info("image runner retry with another account",
@@ -445,8 +447,16 @@ func (r *Runner) classifyUpstream(err error) string {
 		}
 		return ErrUpstream
 	}
-	if strings.Contains(err.Error(), "deadline exceeded") {
+	msg := err.Error()
+	if strings.Contains(msg, "deadline exceeded") {
 		return ErrPollTimeout
+	}
+	// uTLS 握手被对端强制关闭 (EOF / connection reset) 属于瞬态网络故障,允许重试。
+	if strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "broken pipe") {
+		return ErrNetworkTransient
 	}
 	return ErrUpstream
 }
