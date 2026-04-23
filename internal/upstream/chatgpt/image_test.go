@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestPollConversationForImagesReturnsPreviewOnlyAfterConfiguredPreviewWait(t *testing.T) {
+func TestPollConversationForImagesReturnsSuccessWhenPreviewObserved(t *testing.T) {
 	srv := newConversationServer([]map[string]interface{}{
 		conversationWithToolMessages(toolMessage("msg-preview", 1, nil, []string{"sed_preview"})),
 		conversationWithToolMessages(toolMessage("msg-preview", 1, nil, []string{"sed_preview"})),
@@ -22,13 +22,11 @@ func TestPollConversationForImagesReturnsPreviewOnlyAfterConfiguredPreviewWait(t
 
 	cli := newTestClient(srv)
 	status, fids, sids := cli.PollConversationForImages(context.Background(), "conv-1", PollOpts{
-		MaxWait:      80 * time.Millisecond,
-		Interval:     5 * time.Millisecond,
-		PreviewWait:  12 * time.Millisecond,
-		StableRounds: 2,
+		MaxWait:  80 * time.Millisecond,
+		Interval: 5 * time.Millisecond,
 	})
 
-	if status != PollStatusPreviewOnly {
+	if status != PollStatusSuccess {
 		t.Fatalf("status = %s", status)
 	}
 	if len(fids) != 0 {
@@ -39,12 +37,9 @@ func TestPollConversationForImagesReturnsPreviewOnlyAfterConfiguredPreviewWait(t
 	}
 }
 
-func TestPollConversationForImagesReturnsIMG2AfterConfiguredStableRounds(t *testing.T) {
+func TestPollConversationForImagesReturnsSuccessAfterCollectingExpectedRefs(t *testing.T) {
 	srv := newConversationServer([]map[string]interface{}{
-		conversationWithToolMessages(
-			toolMessage("msg-preview", 1, nil, []string{"sed_preview"}),
-			toolMessage("msg-final", 2, []string{"file_final"}, []string{"sed_preview"}),
-		),
+		conversationWithToolMessages(toolMessage("msg-preview", 1, nil, []string{"sed_preview"})),
 		conversationWithToolMessages(
 			toolMessage("msg-preview", 1, nil, []string{"sed_preview"}),
 			toolMessage("msg-final", 2, []string{"file_final"}, []string{"sed_preview"}),
@@ -54,13 +49,12 @@ func TestPollConversationForImagesReturnsIMG2AfterConfiguredStableRounds(t *test
 
 	cli := newTestClient(srv)
 	status, fids, sids := cli.PollConversationForImages(context.Background(), "conv-1", PollOpts{
-		MaxWait:      80 * time.Millisecond,
-		Interval:     5 * time.Millisecond,
-		PreviewWait:  20 * time.Millisecond,
-		StableRounds: 1,
+		ExpectedN: 2,
+		MaxWait:   80 * time.Millisecond,
+		Interval:  5 * time.Millisecond,
 	})
 
-	if status != PollStatusIMG2 {
+	if status != PollStatusSuccess {
 		t.Fatalf("status = %s", status)
 	}
 	if !reflect.DeepEqual(fids, []string{"file_final"}) {

@@ -55,3 +55,13 @@ test('图生图区为大尺寸参考图提供固定画布约束', () => {
   assert.match(playVue, /\.compare-panel__card\s*\{[\s\S]*min-width:\s*0;/)
   assert.match(playVue, /\.compare-image\s*\{[\s\S]*max-width:\s*100%;[\s\S]*max-height:\s*100%;/)
 })
+
+test('在线体验页已清除冲突标记并保留比例与预览提示', () => {
+  const playVue = read('web/src/views/personal/OnlinePlay.vue')
+  assert.doesNotMatch(playVue, /^(<<<<<<<|=======|>>>>>>>) /m)
+  assert.match(playVue, /const t2iRatio = ref<string>\('1:1'\)/)
+  assert.match(playVue, /const i2iRatio = ref<string>\('1:1'\)/)
+  assert.match(playVue, /const i2iPreview = ref\(false\)/)
+  assert.match(playVue, /title="本次未使用 IMG2 灰度生成"/)
+  assert.match(playVue, /description="上游没有把本账号放入 IMG2 终稿通道,返回的是 IMG1 预览图。"/)
+})

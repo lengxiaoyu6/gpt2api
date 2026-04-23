@@ -15,6 +15,8 @@ import { useUserStore } from '@/stores/user'
  * 真正的守门人在后端 middleware.RequirePerm,前端只是体验优化。
  */
 const routes: RouteRecordRaw[] = [
+  // 首页:自带导航 + hero + 界面预览 + 技术栈 + 部署 + 完整 footer,
+  // 不套 BlankLayout(避免 BlankLayout 的简短广告 footer 和 Home 自身的 footer 重复)。
   {
     path: '/',
     component: PublicLayout,

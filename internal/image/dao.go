@@ -24,12 +24,13 @@ func NewDAO(db *sqlx.DB) *DAO { return &DAO{db: db} }
 func (d *DAO) Create(ctx context.Context, t *Task) error {
 	res, err := d.db.ExecContext(ctx, `
 INSERT INTO image_tasks
-  (task_id, user_id, key_id, model_id, account_id, prompt, n, size, status,
+  (task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
    conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
    created_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
 		t.TaskID, t.UserID, t.KeyID, t.ModelID, t.AccountID,
-		t.Prompt, t.N, t.Size, nullEmpty(t.Status, StatusQueued),
+		t.Prompt, t.N, t.Size, ValidateUpscale(t.Upscale),
+		nullEmpty(t.Status, StatusQueued),
 		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs),
 		t.Error, t.EstimatedCredit, t.CreditCost,
 	)
@@ -96,7 +97,7 @@ UPDATE image_tasks
 func (d *DAO) Get(ctx context.Context, taskID string) (*Task, error) {
 	var t Task
 	err := d.db.GetContext(ctx, &t, `
-SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, status,
+SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
        conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
@@ -117,7 +118,7 @@ func (d *DAO) ListByUser(ctx context.Context, userID uint64, limit, offset int) 
 	}
 	var out []Task
 	err := d.db.SelectContext(ctx, &out, `
-SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, status,
+SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
        conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks

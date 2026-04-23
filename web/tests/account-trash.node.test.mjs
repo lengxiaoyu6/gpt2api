@@ -44,3 +44,13 @@ test('账号池页面提供已删除标签与恢复清理操作', () => {
   assert.match(pageVue, /彻底删除/)
   assert.match(pageVue, /已删除列表/)
 })
+
+test('账号池页面已清除冲突标记并保留额度信息列', () => {
+  const pageVue = read('web/src/views/admin/Accounts.vue')
+  assert.doesNotMatch(pageVue, /^(<<<<<<<|=======|>>>>>>>) /m)
+  assert.match(pageVue, /label="类型"/)
+  assert.match(pageVue, /label="凭证"/)
+  assert.match(pageVue, /label="今日已用 \/ 上限"/)
+  assert.match(pageVue, /熔断阈值\(仅用于停止派发\)/)
+  assert.match(pageVue, /待探测/)
+})

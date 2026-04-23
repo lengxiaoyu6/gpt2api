@@ -23,6 +23,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -35,6 +36,14 @@ import (
 	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 	"github.com/432539/gpt2api/pkg/logger"
 )
+
+// imageUpscaleCache 进程级单例 LRU,用于缓存「原图 → 4K/2K PNG」的放大结果。
+// 首次请求某张图的 4K 会花费一次 decode + Catmull-Rom + png encode(约 0.5~1.5s),
+// 之后同一条代理 URL 的请求毫秒级命中,不会重复计算。
+//
+// 放大不会写回 image_tasks / file system —— 所有放大字节都只存在于当前进程的
+// LRU 里,服务重启即销毁,保证磁盘占用为 0。
+var imageUpscaleCache = image.NewUpscaleCache(0, 0)
 
 // ImageAccountResolver 按账号 ID 解出构造 chatgpt client 所需的敏感字段。
 // 由 main.go 注入。接口里不直接依赖 account 包,保持本层解耦。
@@ -107,6 +116,50 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadGateway)
 		return
 	}
+
+	scale := image.ValidateUpscale(t.Upscale)
+	if scale != "" {
+		cacheKey := fmt.Sprintf("%s|%d|%s", taskID, idx, scale)
+		if data, ctCache, ok := imageUpscaleCache.Get(cacheKey); ok {
+			c.Header("Cache-Control", "private, max-age=3600")
+			c.Header("X-Upscale", scale+";cache=hit")
+			c.Data(http.StatusOK, ctCache, data)
+			return
+		}
+
+		imageUpscaleCache.Acquire()
+		upBytes, upCT, upErr := image.DoUpscale(body, scale)
+		imageUpscaleCache.Release()
+		if upErr != nil {
+			logger.L().Warn("image proxy upscale",
+				zap.Error(upErr), zap.String("task_id", taskID),
+				zap.String("scale", scale))
+			c.Header("Cache-Control", "private, max-age=1800")
+			c.Header("X-Upscale", scale+";err")
+			if ct == "" {
+				ct = "image/png"
+			}
+			c.Data(http.StatusOK, ct, body)
+			return
+		}
+		if upCT != "" {
+			ct = upCT
+		}
+		if len(upBytes) > 0 {
+			body = upBytes
+			imageUpscaleCache.Put(cacheKey, body, ct)
+			c.Header("X-Upscale", scale+";cache=miss")
+		} else {
+			c.Header("X-Upscale", scale+";noop")
+		}
+		c.Header("Cache-Control", "private, max-age=3600")
+		if ct == "" {
+			ct = "image/png"
+		}
+		c.Data(http.StatusOK, ct, body)
+		return
+	}
+
 	if ct == "" {
 		ct = "image/png"
 	}
@@ -147,6 +200,9 @@ func (h *ImagesHandler) fetchProxyImageFromUpstream(ctx context.Context, t *imag
 		logger.L().Warn("image proxy fetch",
 			zap.Error(err), zap.String("task_id", t.TaskID))
 		return nil, "", err
+	}
+	if ct == "" {
+		ct = "image/png"
 	}
 	return body, ct, nil
 }
