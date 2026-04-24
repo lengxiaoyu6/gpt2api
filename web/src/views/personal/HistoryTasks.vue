@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { deleteMyImageTask, listMyImageTasks, type ImageTask } from '@/api/me';
 import { formatCredit, formatDateTime } from '@/utils/format';
 
