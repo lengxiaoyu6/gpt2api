@@ -18,7 +18,6 @@ const allowRegister = computed(() => site.allowRegister());
 const dashboardHref = computed(() => (user.isLoggedIn ? '/personal/dashboard' : '/login?redirect=/personal/dashboard'));
 
 const navItems = [
-    { label: '首页', href: '/' },
     { label: '定价方案', href: '/pricing' },
 ];
 
@@ -64,10 +63,7 @@ function isActive(href: string) {
                         class="public-action public-action--primary">
                         注册
                     </router-link>
-                    <router-link
-                        v-if="user.isLoggedIn"
-                        :to="dashboardHref"
-                        class="public-action public-action--primary">
+                    <router-link v-if="user.isLoggedIn" :to="dashboardHref" class="public-action public-action--primary">
                         控制台
                     </router-link>
                 </div>

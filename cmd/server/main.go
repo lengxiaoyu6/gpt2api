@@ -18,6 +18,7 @@ import (
 	"github.com/432539/gpt2api/internal/auth"
 	"github.com/432539/gpt2api/internal/backup"
 	"github.com/432539/gpt2api/internal/billing"
+	"github.com/432539/gpt2api/internal/channel"
 	"github.com/432539/gpt2api/internal/checkin"
 	"github.com/432539/gpt2api/internal/config"
 	"github.com/432539/gpt2api/internal/db"
@@ -112,6 +113,11 @@ func main() {
 		log.Warn("model preload failed", zap.Error(err))
 	}
 
+	channelDAO := channel.NewDAO(sqldb)
+	channelSvc := channel.NewService(channelDAO, cipher)
+	channelRouter := channel.NewRouter(channelSvc)
+	channelH := channel.NewHandler(channelSvc, channelRouter)
+
 	rl := lock.NewRedisLock(rdb)
 	sched := scheduler.New(accSvc, proxySvc, rl, cfg.Scheduler)
 
@@ -142,6 +148,7 @@ func main() {
 		Limiter:   limiter,
 		Usage:     usageLogger,
 		AccSvc:    accSvc,
+		Channels:  channelRouter,
 	}
 
 	imageDAO := image.NewDAO(sqldb)
@@ -281,6 +288,7 @@ func main() {
 		KeyH:     apikey.NewHandler(keySvc),
 		ProxyH:   proxyH,
 		AccountH: accountH,
+		ChannelH: channelH,
 
 		GatewayH:    gwH,
 		ImagesH:     imagesH,

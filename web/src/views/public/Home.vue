@@ -55,7 +55,7 @@ const previews = computed(() => (showcasePreviews.value.length > 0 ? showcasePre
     <div class="home-page">
         <section class="hero-section">
             <div class="hero-section__copy">
-                <div class="hero-badge">不仅仅仅限于AI生图</div>
+                <div class="hero-badge">DALL-E 3 & GPT-4o 生图现已上线</div>
                 <h1>
                     释放您的
                     <span>AI 想象力</span>

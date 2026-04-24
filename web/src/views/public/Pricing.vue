@@ -8,7 +8,7 @@ import { formatCredit } from '@/utils/format';
 
 const rows = ref<PublicModel[]>([]);
 const loading = ref(false);
-const visibleRows = computed(() => (ENABLE_CHAT_MODEL ? rows.value : rows.value.filter((row) => row.type === 'image')));
+const visibleRows = computed(() => ENABLE_CHAT_MODEL ? rows.value : rows.value.filter((row) => row.type === 'image'));
 
 async function load() {
     loading.value = true;

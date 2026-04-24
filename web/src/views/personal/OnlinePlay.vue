@@ -264,32 +264,55 @@ function renderMarkdown(raw: string): string {
 // 10 档比例:对应上游 chatgpt.com 实际靠 prompt 第一行 "Make the aspect ratio X:Y , "
 // 控制画面比例。OpenAI 兼容 size 仅作占位,按宽高比就近映射到官方支持的三档。
 interface RatioOpt {
-  label: string      // 中文名:方形 / 宽屏 / 竖版 …
-  ratio: string      // 比例文本:1:1 / 21:9 …
-  w: number          // 宽
-  h: number          // 高
-  size: string       // 发给后端的 OpenAI size
+  v: string
+  l: string
+  w: number
+  h: number
 }
-const RATIOS: readonly RatioOpt[] = [
-  { label: '方形',   ratio: '1:1',  w: 1,  h: 1,  size: '1024x1024' },
-  { label: '横屏',   ratio: '5:4',  w: 5,  h: 4,  size: '1792x1024' },
-  { label: '故事',   ratio: '9:16', w: 9,  h: 16, size: '1024x1792' },
-  { label: '超宽屏', ratio: '21:9', w: 21, h: 9,  size: '1792x1024' },
-  { label: '宽屏',   ratio: '16:9', w: 16, h: 9,  size: '1792x1024' },
-  { label: '横屏',   ratio: '4:3',  w: 4,  h: 3,  size: '1792x1024' },
-  { label: '宽幅',   ratio: '3:2',  w: 3,  h: 2,  size: '1792x1024' },
-  { label: '标准',   ratio: '4:5',  w: 4,  h: 5,  size: '1024x1792' },
-  { label: '竖版',   ratio: '3:4',  w: 3,  h: 4,  size: '1024x1792' },
-  { label: '竖版',   ratio: '2:3',  w: 2,  h: 3,  size: '1024x1792' },
+const TEXT2IMG_RATIO_OPTIONS: readonly RatioOpt[] = [
+  { v: '1024x1024', l: '1:1', w: 36, h: 36 },
+  { v: '1792x1024', l: '5:4', w: 45, h: 36 },
+  { v: '1024x1792', l: '9:16', w: 27, h: 48 },
+  { v: '1792x1024', l: '21:9', w: 48, h: 21 },
+  { v: '1792x1024', l: '16:9', w: 48, h: 27 },
+  { v: '1536x1152', l: '4:3', w: 44, h: 33 },
+  { v: '1792x1024', l: '3:2', w: 48, h: 32 },
+  { v: '1024x1792', l: '4:5', w: 29, h: 36 },
+  { v: '1152x1536', l: '3:4', w: 33, h: 44 },
+  { v: '1024x1792', l: '2:3', w: 32, h: 48 },
 ] as const
+const IMG2IMG_RATIO_OPTIONS: readonly RatioOpt[] = [
+  { v: '1024x1024', l: '1:1', w: 36, h: 36 },
+  { v: '1792x1024', l: '5:4', w: 45, h: 36 },
+  { v: '1024x1792', l: '9:16', w: 27, h: 48 },
+  { v: '1792x1024', l: '21:9', w: 48, h: 21 },
+  { v: '1792x1024', l: '16:9', w: 48, h: 27 },
+  { v: '1536x1152', l: '4:3', w: 44, h: 33 },
+  { v: '1792x1024', l: '3:2', w: 48, h: 32 },
+  { v: '1024x1792', l: '4:5', w: 29, h: 36 },
+  { v: '1152x1536', l: '3:4', w: 33, h: 44 },
+  { v: '1024x1792', l: '2:3', w: 32, h: 48 },
+] as const
+const RATIO_LABELS: Record<string, string> = {
+  '1:1': '方形',
+  '5:4': '横屏',
+  '9:16': '故事',
+  '21:9': '超宽屏',
+  '16:9': '宽屏',
+  '4:3': '横屏',
+  '3:2': '宽幅',
+  '4:5': '标准',
+  '3:4': '竖版',
+  '2:3': '竖版',
+}
 
-// 预览小框的尺寸(按比例缩放后的 CSS px),保证所有档都落在 ≤36x36 的方格内。
+function ratioLabel(ratio: string) {
+  return RATIO_LABELS[ratio] || ratio
+}
+
+// 预览小框的尺寸(按比例缩放后的 CSS px)。
 function ratioBoxStyle(r: RatioOpt) {
-  const MAX = 36
-  const ar = r.w / r.h
-  const bw = ar >= 1 ? MAX : Math.round(MAX * ar)
-  const bh = ar >= 1 ? Math.round(MAX / ar) : MAX
-  return { width: `${bw}px`, height: `${bh}px` }
+  return { width: `${r.w}px`, height: `${r.h}px` }
 }
 
 // 统一的 prompt 前缀同步工具:
@@ -310,7 +333,7 @@ function applyRatioPrefix(prompt: string, ratio: string): string {
 const t2iPrompt = ref('')
 const t2iRatio = ref<string>('1:1')
 const t2iSize = computed(() =>
-  RATIOS.find((r) => r.ratio === t2iRatio.value)?.size ?? '1024x1024',
+  TEXT2IMG_RATIO_OPTIONS.find((r) => r.l === t2iRatio.value)?.v ?? '1024x1024',
 )
 const t2iN = ref(1)
 // 本地高清放大档位(空=原图 / '2k' / '4k')。
@@ -418,7 +441,7 @@ const refImages = ref<RefImage[]>([])
 const i2iPrompt = ref('')
 const i2iRatio = ref<string>('1:1')
 const i2iSize = computed(() =>
-  RATIOS.find((r) => r.ratio === i2iRatio.value)?.size ?? '1024x1024',
+  IMG2IMG_RATIO_OPTIONS.find((r) => r.l === i2iRatio.value)?.v ?? '1024x1024',
 )
 const i2iUpscale = ref<UpscaleLevel>('')
 watch(i2iRatio, (nv) => {
@@ -426,6 +449,7 @@ watch(i2iRatio, (nv) => {
 })
 const i2iSending = ref(false)
 const i2iResult = ref<PlayImageData[]>([])
+const i2iPreview = ref(false)
 const i2iError = ref('')
 const i2iAbort = ref<AbortController | null>(null)
 const activeRefIndex = ref(0)
@@ -523,6 +547,7 @@ async function sendImg2Img() {
   }
   i2iSending.value = true
   i2iError.value = ''
+  i2iPreview.value = false
   i2iResult.value = []
   activeResultIndex.value = 0
   i2iAbort.value = new AbortController()
@@ -539,10 +564,14 @@ async function sendImg2Img() {
       i2iAbort.value.signal,
     )
     i2iResult.value = resp.data || []
+    i2iPreview.value = !!resp.is_preview
     activeResultIndex.value = 0
     if (i2iResult.value.length === 0) {
       i2iError.value = '未产出图片,请重试或调整描述'
     } else {
+      if (i2iPreview.value) {
+        ElMessage.warning('生成成功(预览模式):本次账号未命中 IMG2 灰度,展示的是 IMG1 预览图')
+      }
       ElMessage.success(`生成成功,共 ${i2iResult.value.length} 张`)
     }
   } catch (err: unknown) {
@@ -817,15 +846,15 @@ watch(activeTab, (v) => {
               </label>
               <div class="ratio-row">
                 <button
-                  v-for="r in RATIOS"
-                  :key="r.ratio"
-                  :class="['ratio-btn', { active: t2iRatio === r.ratio }]"
-                  :title="`${r.label} · ${r.ratio}`"
-                  @click="t2iRatio = r.ratio"
+                  v-for="r in TEXT2IMG_RATIO_OPTIONS"
+                  :key="r.l"
+                  :class="['ratio-btn', { active: t2iRatio === r.l }]"
+                  :title="`${ratioLabel(r.l)} · ${r.l}`"
+                  @click="t2iRatio = r.l"
                 >
                   <div class="ratio-box" :style="ratioBoxStyle(r)" />
-                  <span class="ratio-name">{{ r.label }}</span>
-                  <span class="ratio-val-sm">{{ r.ratio }}</span>
+                  <span class="ratio-name">{{ ratioLabel(r.l) }}</span>
+                  <span class="ratio-val-sm">{{ r.l }}</span>
                 </button>
               </div>
               <div class="side-hint">
@@ -1019,16 +1048,16 @@ watch(activeTab, (v) => {
                   </label>
                   <div class="ratio-row">
                     <button
-                      v-for="r in RATIOS"
-                      :key="r.ratio"
+                      v-for="r in IMG2IMG_RATIO_OPTIONS"
+                      :key="r.l"
                       type="button"
-                      :class="['ratio-btn', { active: i2iRatio === r.ratio }]"
-                      :title="`${r.label} · ${r.ratio}`"
-                      @click="i2iRatio = r.ratio"
+                      :class="['ratio-btn', { active: i2iRatio === r.l }]"
+                      :title="`${ratioLabel(r.l)} · ${r.l}`"
+                      @click="i2iRatio = r.l"
                     >
                       <div class="ratio-box" :style="ratioBoxStyle(r)" />
-                      <span class="ratio-name">{{ r.label }}</span>
-                      <span class="ratio-val-sm">{{ r.ratio }}</span>
+                      <span class="ratio-name">{{ ratioLabel(r.l) }}</span>
+                      <span class="ratio-val-sm">{{ r.l }}</span>
                     </button>
                   </div>
                   <div class="side-hint">
@@ -1093,6 +1122,16 @@ watch(activeTab, (v) => {
                 </div>
                 <span class="compare-panel__count">{{ i2iResult.length }} 张</span>
               </div>
+
+              <el-alert
+                v-if="i2iPreview && activeResultImage"
+                class="preview-tip"
+                type="warning"
+                :closable="false"
+                show-icon
+                title="本次未使用 IMG2 灰度生成"
+                description="上游没有把本账号放入 IMG2 终稿通道,返回的是 IMG1 预览图。"
+              />
 
               <div class="compare-canvas compare-canvas--result">
                 <div v-if="i2iError" class="err-block compare-canvas__status">
@@ -1176,6 +1215,7 @@ watch(activeTab, (v) => {
 
 <style scoped lang="scss">
 .playground { padding-bottom: 24px; }
+.preview-tip { margin-bottom: 14px; border-radius: 10px; }
 
 /* ====================== Hero(紧凑条) ====================== */
 .hero {
