@@ -146,6 +146,7 @@ func New(d *Deps) *gin.Engine {
 				{
 					ig.GET("/tasks", d.MeImageH.List)
 					ig.GET("/tasks/:id", d.MeImageH.Get)
+					ig.DELETE("/tasks/:id", d.MeImageH.Delete)
 				}
 			}
 			if d.AdminModelH != nil {

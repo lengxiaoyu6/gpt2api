@@ -102,7 +102,7 @@ SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upsc
        storage_mode, conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
- WHERE task_id = ?`, taskID)
+ WHERE task_id = ? AND deleted_at IS NULL`, taskID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -124,9 +124,29 @@ SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upsc
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE user_id = ?
+   AND deleted_at IS NULL
  ORDER BY id DESC
  LIMIT ? OFFSET ?`, userID, limit, offset)
 	return out, err
+}
+
+// SoftDeleteByUser 按用户软删除任务。
+func (d *DAO) SoftDeleteByUser(ctx context.Context, taskID string, userID uint64) error {
+	res, err := d.db.ExecContext(ctx, `
+UPDATE image_tasks
+   SET deleted_at = NOW()
+ WHERE task_id = ? AND user_id = ? AND deleted_at IS NULL`, taskID, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DecodeFileIDs 把 JSON 列解出字符串数组。

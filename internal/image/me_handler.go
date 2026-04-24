@@ -19,7 +19,7 @@ type historyImageStore interface {
 	HasThumb(taskID string, idx int) (bool, error)
 }
 
-// MeHandler 面向当前用户的图片任务只读接口(JWT 鉴权)。
+// MeHandler 面向当前用户的图片任务查询与软删除接口(JWT 鉴权)。
 // 与 /v1/images/tasks/:id(API Key 鉴权)共享同一张 image_tasks 表,
 // 只是入口改到 /api/me/images/* 便于前端面板调用。
 type MeHandler struct {
@@ -175,4 +175,27 @@ func (h *MeHandler) Get(c *gin.Context) {
 		return
 	}
 	resp.OK(c, toView(t, h.files))
+}
+
+// DELETE /api/me/images/tasks/:id
+func (h *MeHandler) Delete(c *gin.Context) {
+	uid := middleware.UserID(c)
+	if uid == 0 {
+		resp.Unauthorized(c, "not logged in")
+		return
+	}
+	id := c.Param("id")
+	if id == "" {
+		resp.Fail(c, 40000, "task id required")
+		return
+	}
+	if err := h.dao.SoftDeleteByUser(c.Request.Context(), id, uid); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			resp.Fail(c, 40400, "task not found")
+			return
+		}
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"deleted": id})
 }
