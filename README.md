@@ -849,6 +849,12 @@ bcrypt 同明文每次生成的 hash 不同都能互相校验,上面的 hash 字
 如果你确实需要"补细节",请自行接入 Real-ESRGAN / SwinIR / GFPGAN 等 AI 超分模型(通常需要 GPU 或 ONNX Runtime),或等待后续 Roadmap 里的 M14。详细原理见 [8.2 4K / 2K 高清输出](#82-4k--2k-高清输出本地-catmull-rom-放大)。
 </details>
 
+<details>
+<summary><b>Q10. GPT 账号池批量删除后再导入报 <code>Error 1062 Duplicate entry xxx for key 'oai_accounts.uk_email'</code>?</b></summary>
+
+这是 **v0.x 初期 schema 的遗留 bug**,已在迁移 `20260423000004_accounts_uk_email_soft_delete_aware.sql` 修复。升级后重导不再冲突,无需手工清理。
+</details>
+
 ---
 
 ## 十三、Roadmap

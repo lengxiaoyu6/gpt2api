@@ -421,7 +421,6 @@ const i2iSize = computed(() =>
   RATIOS.find((r) => r.ratio === i2iRatio.value)?.size ?? '1024x1024',
 )
 const i2iUpscale = ref<UpscaleLevel>('')
-const i2iPreview = ref(false)
 watch(i2iRatio, (nv) => {
   i2iPrompt.value = applyRatioPrefix(i2iPrompt.value, nv)
 })
@@ -526,7 +525,6 @@ async function sendImg2Img() {
   i2iError.value = ''
   i2iResult.value = []
   activeResultIndex.value = 0
-  i2iPreview.value = false
   i2iAbort.value = new AbortController()
   try {
     const resp = await playGenerateImage(
@@ -542,11 +540,8 @@ async function sendImg2Img() {
     )
     i2iResult.value = resp.data || []
     activeResultIndex.value = 0
-    i2iPreview.value = !!resp.is_preview
     if (i2iResult.value.length === 0) {
       i2iError.value = '未产出图片,请重试或调整描述'
-    } else if (i2iPreview.value) {
-      ElMessage.warning('生成成功(预览模式):本次账号未命中 IMG2 灰度,展示的是 IMG1 预览图')
     } else {
       ElMessage.success(`生成成功,共 ${i2iResult.value.length} 张`)
     }
@@ -1099,16 +1094,6 @@ watch(activeTab, (v) => {
                 <span class="compare-panel__count">{{ i2iResult.length }} 张</span>
               </div>
 
-              <el-alert
-                v-if="i2iPreview && i2iResult.length"
-                class="preview-tip"
-                type="warning"
-                :closable="false"
-                show-icon
-                title="本次未使用 IMG2 灰度生成"
-                description="上游没有把本账号放入 IMG2 终稿通道,返回的是 IMG1 预览图。"
-              />
-
               <div class="compare-canvas compare-canvas--result">
                 <div v-if="i2iError" class="err-block compare-canvas__status">
                   <el-icon><WarningFilled /></el-icon>
@@ -1129,10 +1114,8 @@ watch(activeTab, (v) => {
                     :src="activeResultImage.url"
                     :alt="`result-${activeResultIndex}`"
                     class="compare-image"
-                    :class="{ 'compare-image--preview': i2iPreview }"
                     loading="lazy"
                   />
-                  <div v-if="i2iPreview" class="img-badge compare-image__badge">IMG1 预览</div>
                 </template>
               </div>
 
@@ -1630,13 +1613,6 @@ watch(activeTab, (v) => {
   display: block;
   background: rgba(255, 255, 255, 0.55);
 }
-.compare-image--preview {
-  box-shadow: inset 0 0 0 1.5px rgba(245, 158, 11, 0.45);
-}
-.compare-image__badge {
-  top: 16px;
-  left: 16px;
-}
 
 /* 比例按钮 —— 10 档预设,5 列 × 2 行 grid */
 .ratio-row {
@@ -1877,7 +1853,6 @@ watch(activeTab, (v) => {
   padding: 4px;
   .result-grid { padding: 0; }
 }
-.preview-tip { border-radius: 10px; }
 .result-actions {
   display: flex;
   justify-content: space-between;
@@ -1925,30 +1900,6 @@ watch(activeTab, (v) => {
 }
 .result-secondary-action:hover {
   color: var(--el-color-primary);
-}
-.img-cell.is-preview {
-  box-shadow: 0 2px 8px rgba(251, 146, 60, 0.25);
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border: 1.5px dashed rgba(245, 158, 11, 0.55);
-    border-radius: 12px;
-    pointer-events: none;
-  }
-}
-.img-badge {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.92);
-  color: #fff;
-  letter-spacing: 0.3px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-  pointer-events: none;
 }
 
 /* ====================== Dark mode ====================== */

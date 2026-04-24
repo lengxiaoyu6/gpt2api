@@ -21,6 +21,11 @@ const deletedTotal = ref(0)
 const deletedPager = reactive({ page: 1, page_size: 10 })
 
 const proxies = ref<proxyApi.Proxy[]>([])
+const quotaSummary = ref<accountApi.QuotaSummary>({
+  total_remaining: 0,
+  total_capacity: 0,
+  active_accounts: 0,
+})
 
 async function fetchList() {
   loading.value = true
@@ -58,8 +63,16 @@ async function fetchDeletedList() {
   }
 }
 
+async function loadQuotaSummary() {
+  try {
+    quotaSummary.value = await accountApi.getQuotaSummary()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '额度汇总加载失败')
+  }
+}
+
 async function refreshAllAccountLists() {
-  await Promise.all([fetchList(), fetchDeletedList()])
+  await Promise.all([fetchList(), fetchDeletedList(), loadQuotaSummary()])
 }
 
 async function fetchProxies() {
@@ -319,7 +332,7 @@ async function submitForm() {
       ElMessage.success('更新成功')
     }
     dlg.value = false
-    await fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '提交失败')
   } finally {
@@ -405,7 +418,7 @@ async function submitBind() {
       ElMessage.success('已解绑')
     }
     bindDlg.value = false
-    fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '操作失败')
   }
@@ -435,7 +448,7 @@ async function onRefreshOne(row: accountApi.Account) {
     } else {
       ElMessage.error(r.error || '刷新失败')
     }
-    fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '刷新失败')
   } finally {
@@ -456,7 +469,7 @@ async function onProbeOne(row: accountApi.Account) {
     } else {
       ElMessage.error(r.error || '探测失败')
     }
-    fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '探测失败')
   } finally {
@@ -482,7 +495,7 @@ async function onRefreshAll() {
       message: `成功 ${r.success} · 失败 ${r.failed} · 合计 ${r.total}`,
       duration: 4000,
     })
-    fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '刷新失败')
   } finally {
@@ -505,7 +518,7 @@ async function onProbeAll() {
       message: `成功 ${r.success} · 失败 ${r.failed} · 合计 ${r.total}`,
       duration: 4000,
     })
-    fetchList()
+    await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '探测失败')
   } finally {
@@ -664,7 +677,7 @@ async function doImport() {
     } finally {
       importing.value = false
       importProgress.running = false
-      fetchList()
+      await refreshAllAccountLists()
     }
     return
   }
@@ -692,7 +705,7 @@ async function doImport() {
     } finally {
       importing.value = false
       importProgress.running = false
-      fetchList()
+      await refreshAllAccountLists()
     }
     return
   }
@@ -755,7 +768,7 @@ async function doImport() {
   } finally {
     importing.value = false
     importProgress.running = false
-    fetchList()
+    await refreshAllAccountLists()
   }
 }
 
@@ -776,10 +789,8 @@ function cloneAgg(): accountApi.ImportSummary {
   }
 }
 
-onMounted(() => {
-  fetchList()
-  fetchProxies()
-  loadAutoRefresh()
+onMounted(async () => {
+  await Promise.all([refreshAllAccountLists(), fetchProxies(), loadAutoRefresh()])
 })
 </script>
 
@@ -792,6 +803,11 @@ onMounted(() => {
           <h2 class="page-title">GPT 账号池</h2>
           <div class="page-sub">
             统一管理 ChatGPT Plus / Team / Codex 账号:JSON / AT / RT / ST 批量导入 · 自动刷新 · 图片额度探测 · 风控熔断轮转
+          </div>
+          <div class="quota-summary">
+            <el-tag type="success" effect="plain">剩余 {{ quotaSummary.total_remaining }}</el-tag>
+            <el-tag effect="plain">容量 {{ quotaSummary.total_capacity }}</el-tag>
+            <el-tag type="info" effect="plain">账号 {{ quotaSummary.active_accounts }}</el-tag>
           </div>
         </div>
         <div class="actions">
@@ -1455,6 +1471,12 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
   font-size: 13px;
   margin-top: 4px;
+}
+.quota-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
 }
 .actions {
   display: flex;

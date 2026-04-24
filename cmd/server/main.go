@@ -147,6 +147,7 @@ func main() {
 	imageDAO := image.NewDAO(sqldb)
 	imageFiles := imagestore.NewLocal(imagestore.LocalOptions{RootDir: "storage/images"})
 	imageRunner := image.NewRunner(sched, imageDAO, cfg.Image, imageFiles)
+	imageRunner.SetQuotaDecrementor(accDAO)
 	imagesH := &gateway.ImagesHandler{
 		Handler:         gwH,
 		Runner:          imageRunner,
@@ -175,6 +176,7 @@ func main() {
 	adminKeyH := apikey.NewAdminHandler(keySvc, keyDAO, sqldb)
 	usageQDAO := usage.NewQueryDAO(sqldb)
 	adminUsageH := usage.NewAdminHandler(usageQDAO)
+	adminImageH := image.NewAdminHandler(imageDAO)
 	meUsageH := usage.NewMeHandler(usageQDAO)
 	meImageH := image.NewMeHandler(imageDAO, imageFiles)
 	imageFilesH := imagestore.NewHandler(imageFiles)
@@ -293,6 +295,7 @@ func main() {
 		AdminModelH: adminModelH,
 		AdminKeyH:   adminKeyH,
 		AdminUsageH: adminUsageH,
+		AdminImageH: adminImageH,
 
 		MeUsageH: meUsageH,
 		MeImageH: meImageH,

@@ -508,10 +508,10 @@ func normalizePollOpts(opt PollOpts) PollOpts {
 	if opt.ExpectedN <= 0 {
 		opt.ExpectedN = 1
 	}
-	if opt.MaxWait == 0 {
+	if opt.MaxWait <= 0 {
 		opt.MaxWait = 300 * time.Second
 	}
-	if opt.Interval == 0 {
+	if opt.Interval <= 0 {
 		opt.Interval = 3 * time.Second
 	}
 	return opt

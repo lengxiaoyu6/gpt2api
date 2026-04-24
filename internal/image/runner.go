@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +23,12 @@ import (
 )
 
 type runnerAttemptFunc func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error)
+
+// QuotaDecrementor 允许 Runner 在生图成功后立即扣减账号剩余额度,
+// 无需等待下一次后台探测即可在前端看到正确数字。
+type QuotaDecrementor interface {
+	DecrQuota(ctx context.Context, accountID uint64, n int) error
+}
 
 type runnerDAO interface {
 	MarkRunning(ctx context.Context, taskID string, accountID uint64) error
@@ -64,6 +72,7 @@ type Runner struct {
 	dao           runnerDAO
 	cfg           config.ImageConfig
 	files         runnerImageStore
+	quotaDecr     QuotaDecrementor
 	settings      runnerSettings
 	cloudUploader runnerCloudUploader
 	downloadFn    runnerDownloadFunc
@@ -81,6 +90,11 @@ func NewRunner(sched *scheduler.Scheduler, dao *DAO, cfg config.ImageConfig, fil
 
 func (r *Runner) SetSettings(s runnerSettings) {
 	r.settings = s
+}
+
+// SetQuotaDecrementor 注入额度扣减器。
+func (r *Runner) SetQuotaDecrementor(qd QuotaDecrementor) {
+	r.quotaDecr = qd
 }
 
 // ReferenceImage 是图生图/编辑的一张参考图输入。
@@ -119,6 +133,7 @@ type RunResult struct {
 	Attempts       int // 跨账号尝试次数(runOnce 次数)
 	DurationMs     int64
 	archiveImages  []imagestore.SourceImage
+	quotaUsed      map[uint64]int
 }
 
 // Run 执行生图。会同步阻塞直到完成/失败;调用方自行做超时控制(传 ctx)。
@@ -138,47 +153,61 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		runOnce = r.runOnceFn
 	}
 
-	for attempt := 1; attempt <= retryLimit(opt.MaxAttempts, ErrUpstream); attempt++ {
-		result.Attempts = attempt
-		if err := ctx.Err(); err != nil {
-			result.ErrorCode = ErrUnknown
-			result.ErrorMessage = err.Error()
-			break
-		}
-
-		attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
-		ok, status, err := runOnce(attemptCtx, opt, result)
-		cancel()
-
-		if ok {
+	if opt.N > 1 {
+		r.runParallel(ctx, opt, runOnce, result)
+		if result.Status == StatusSuccess {
 			if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
 				result.Status = StatusFailed
 				result.ErrorCode = ErrArchive
 				result.ErrorMessage = err.Error()
+			}
+		}
+	} else {
+		for attempt := 1; attempt <= retryLimit(opt.MaxAttempts, ErrUpstream); attempt++ {
+			result.Attempts = attempt
+			if err := ctx.Err(); err != nil {
+				result.ErrorCode = ErrUnknown
+				result.ErrorMessage = err.Error()
 				break
 			}
-			result.Status = StatusSuccess
-			result.ErrorCode = ""
-			result.ErrorMessage = ""
-			break
-		}
-		if err != nil {
-			result.ErrorMessage = err.Error()
-		}
-		result.ErrorCode = status
 
-		// 仅对"账号级硬错误"做一次跨账号重试:限流 / 无账号 / 鉴权失败。
-		// 其他错误(poll 超时 / 上游 5xx / 网络错)直接抛给用户,不再悄悄吞掉时间。
-		if attempt >= opt.MaxAttempts {
-			break
+			attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
+			ok, status, err := runOnce(attemptCtx, opt, result)
+			cancel()
+
+			if ok {
+				if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
+					result.Status = StatusFailed
+					result.ErrorCode = ErrArchive
+					result.ErrorMessage = err.Error()
+					break
+				}
+				result.quotaUsed = map[uint64]int{
+					result.AccountID: quotaImageCount(result.FileIDs, result.SignedURLs, opt.N),
+				}
+				result.Status = StatusSuccess
+				result.ErrorCode = ""
+				result.ErrorMessage = ""
+				break
+			}
+			if err != nil {
+				result.ErrorMessage = err.Error()
+			}
+			result.ErrorCode = status
+
+			// 仅对"账号级硬错误"做一次跨账号重试:限流 / 无账号 / 鉴权失败 / 瞬态网络错误。
+			// 其他错误(poll 超时 / 上游 5xx)直接抛给用户,不再悄悄吞掉时间。
+			if attempt >= opt.MaxAttempts {
+				break
+			}
+			if status != ErrRateLimited && status != ErrNoAccount && status != ErrAuthRequired && status != ErrNetworkTransient {
+				break
+			}
+			logger.L().Info("image runner retry with another account",
+				zap.String("task_id", opt.TaskID),
+				zap.String("reason", status),
+				zap.Int("attempt", attempt))
 		}
-		if status != ErrRateLimited && status != ErrNoAccount && status != ErrAuthRequired {
-			break
-		}
-		logger.L().Info("image runner retry with another account",
-			zap.String("task_id", opt.TaskID),
-			zap.String("reason", status),
-			zap.Int("attempt", attempt))
 	}
 
 	result.DurationMs = time.Since(start).Milliseconds()
@@ -186,13 +215,148 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 	// 落库
 	if r.dao != nil && opt.TaskID != "" {
 		if result.Status == StatusSuccess {
-			_ = r.dao.MarkSuccess(ctx, opt.TaskID, result.ConversationID,
-				result.FileIDs, result.SignedURLs, result.StorageMode, 0 /* credit_cost 由网关负责写 */)
+			if err := r.dao.MarkSuccess(ctx, opt.TaskID, result.ConversationID,
+				result.FileIDs, result.SignedURLs, result.StorageMode, 0 /* credit_cost 由网关负责写 */); err == nil && r.quotaDecr != nil {
+				quotaUsed := result.quotaUsed
+				if len(quotaUsed) == 0 && result.AccountID > 0 {
+					quotaUsed = map[uint64]int{
+						result.AccountID: quotaImageCount(result.FileIDs, result.SignedURLs, opt.N),
+					}
+				}
+				for accountID, n := range quotaUsed {
+					if accountID == 0 || n <= 0 {
+						continue
+					}
+					_ = r.quotaDecr.DecrQuota(context.Background(), accountID, n)
+				}
+			}
 		} else {
 			_ = r.dao.MarkFailed(ctx, opt.TaskID, result.ErrorCode)
 		}
 	}
 	return result
+}
+
+// runParallel 并发启动 opt.N 个独立请求,每个各出 1 张图,最终合并到 result。
+// 只要有 >=1 张成功就算整体成功;全部失败才返回失败。
+// 各 goroutine 不写 DAO(TaskID 置空),写库由外层 Run 统一完成。
+func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runnerAttemptFunc, result *RunResult) {
+	type subResult struct {
+		ok           bool
+		fileIDs      []string
+		signedURLs   []string
+		contentTypes []string
+		archiveImgs  []imagestore.SourceImage
+		convID       string
+		accountID    uint64
+		errCode      string
+		errMsg       string
+	}
+
+	n := opt.N
+	ch := make(chan subResult, n)
+
+	subOpt := opt
+	subOpt.N = 1
+	subOpt.TaskID = ""
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sub := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown, StorageMode: r.storageMode()}
+			attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
+			defer cancel()
+			ok, status, err := runOnce(attemptCtx, subOpt, sub)
+			if ok {
+				trimRunResultImages(sub, subOpt.N)
+			}
+			msg := ""
+			if err != nil {
+				msg = err.Error()
+			}
+			if !ok && status == "" {
+				status = sub.ErrorCode
+			}
+			ch <- subResult{
+				ok:           ok,
+				fileIDs:      append([]string(nil), sub.FileIDs...),
+				signedURLs:   append([]string(nil), sub.SignedURLs...),
+				contentTypes: append([]string(nil), sub.ContentTypes...),
+				archiveImgs:  append([]imagestore.SourceImage(nil), sub.archiveImages...),
+				convID:       sub.ConversationID,
+				accountID:    sub.AccountID,
+				errCode:      status,
+				errMsg:       msg,
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	var (
+		successCount int
+		lastErrCode  string
+		lastErrMsg   string
+	)
+	result.quotaUsed = map[uint64]int{}
+	for sr := range ch {
+		if sr.ok {
+			successCount++
+			base := len(result.FileIDs)
+			result.FileIDs = append(result.FileIDs, sr.fileIDs...)
+			result.SignedURLs = append(result.SignedURLs, sr.signedURLs...)
+			result.ContentTypes = append(result.ContentTypes, sr.contentTypes...)
+			for _, img := range sr.archiveImgs {
+				cloned := img
+				cloned.Index = base + img.Index
+				result.archiveImages = append(result.archiveImages, cloned)
+			}
+			if result.ConversationID == "" {
+				result.ConversationID = sr.convID
+			}
+			if result.AccountID == 0 {
+				result.AccountID = sr.accountID
+			}
+			if sr.accountID > 0 {
+				result.quotaUsed[sr.accountID] += quotaImageCount(sr.fileIDs, sr.signedURLs, subOpt.N)
+			}
+			continue
+		}
+		lastErrCode = sr.errCode
+		lastErrMsg = sr.errMsg
+	}
+	if len(result.archiveImages) > 1 {
+		sort.Slice(result.archiveImages, func(i, j int) bool {
+			return result.archiveImages[i].Index < result.archiveImages[j].Index
+		})
+	}
+	result.Attempts = n
+
+	if successCount > 0 {
+		result.Status = StatusSuccess
+		result.ErrorCode = ""
+		result.ErrorMessage = ""
+		logger.L().Info("image runner parallel done",
+			zap.String("task_id", opt.TaskID),
+			zap.Int("requested", n),
+			zap.Int("succeeded", successCount),
+			zap.Int("got_images", len(result.FileIDs)),
+		)
+		return
+	}
+
+	result.ErrorCode = lastErrCode
+	result.ErrorMessage = lastErrMsg
+	logger.L().Warn("image runner parallel all failed",
+		zap.String("task_id", opt.TaskID),
+		zap.Int("requested", n),
+		zap.String("last_err", lastErrCode),
+	)
 }
 
 func (r *Runner) archiveResultImages(ctx context.Context, taskID string, result *RunResult) error {
@@ -694,7 +858,46 @@ func (r *Runner) classifyUpstream(err error) string {
 	if strings.Contains(err.Error(), "deadline exceeded") {
 		return ErrPollTimeout
 	}
+	msg := err.Error()
+	msgLower := strings.ToLower(msg)
+	if strings.Contains(msg, "EOF") ||
+		strings.Contains(msgLower, "connection reset") ||
+		strings.Contains(msgLower, "connection refused") ||
+		strings.Contains(msgLower, "broken pipe") {
+		return ErrNetworkTransient
+	}
 	return ErrUpstream
+}
+
+func trimRunResultImages(result *RunResult, maxImages int) {
+	if result == nil || maxImages <= 0 {
+		return
+	}
+	if len(result.FileIDs) > maxImages {
+		result.FileIDs = append([]string(nil), result.FileIDs[:maxImages]...)
+	}
+	if len(result.SignedURLs) > maxImages {
+		result.SignedURLs = append([]string(nil), result.SignedURLs[:maxImages]...)
+	}
+	if len(result.ContentTypes) > maxImages {
+		result.ContentTypes = append([]string(nil), result.ContentTypes[:maxImages]...)
+	}
+	if len(result.archiveImages) > maxImages {
+		result.archiveImages = append([]imagestore.SourceImage(nil), result.archiveImages[:maxImages]...)
+	}
+}
+
+func quotaImageCount(fileIDs, signedURLs []string, fallback int) int {
+	if n := len(fileIDs); n > 0 {
+		return n
+	}
+	if n := len(signedURLs); n > 0 {
+		return n
+	}
+	if fallback > 0 {
+		return fallback
+	}
+	return 1
 }
 
 // GenerateTaskID 生成对外 task_id。

@@ -576,6 +576,8 @@ func localizeImageErr(code, raw string) string {
 		zh = "账号池暂无可用账号,请稍后重试"
 	case image.ErrRateLimited:
 		zh = "上游风控,请稍后再试"
+	case image.ErrNetworkTransient:
+		zh = "网络波动,请稍后再试"
 	case image.ErrUnknown, "":
 		zh = "图片生成失败"
 	case "upstream_error":

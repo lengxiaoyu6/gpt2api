@@ -7,6 +7,7 @@ import { useUIStore } from '@/stores/ui';
 import { useSiteStore } from '@/stores/site';
 import { brandParts } from '@/utils/brand';
 import type { MenuItem } from '@/api/auth';
+import { APP_VERSION } from '@/version';
 
 const store = useUserStore();
 const ui = useUIStore();
@@ -105,6 +106,10 @@ watch(
                     </el-sub-menu>
                 </template>
             </el-menu>
+            <div v-if="!collapsed" class="sidebar-version">
+                <span class="sidebar-version__label">Version</span>
+                <span class="sidebar-version__value">{{ APP_VERSION }}</span>
+            </div>
         </el-aside>
 
         <el-container>
@@ -177,6 +182,8 @@ watch(
     background: var(--gp-sidebar-bg);
     transition: width 0.2s;
     overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .logo {
@@ -213,6 +220,28 @@ watch(
 .side-menu {
     border-right: none;
     --el-menu-hover-bg-color: rgba(255, 255, 255, 0.06);
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.sidebar-version {
+    padding: 14px 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+}
+
+.sidebar-version__label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.48);
+}
+
+.sidebar-version__value {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    color: rgba(255, 255, 255, 0.88);
 }
 
 .topbar {

@@ -133,16 +133,19 @@ func (d *DAO) ListDeleted(ctx context.Context, status string, keyword string, of
 	return rows, total, err
 }
 
-// ListDispatchable 调度器专用:返回 status=healthy 且 cooldown 到期、AT 未过期的候选。
+// ListDispatchable 调度器专用:返回 AT 有效且 cooldown 到期的候选账号。
 func (d *DAO) ListDispatchable(ctx context.Context, limit int) ([]*Account, error) {
 	rows := make([]*Account, 0, limit)
 	now := time.Now()
 	err := d.db.SelectContext(ctx, &rows,
 		`SELECT * FROM oai_accounts
-         WHERE deleted_at IS NULL AND status = 'healthy'
+         WHERE deleted_at IS NULL AND status IN ('healthy', 'warned')
            AND (cooldown_until IS NULL OR cooldown_until <= ?)
            AND (token_expires_at IS NULL OR token_expires_at > ?)
-         ORDER BY CASE WHEN last_used_at IS NULL THEN 0 ELSE 1 END, last_used_at ASC
+         ORDER BY
+           CASE status WHEN 'healthy' THEN 0 ELSE 1 END,
+           CASE WHEN last_used_at IS NULL THEN 0 ELSE 1 END,
+           last_used_at ASC
          LIMIT ?`, now, now, limit)
 	fillAll(rows)
 	return rows, err
@@ -167,10 +170,11 @@ func (d *DAO) ListNeedRefresh(ctx context.Context, aheadSec int, limit int) ([]*
 }
 
 // ListNeedProbeQuota 返回需要探测图片额度的账号。命中以下任一条件即纳入:
-//   (a) 从未探测过(image_quota_updated_at IS NULL);
-//   (b) 上次探测超过 minIntervalSec 秒(常规轮询);
-//   (c) **剩余额度=0 且已过 reset_at**:这种"归零等重置"的账号要第一时间补探,
-//       不受 minIntervalSec 限制,避免 5 小时轮询间隔导致的额度恢复滞后显示。
+//
+//	(a) 从未探测过(image_quota_updated_at IS NULL);
+//	(b) 上次探测超过 minIntervalSec 秒(常规轮询);
+//	(c) **剩余额度=0 且已过 reset_at**:这种"归零等重置"的账号要第一时间补探,
+//	    不受 minIntervalSec 限制,避免 5 小时轮询间隔导致的额度恢复滞后显示。
 func (d *DAO) ListNeedProbeQuota(ctx context.Context, minIntervalSec int, limit int) ([]*Account, error) {
 	rows := make([]*Account, 0, limit)
 	threshold := time.Now().Add(-time.Duration(minIntervalSec) * time.Second)
@@ -198,6 +202,26 @@ func (d *DAO) ListAllActiveIDs(ctx context.Context) ([]uint64, error) {
 	err := d.db.SelectContext(ctx, &ids,
 		`SELECT id FROM oai_accounts WHERE deleted_at IS NULL ORDER BY id ASC`)
 	return ids, err
+}
+
+// QuotaSummary 全局额度汇总。
+type QuotaSummary struct {
+	TotalRemaining int64 `db:"total_remaining" json:"total_remaining"`
+	TotalCapacity  int64 `db:"total_capacity" json:"total_capacity"`
+	ActiveAccounts int64 `db:"active_accounts" json:"active_accounts"`
+}
+
+// SumQuota 汇总所有未软删账号的额度。
+func (d *DAO) SumQuota(ctx context.Context) (*QuotaSummary, error) {
+	var s QuotaSummary
+	err := d.db.GetContext(ctx, &s, `
+SELECT
+  COALESCE(SUM(image_quota_remaining), 0) AS total_remaining,
+  COALESCE(SUM(image_quota_total), 0)     AS total_capacity,
+  COUNT(*)                                AS active_accounts
+FROM oai_accounts
+WHERE deleted_at IS NULL`)
+	return &s, err
 }
 
 func (d *DAO) Update(ctx context.Context, a *Account) error {
@@ -396,7 +420,11 @@ func (d *DAO) RecordRefreshError(ctx context.Context, id uint64, source string, 
 	if markDead {
 		_, err := d.db.ExecContext(ctx,
 			`UPDATE oai_accounts
-             SET last_refresh_at = ?, last_refresh_source = ?, refresh_error = ?, status = 'dead'
+             SET last_refresh_at = ?, last_refresh_source = ?, refresh_error = ?,
+                 status = CASE
+                   WHEN token_expires_at IS NOT NULL AND token_expires_at > NOW() THEN 'warned'
+                   ELSE 'dead'
+                 END
              WHERE id = ? AND deleted_at IS NULL`,
 			time.Now(), source, reason, id)
 		return err
@@ -424,6 +452,19 @@ func (d *DAO) ApplyQuotaResult(ctx context.Context, id uint64, remaining, total 
 		reset = nil
 	}
 	_, err := d.db.ExecContext(ctx, q, remaining, remaining, total, total, reset, time.Now(), id)
+	return err
+}
+
+// DecrQuota 生图成功后立即乐观扣减账号剩余额度。
+func (d *DAO) DecrQuota(ctx context.Context, accountID uint64, n int) error {
+	if n <= 0 {
+		return nil
+	}
+	_, err := d.db.ExecContext(ctx,
+		`UPDATE oai_accounts
+         SET image_quota_remaining = GREATEST(0, image_quota_remaining - ?)
+         WHERE id = ? AND deleted_at IS NULL`,
+		n, accountID)
 	return err
 }
 

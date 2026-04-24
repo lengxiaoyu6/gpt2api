@@ -215,6 +215,16 @@ export function probeAllAccountsQuota() {
   return http.post<any, QuotaAllResult>('/api/admin/accounts/probe-quota-all')
 }
 
+export interface QuotaSummary {
+  total_remaining: number
+  total_capacity: number
+  active_accounts: number
+}
+
+export function getQuotaSummary() {
+  return http.get<any, QuotaSummary>('/api/admin/accounts/quota-summary')
+}
+
 // ---------- 自动刷新开关 ----------
 export interface AutoRefreshConfig {
   enabled: boolean

@@ -58,6 +58,8 @@ type Deps struct {
 	MeImageH *image.MeHandler
 	CheckinH *checkin.Handler
 
+	AdminImageH *image.AdminHandler
+
 	RechargeH      *recharge.Handler
 	AdminRechargeH *recharge.AdminHandler
 	RedeemH        *redeem.Handler
@@ -216,6 +218,7 @@ func New(d *Deps) *gin.Engine {
 				ag.POST("/bulk-delete", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.BulkDelete)
 				ag.GET("/auto-refresh", d.AccountH.GetAutoRefresh)
 				ag.PUT("/auto-refresh", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.SetAutoRefresh)
+				ag.GET("/quota-summary", d.AccountH.QuotaSummary)
 				ag.GET("", d.AccountH.List)
 				ag.GET("/deleted", d.AccountH.ListDeleted)
 				ag.POST("/:id/restore", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.Restore)
@@ -235,6 +238,7 @@ func New(d *Deps) *gin.Engine {
 				ug := admin.Group("/users", middleware.RequirePerm(rbac.PermUserRead, rbac.PermUserWrite))
 				{
 					ug.GET("", d.AdminUserH.List)
+					ug.POST("", middleware.RequirePerm(rbac.PermUserWrite), d.AdminUserH.Create)
 					ug.GET("/:id", d.AdminUserH.Get)
 					ug.PATCH("/:id", middleware.RequirePerm(rbac.PermUserWrite), d.AdminUserH.Update)
 					ug.POST("/:id/reset-password",
@@ -271,6 +275,11 @@ func New(d *Deps) *gin.Engine {
 			if d.AuditH != nil {
 				auditG := admin.Group("/audit", middleware.RequirePerm(rbac.PermAuditRead))
 				auditG.GET("/logs", d.AuditH.List)
+			}
+
+			// 生成记录(管理员全局视图)
+			if d.AdminImageH != nil {
+				admin.GET("/image-tasks", middleware.RequirePerm(rbac.PermUsageReadAll), d.AdminImageH.List)
 			}
 
 			// ---- 模型配置 ----

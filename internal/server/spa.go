@@ -68,6 +68,10 @@ func mountSPA(r *gin.Engine, siteSettings siteSettingsReader) bool {
 			c.File(file)
 			return
 		}
+		if looksLikeStaticAsset(p) {
+			c.Status(http.StatusNotFound)
+			return
+		}
 		c.File(site.indexPath)
 	})
 	return true
@@ -197,6 +201,11 @@ func resolveStaticPath(root string, requestPath string) (string, bool) {
 		return "", false
 	}
 	return full, true
+}
+
+func looksLikeStaticAsset(requestPath string) bool {
+	base := filepath.Base(filepath.Clean("/" + strings.TrimSpace(requestPath)))
+	return filepath.Ext(base) != ""
 }
 
 func isDir(p string) bool {
