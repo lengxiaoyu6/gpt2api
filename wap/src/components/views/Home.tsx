@@ -37,7 +37,7 @@ export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: Ho
     },
     {
       title: '生成视频',
-      desc: '视频生成功能正在准备中，当前版本先保留入口与后续扩展位置。',
+      desc: '视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨',
       icon: Video,
       color: 'bg-rose-500',
       onClick: () => setVideoDialogOpen(true),
@@ -124,7 +124,7 @@ export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: Ho
           <DialogHeader className="px-6 pt-6 text-center">
             <DialogTitle className="text-xl font-black tracking-tight">生成视频</DialogTitle>
             <DialogDescription className="pt-2 text-sm">
-              敬请期待
+              视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨
             </DialogDescription>
           </DialogHeader>
 

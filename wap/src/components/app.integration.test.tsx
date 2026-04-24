@@ -121,7 +121,7 @@ describe('wap integration', () => {
   test('home footer uses site name from site info', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': '星河图像',
+        'site.name': '',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -132,16 +132,16 @@ describe('wap integration', () => {
 
     render(<App />)
 
-    expect(screen.getAllByText('星河图像')).toHaveLength(2)
-    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
-    expect(screen.queryByText('GPT2API • Creative Studio')).toBeNull()
+    expect(screen.getAllByText('')).toHaveLength(2)
+    expect(screen.getByText('© ')).toBeInTheDocument()
+    expect(screen.queryByText('Creative Studio')).toBeNull()
   })
 
   test('profile footer uses site name from site info', () => {
     useStore.setState({
       activeTab: 'profile',
       siteInfo: {
-        'site.name': '星河图像',
+        'site.name': '',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -173,8 +173,8 @@ describe('wap integration', () => {
 
     render(<App />)
 
-    expect(screen.getAllByText('星河图像').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
+    expect(screen.getAllByText('').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('© ')).toBeInTheDocument()
     expect(screen.queryByText('Creative Intelligent Systems')).toBeNull()
   })
 
@@ -182,7 +182,7 @@ describe('wap integration', () => {
     useStore.setState({
       activeTab: 'profile',
       siteInfo: {
-        'site.name': '星河图像',
+        'site.name': '',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -391,7 +391,7 @@ describe('wap integration', () => {
     })
   })
 
-  test('home page renders video capability card and coming soon dialog', async () => {
+  test('home page renders video capability card and reserved entry dialog copy', async () => {
     render(<HomeView onStartGeneration={() => {}} />)
 
     const heroSection = screen.getByAltText('Hero').closest('section')
@@ -399,6 +399,7 @@ describe('wap integration', () => {
     expect(screen.getByText('文生图')).toBeInTheDocument()
     expect(screen.getByText('图生图')).toBeInTheDocument()
     expect(screen.getByText('生成视频')).toBeInTheDocument()
+    expect(screen.getByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.queryByText('极致优化')).toBeNull()
     expect(screen.queryByText('灵感图鉴')).toBeNull()
@@ -407,7 +408,7 @@ describe('wap integration', () => {
 
     fireEvent.click(screen.getByText('生成视频'))
 
-    expect(await screen.findByText('敬请期待')).toBeInTheDocument()
+    expect(await screen.findByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toBeInTheDocument()
   })
 
   test('home capability card triggers generation when clicking card content', () => {
