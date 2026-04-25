@@ -163,50 +163,19 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 			}
 		}
 	} else {
-		for attempt := 1; attempt <= retryLimit(opt.MaxAttempts, ErrUpstream); attempt++ {
-			result.Attempts = attempt
-			if err := ctx.Err(); err != nil {
-				result.ErrorCode = ErrUnknown
+		if r.runWithRetry(ctx, opt, runOnce, result) {
+			if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
+				result.Status = StatusFailed
+				result.ErrorCode = ErrArchive
 				result.ErrorMessage = err.Error()
-				break
-			}
-
-			attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
-			ok, status, err := runOnce(attemptCtx, opt, result)
-			cancel()
-
-			if ok {
-				if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
-					result.Status = StatusFailed
-					result.ErrorCode = ErrArchive
-					result.ErrorMessage = err.Error()
-					break
-				}
+			} else {
 				result.quotaUsed = map[uint64]int{
 					result.AccountID: quotaImageCount(result.FileIDs, result.SignedURLs, opt.N),
 				}
 				result.Status = StatusSuccess
 				result.ErrorCode = ""
 				result.ErrorMessage = ""
-				break
 			}
-			if err != nil {
-				result.ErrorMessage = err.Error()
-			}
-			result.ErrorCode = status
-
-			// 仅对"账号级硬错误"做一次跨账号重试:限流 / 无账号 / 鉴权失败 / 瞬态网络错误。
-			// 其他错误(poll 超时 / 上游 5xx)直接抛给用户,不再悄悄吞掉时间。
-			if attempt >= opt.MaxAttempts {
-				break
-			}
-			if status != ErrRateLimited && status != ErrNoAccount && status != ErrAuthRequired && status != ErrNetworkTransient {
-				break
-			}
-			logger.L().Info("image runner retry with another account",
-				zap.String("task_id", opt.TaskID),
-				zap.String("reason", status),
-				zap.Int("attempt", attempt))
 		}
 	}
 
@@ -243,6 +212,7 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runnerAttemptFunc, result *RunResult) {
 	type subResult struct {
 		ok           bool
+		attempts     int
 		fileIDs      []string
 		signedURLs   []string
 		contentTypes []string
@@ -266,29 +236,21 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 		go func() {
 			defer wg.Done()
 			sub := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown, StorageMode: r.storageMode()}
-			attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
-			defer cancel()
-			ok, status, err := runOnce(attemptCtx, subOpt, sub)
+			ok := r.runWithRetry(ctx, subOpt, runOnce, sub)
 			if ok {
 				trimRunResultImages(sub, subOpt.N)
 			}
-			msg := ""
-			if err != nil {
-				msg = err.Error()
-			}
-			if !ok && status == "" {
-				status = sub.ErrorCode
-			}
 			ch <- subResult{
 				ok:           ok,
+				attempts:     sub.Attempts,
 				fileIDs:      append([]string(nil), sub.FileIDs...),
 				signedURLs:   append([]string(nil), sub.SignedURLs...),
 				contentTypes: append([]string(nil), sub.ContentTypes...),
 				archiveImgs:  append([]imagestore.SourceImage(nil), sub.archiveImages...),
 				convID:       sub.ConversationID,
 				accountID:    sub.AccountID,
-				errCode:      status,
-				errMsg:       msg,
+				errCode:      sub.ErrorCode,
+				errMsg:       sub.ErrorMessage,
 			}
 		}()
 	}
@@ -305,6 +267,7 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 	)
 	result.quotaUsed = map[uint64]int{}
 	for sr := range ch {
+		result.Attempts += sr.attempts
 		if sr.ok {
 			successCount++
 			base := len(result.FileIDs)
@@ -335,8 +298,6 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 			return result.archiveImages[i].Index < result.archiveImages[j].Index
 		})
 	}
-	result.Attempts = n
-
 	if successCount > 0 {
 		result.Status = StatusSuccess
 		result.ErrorCode = ""
@@ -357,6 +318,66 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 		zap.Int("requested", n),
 		zap.String("last_err", lastErrCode),
 	)
+}
+
+func (r *Runner) runWithRetry(ctx context.Context, opt RunOptions, runOnce runnerAttemptFunc, result *RunResult) bool {
+	for attempt := 1; attempt <= maxAttemptWindow(opt.MaxAttempts); attempt++ {
+		result.Attempts = attempt
+		if err := ctx.Err(); err != nil {
+			result.ErrorCode = ErrUnknown
+			result.ErrorMessage = err.Error()
+			return false
+		}
+
+		attemptResult := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown, StorageMode: result.StorageMode}
+		attemptCtx, cancel := context.WithTimeout(ctx, opt.PerAttemptTimeout)
+		ok, status, err := runOnce(attemptCtx, opt, attemptResult)
+		cancel()
+
+		copyRunResultState(result, attemptResult)
+		if ok {
+			return true
+		}
+
+		if err != nil {
+			result.ErrorMessage = err.Error()
+		} else {
+			result.ErrorMessage = ""
+		}
+		if status == "" {
+			status = attemptResult.ErrorCode
+		}
+		if status == "" {
+			status = ErrUnknown
+		}
+		result.ErrorCode = status
+
+		if !isRetryableImageFailure(status) {
+			return false
+		}
+		if attempt >= retryLimit(opt.MaxAttempts, status) {
+			return false
+		}
+
+		logger.L().Info("image runner retry with another account",
+			zap.String("task_id", opt.TaskID),
+			zap.String("reason", status),
+			zap.Int("attempt", attempt))
+	}
+	return false
+}
+
+func copyRunResultState(dst, src *RunResult) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.ConversationID = src.ConversationID
+	dst.AccountID = src.AccountID
+	dst.FileIDs = append([]string(nil), src.FileIDs...)
+	dst.SignedURLs = append([]string(nil), src.SignedURLs...)
+	dst.ContentTypes = append([]string(nil), src.ContentTypes...)
+	dst.archiveImages = append([]imagestore.SourceImage(nil), src.archiveImages...)
+	dst.quotaUsed = nil
 }
 
 func (r *Runner) archiveResultImages(ctx context.Context, taskID string, result *RunResult) error {
@@ -505,15 +526,34 @@ func (r *Runner) cloudUploadChannels() []string {
 	}
 }
 
-// retryLimit 返回某类错误实际允许的尝试上限。upstream_error 至少再试一次。
-func retryLimit(maxAttempts int, code string) int {
+func maxAttemptWindow(maxAttempts int) int {
 	if maxAttempts <= 0 {
-		maxAttempts = 2
+		maxAttempts = 1
 	}
-	if code == ErrUpstream && maxAttempts < 2 {
+	if maxAttempts < 2 {
 		return 2
 	}
 	return maxAttempts
+}
+
+// retryLimit 返回某类错误实际允许的尝试上限。upstream_error 固定补试一次。
+func retryLimit(maxAttempts int, code string) int {
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	if code == ErrUpstream {
+		return 2
+	}
+	return maxAttempts
+}
+
+func isRetryableImageFailure(code string) bool {
+	switch code {
+	case ErrRateLimited, ErrNoAccount, ErrAuthRequired, ErrNetworkTransient, ErrUpstream:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *Runner) normalizeOptions(opt RunOptions) RunOptions {

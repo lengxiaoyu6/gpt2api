@@ -14,6 +14,10 @@ print_migrate_cmd() {
     make -n -f Makefile CONFIG="$config" migrate-up
 }
 
+print_entrypoint_migrate_cmd() {
+    sed -n 's/^[[:space:]]*//p' deploy/entrypoint.sh | grep '^goose '
+}
+
 assert_eq() {
     local actual="$1"
     local expected="$2"
@@ -64,7 +68,12 @@ EOF
 
 assert_eq \
     "$(print_migrate_cmd "$tmpdir/no-multi.yaml")" \
-    'goose -dir sql/migrations mysql "user:pass@tcp(127.0.0.1:3306)/demo?parseTime=true&multiStatements=true" up' \
-    "migrate-up appends multiStatements=true"
+    'goose -allow-missing -dir sql/migrations mysql "user:pass@tcp(127.0.0.1:3306)/demo?parseTime=true&multiStatements=true" up' \
+    "migrate-up appends multiStatements=true and allows out-of-order migrations"
+
+assert_eq \
+    "$(print_entrypoint_migrate_cmd)" \
+    'goose -allow-missing -dir /app/sql/migrations mysql "${dsn}" up' \
+    "entrypoint uses allow-missing for out-of-order migrations"
 
 printf 'PASS: make DSN extraction\n'

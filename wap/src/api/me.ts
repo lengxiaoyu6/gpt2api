@@ -123,16 +123,22 @@ export async function playGenerateImage(req: PlayImageRequest, signal?: AbortSig
 export async function playEditImage(
   model: string,
   prompt: string,
-  file: File,
+  files: File[],
   opts?: { n?: number; size?: string; upscale?: '' | '2k' | '4k'; signal?: AbortSignal },
 ) {
+  if (!files.length) {
+    throw new Error('至少需要选择一张参考图')
+  }
+
   const fd = new FormData()
   fd.append('model', model)
   fd.append('prompt', prompt)
   if (opts?.size) fd.append('size', opts.size)
   if (opts?.n) fd.append('n', String(opts.n))
   if (opts?.upscale) fd.append('upscale', opts.upscale)
-  fd.append('image', file, file.name)
+  files.forEach((file, index) => {
+    fd.append(index === 0 ? 'image' : 'image[]', file, file.name)
+  })
 
   const resp = await authorizedFetch('/api/me/playground/image-edit', {
     method: 'POST',

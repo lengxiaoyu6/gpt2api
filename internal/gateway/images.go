@@ -122,6 +122,14 @@ func buildAPIImageData(taskID, storageMode string, urls, fileIDs []string) []Ima
 	return data
 }
 
+func imageResponseAccounting(m *modelpkg.Model, data []ImageGenData, ratio float64) (int, int64) {
+	actualN := len(data)
+	if actualN <= 0 {
+		return 0, 0
+	}
+	return actualN, billing.ComputeImageCost(m, actualN, ratio)
+}
+
 func (h *ImagesHandler) currentStorageMode() string {
 	if h == nil || h.Settings == nil {
 		return image.StorageModeLocal
@@ -328,28 +336,40 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		return
 	}
 
+	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
+	actualN, actualCost := imageResponseAccounting(m, data, ratio)
+	if actualN == 0 {
+		refund("upstream_error")
+		if h.DAO != nil {
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+		}
+		openAIError(c, http.StatusBadGateway, "upstream_error", "上游未返回图片结果")
+		return
+	}
+
 	// 6) 结算
 	if cost > 0 {
-		if err := h.Billing.Settle(context.Background(), ak.UserID, ak.ID, cost, cost, refID, "image settle"); err != nil {
+		if err := h.Billing.Settle(context.Background(), ak.UserID, ak.ID, cost, actualCost, refID, "image settle"); err != nil {
 			logger.L().Error("billing settle image", zap.Error(err), zap.String("ref", refID))
 		}
 	}
-	_ = h.Keys.DAO().TouchUsage(context.Background(), ak.ID, c.ClientIP(), cost)
+	_ = h.Keys.DAO().TouchUsage(context.Background(), ak.ID, c.ClientIP(), actualCost)
 
 	// 7) usage
 	rec.Status = usage.StatusSuccess
-	rec.CreditCost = cost
+	rec.ImageCount = actualN
+	rec.CreditCost = actualCost
 
 	// 8) DAO 回写 credit_cost(Runner 已经 MarkSuccess,这里只补 credit_cost)
 	if h.DAO != nil {
-		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, cost)
+		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, actualCost)
 	}
 
 	// 9) 响应:URL 统一走自家代理,防止 chatgpt.com estuary/content 防盗链
 	out := ImageGenResponse{
 		Created: time.Now().Unix(),
 		TaskID:  taskID,
-		Data:    buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs),
+		Data:    data,
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -831,23 +851,35 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		return
 	}
 
+	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
+	actualN, actualCost := imageResponseAccounting(m, data, ratio)
+	if actualN == 0 {
+		refund("upstream_error")
+		if h.DAO != nil {
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+		}
+		openAIError(c, http.StatusBadGateway, "upstream_error", "上游未返回图片结果")
+		return
+	}
+
 	if cost > 0 {
-		if err := h.Billing.Settle(context.Background(), ak.UserID, ak.ID, cost, cost, refID, "image-edit settle"); err != nil {
+		if err := h.Billing.Settle(context.Background(), ak.UserID, ak.ID, cost, actualCost, refID, "image-edit settle"); err != nil {
 			logger.L().Error("billing settle image-edit", zap.Error(err), zap.String("ref", refID))
 		}
 	}
-	_ = h.Keys.DAO().TouchUsage(context.Background(), ak.ID, c.ClientIP(), cost)
+	_ = h.Keys.DAO().TouchUsage(context.Background(), ak.ID, c.ClientIP(), actualCost)
 
 	rec.Status = usage.StatusSuccess
-	rec.CreditCost = cost
+	rec.ImageCount = actualN
+	rec.CreditCost = actualCost
 	if h.DAO != nil {
-		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, cost)
+		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, actualCost)
 	}
 
 	out := ImageGenResponse{
 		Created: time.Now().Unix(),
 		TaskID:  taskID,
-		Data:    buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs),
+		Data:    data,
 	}
 	c.JSON(http.StatusOK, out)
 }

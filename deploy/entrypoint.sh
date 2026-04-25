@@ -46,7 +46,7 @@ run_migrate() {
   fi
   local dsn="${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(${MYSQL_HOST}:${MYSQL_PORT})/${MYSQL_DATABASE}?parseTime=true&multiStatements=true&charset=utf8mb4,utf8"
   log "running goose migrations..."
-  goose -dir /app/sql/migrations mysql "${dsn}" up
+  goose -allow-missing -dir /app/sql/migrations mysql "${dsn}" up
   log "migrations done."
 }
 

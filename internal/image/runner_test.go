@@ -3,6 +3,7 @@ package image
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,7 +76,7 @@ func TestRunnerRunPreservesReturnedRefs(t *testing.T) {
 	}
 }
 
-func TestRunnerRunDoesNotRetryUpstreamError(t *testing.T) {
+func TestRunnerRunRetriesUpstreamErrorOnceWhenMaxAttemptsIsOne(t *testing.T) {
 	attempts := 0
 	r := &Runner{
 		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
@@ -85,8 +86,8 @@ func TestRunnerRunDoesNotRetryUpstreamError(t *testing.T) {
 	}
 
 	res := r.Run(context.Background(), RunOptions{TaskID: "img_retry_ok", MaxAttempts: 1})
-	if attempts != 1 {
-		t.Fatalf("expected 1 attempt, got %d", attempts)
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
 	}
 	if res.Status != StatusFailed {
 		t.Fatalf("expected failed status, got %s", res.Status)
@@ -94,12 +95,12 @@ func TestRunnerRunDoesNotRetryUpstreamError(t *testing.T) {
 	if res.ErrorCode != ErrUpstream {
 		t.Fatalf("expected error code %q, got %q", ErrUpstream, res.ErrorCode)
 	}
-	if res.Attempts != 1 {
-		t.Fatalf("expected result attempts=1, got %d", res.Attempts)
+	if res.Attempts != 2 {
+		t.Fatalf("expected result attempts=2, got %d", res.Attempts)
 	}
 }
 
-func TestRunnerRunDoesNotExtendConfiguredRetriesForUpstreamError(t *testing.T) {
+func TestRunnerRunLimitsUpstreamErrorRetryToOneExtraAttempt(t *testing.T) {
 	attempts := 0
 	r := &Runner{
 		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
@@ -109,8 +110,8 @@ func TestRunnerRunDoesNotExtendConfiguredRetriesForUpstreamError(t *testing.T) {
 	}
 
 	res := r.Run(context.Background(), RunOptions{TaskID: "img_retry_fail", MaxAttempts: 3})
-	if attempts != 1 {
-		t.Fatalf("expected 1 attempt, got %d", attempts)
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
 	}
 	if res.Status != StatusFailed {
 		t.Fatalf("expected failed status, got %s", res.Status)
@@ -118,8 +119,44 @@ func TestRunnerRunDoesNotExtendConfiguredRetriesForUpstreamError(t *testing.T) {
 	if res.ErrorCode != ErrUpstream {
 		t.Fatalf("expected error code %q, got %q", ErrUpstream, res.ErrorCode)
 	}
-	if res.Attempts != 1 {
-		t.Fatalf("expected result attempts=1, got %d", res.Attempts)
+	if res.Attempts != 2 {
+		t.Fatalf("expected result attempts=2, got %d", res.Attempts)
+	}
+}
+
+func TestRunnerRunRetriesUpstreamErrorThenSucceeds(t *testing.T) {
+	attempts := 0
+	r := &Runner{
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			attempts++
+			if attempts == 1 {
+				result.AccountID = 101
+				return false, ErrUpstream, errors.New("first upstream boom")
+			}
+			result.AccountID = 202
+			result.ConversationID = "conv_retry_ok"
+			result.FileIDs = []string{"file:retry_ok"}
+			result.SignedURLs = []string{"https://example.com/retry_ok.png"}
+			result.ContentTypes = []string{"image/png"}
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_retry_then_ok", MaxAttempts: 1})
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+	if res.Status != StatusSuccess {
+		t.Fatalf("expected success status, got %s", res.Status)
+	}
+	if res.Attempts != 2 {
+		t.Fatalf("expected result attempts=2, got %d", res.Attempts)
+	}
+	if res.AccountID != 202 {
+		t.Fatalf("expected account 202, got %d", res.AccountID)
+	}
+	if got := len(res.FileIDs); got != 1 || res.FileIDs[0] != "file:retry_ok" {
+		t.Fatalf("file ids = %v", res.FileIDs)
 	}
 }
 
@@ -141,5 +178,33 @@ func TestRunnerRunStopsAfterSingleNonRetryableFailure(t *testing.T) {
 	}
 	if res.ErrorCode != ErrPollTimeout {
 		t.Fatalf("expected error code %q, got %q", ErrPollTimeout, res.ErrorCode)
+	}
+}
+
+func TestRunnerRunReturnsPartialSuccessForParallelRequests(t *testing.T) {
+	var calls int32
+	r := &Runner{
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			call := atomic.AddInt32(&calls, 1)
+			if call == 1 {
+				result.ConversationID = "conv_partial"
+				result.FileIDs = []string{"file:partial_ok"}
+				result.SignedURLs = []string{"https://example.com/partial-ok.png"}
+				result.ContentTypes = []string{"image/png"}
+				return true, "", nil
+			}
+			return false, ErrPollTimeout, errors.New("poll timeout")
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_partial_success", N: 3, MaxAttempts: 1})
+	if res.Status != StatusSuccess {
+		t.Fatalf("expected success status, got %s", res.Status)
+	}
+	if got := len(res.FileIDs); got != 1 {
+		t.Fatalf("file ids count = %d, ids = %v", got, res.FileIDs)
+	}
+	if res.FileIDs[0] != "file:partial_ok" {
+		t.Fatalf("file ids = %v", res.FileIDs)
 	}
 }

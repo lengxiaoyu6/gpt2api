@@ -84,7 +84,7 @@ interface AppState {
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
   generateImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
-  editImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; file: File; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  editImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; files: File[]; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
   openAuthForTab: (tab: TabKey) => void
   closeAuth: () => void
   setActiveTab: (tab: TabKey) => void
@@ -269,18 +269,20 @@ export const useStore = create<AppState>()(
         if (!model) {
           throw new Error('当前暂无可用图像模型')
         }
-        const result = await meApi.playGenerateImage(
-          {
-            model,
-            prompt: applyRatioPrefix(input.prompt, input.aspectRatio),
-            size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
-            upscale: input.upscale || undefined,
-            n: normalizeImageCount(input.count),
-          },
-          input.signal,
-        )
-        await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
-        return result
+        try {
+          return await meApi.playGenerateImage(
+            {
+              model,
+              prompt: applyRatioPrefix(input.prompt, input.aspectRatio),
+              size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
+              upscale: input.upscale || undefined,
+              n: normalizeImageCount(input.count),
+            },
+            input.signal,
+          )
+        } finally {
+          await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
+        }
       },
 
       async editImage(input) {
@@ -288,19 +290,21 @@ export const useStore = create<AppState>()(
         if (!model) {
           throw new Error('当前暂无可用图像模型')
         }
-        const result = await meApi.playEditImage(
-          model,
-          applyRatioPrefix(input.prompt, input.aspectRatio),
-          input.file,
-          {
-            size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
-            upscale: input.upscale || undefined,
-            n: normalizeImageCount(input.count),
-            signal: input.signal,
-          },
-        )
-        await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
-        return result
+        try {
+          return await meApi.playEditImage(
+            model,
+            applyRatioPrefix(input.prompt, input.aspectRatio),
+            input.files,
+            {
+              size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
+              upscale: input.upscale || undefined,
+              n: normalizeImageCount(input.count),
+              signal: input.signal,
+            },
+          )
+        } finally {
+          await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
+        }
       },
 
       openAuthForTab(tab) {

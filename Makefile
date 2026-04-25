@@ -60,7 +60,7 @@ vet:
 	go vet ./...
 
 migrate-up:
-	goose -dir sql/migrations mysql "$(GOOSE_DSN)" up
+	goose -allow-missing -dir sql/migrations mysql "$(GOOSE_DSN)" up
 
 migrate-down:
 	goose -dir sql/migrations mysql "$(GOOSE_DSN)" down

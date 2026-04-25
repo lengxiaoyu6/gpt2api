@@ -250,28 +250,116 @@ describe('useStore backend integration', () => {
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
   })
 
-  test('editImage maps 2:3, applies ratio prefix, forwards upscale and refreshes me plus history', async () => {
+  test('generateImage refreshes history after API task failure', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
     await state.fetchImageModels()
-    const file = new File(['demo'], 'demo.png', { type: 'image/png' })
+    vi.mocked(meApi.playGenerateImage).mockRejectedValue(new Error('内容审核未通过'))
+    vi.mocked(meApi.listMyImageTasks).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          task_id: 'task-failed',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'future skyline',
+          n: 1,
+          size: '1024x1024',
+          status: 'failed',
+          error: '内容审核未通过',
+          credit_cost: 0,
+          image_urls: [],
+          created_at: '2026-04-22T10:00:00Z',
+          started_at: '2026-04-22T10:00:05Z',
+          finished_at: '2026-04-22T10:00:12Z',
+        },
+      ],
+      limit: 20,
+      offset: 0,
+    })
+
+    await expect(
+      state.generateImage({
+        prompt: 'future skyline',
+        aspectRatio: '1:1',
+      }),
+    ).rejects.toThrow('内容审核未通过')
+
+    expect(meApi.getMe).toHaveBeenCalledTimes(2)
+    expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+    expect((useStore.getState() as any).history[0].status).toBe('failed')
+  })
+
+  test('editImage maps 2:3, applies ratio prefix, forwards multiple files, upscale and refreshes me plus history', async () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    const state = useStore.getState() as any
+    await state.fetchMe()
+    await state.fetchImageModels()
+    const files = [
+      new File(['demo-1'], 'demo-1.png', { type: 'image/png' }),
+      new File(['demo-2'], 'demo-2.png', { type: 'image/png' }),
+    ]
 
     await state.editImage({
       prompt: 'portrait relight',
       aspectRatio: '2:3',
       upscale: '2k',
-      file,
+      files,
       count: 3,
     })
 
     expect(meApi.playEditImage).toHaveBeenCalledWith(
       'gpt-image-1',
       'Make the aspect ratio 2:3 , portrait relight',
-      file,
+      files,
       expect.objectContaining({ size: '1024x1792', upscale: '2k', n: 3 }),
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+  })
+
+  test('editImage refreshes history after API task failure', async () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    const state = useStore.getState() as any
+    await state.fetchMe()
+    await state.fetchImageModels()
+    vi.mocked(meApi.playEditImage).mockRejectedValue(new Error('上游未返回图片结果'))
+    vi.mocked(meApi.listMyImageTasks).mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          task_id: 'task-edit-failed',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'portrait relight',
+          n: 1,
+          size: '1024x1792',
+          status: 'failed',
+          error: '上游未返回图片结果',
+          credit_cost: 0,
+          image_urls: [],
+          created_at: '2026-04-22T11:00:00Z',
+          started_at: '2026-04-22T11:00:05Z',
+          finished_at: '2026-04-22T11:00:12Z',
+        },
+      ],
+      limit: 20,
+      offset: 0,
+    })
+
+    await expect(
+      state.editImage({
+        prompt: 'portrait relight',
+        aspectRatio: '2:3',
+        files: [new File(['demo'], 'demo.png', { type: 'image/png' })],
+      }),
+    ).rejects.toThrow('上游未返回图片结果')
+
+    expect(meApi.getMe).toHaveBeenCalledTimes(2)
+    expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+    expect((useStore.getState() as any).history[0].status).toBe('failed')
   })
 })

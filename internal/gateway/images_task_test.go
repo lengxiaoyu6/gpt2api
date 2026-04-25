@@ -1,6 +1,10 @@
 package gateway
 
-import "testing"
+import (
+	"testing"
+
+	modelpkg "github.com/432539/gpt2api/internal/model"
+)
 
 func TestBuildAPIImageDataUsesProxyURLsForLocalTasks(t *testing.T) {
 	data := buildAPIImageData("img_local_123", "local", []string{"https://origin.example.com/1.png", "https://origin.example.com/2.png"}, []string{"sed:file-1", "file-2"})
@@ -25,5 +29,18 @@ func TestBuildAPIImageDataUsesProxyURLsForCloudTasks(t *testing.T) {
 	}
 	if data[0].FileID != "file-1" || data[1].FileID != "file-2" {
 		t.Fatalf("unexpected file ids: %#v", data)
+	}
+}
+
+func TestImageResponseAccountingUsesActualDataCount(t *testing.T) {
+	m := &modelpkg.Model{ImagePricePerCall: 1000}
+	data := []ImageGenData{{URL: "https://example.com/only-one.png"}}
+
+	actualN, cost := imageResponseAccounting(m, data, 1.5)
+	if actualN != 1 {
+		t.Fatalf("actualN = %d", actualN)
+	}
+	if cost != 1500 {
+		t.Fatalf("cost = %d", cost)
 	}
 }

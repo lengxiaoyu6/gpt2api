@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn, formatCredit } from '@/lib/utils';
 import { useStore } from '../../store/useStore';
 import {
@@ -18,9 +19,32 @@ import {
 } from '../../features/image/options';
 
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
+const MAX_SOURCE_IMAGES = 4;
 const UPSCALE_HINT_LEAD = '上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地';
 const UPSCALE_HINT_WARN = '注意:这是传统算法放大,不是 AI 超分,';
 const UPSCALE_HINT_TAIL = '不会补出新的纹理或毛发,只会让画面更大更平滑。4K 首次加载约 +0.5~1.5s,之后命中缓存。';
+
+interface SourceImage {
+  file: File;
+  preview: string;
+}
+
+const getSourceImageGridClass = (count: number) => {
+  if (count === 1) {
+    return 'grid-cols-1 grid-rows-1';
+  }
+  if (count === 2) {
+    return 'grid-cols-2 grid-rows-1';
+  }
+  if (count === 3) {
+    return 'grid-cols-[minmax(0,2fr)_minmax(0,1fr)] grid-rows-2';
+  }
+  return 'grid-cols-2 grid-rows-2';
+};
+
+const getSourceImageTileClass = (count: number, index: number) => (
+  count === 3 && index === 0 ? 'row-span-2' : ''
+);
 
 export default function GenerateView() {
   const {
@@ -42,11 +66,12 @@ export default function GenerateView() {
   const [imageUpscale, setImageUpscale] = useState<UpscaleLevel>('');
   const [imageCount, setImageCount] = useState<1 | 2 | 3 | 4>(1);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
-  const [sourceImagePreview, setSourceImagePreview] = useState<string | null>(null);
-  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [submissionDialogOpen, setSubmissionDialogOpen] = useState(false);
+  const [sourceImages, setSourceImages] = useState<SourceImage[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+  const sourceImagesRef = useRef<SourceImage[]>([]);
 
   const currentModel = imageModels.find((item) => item.slug === selectedImageModel);
   const currentPrice = currentModel?.image_price_per_call ?? 5;
@@ -57,12 +82,18 @@ export default function GenerateView() {
   const activeUpscale = mode === 'txt' ? textUpscale : imageUpscale;
 
   useEffect(() => {
+    sourceImagesRef.current = sourceImages;
+  }, [sourceImages]);
+
+  useEffect(() => {
     return () => {
-      if (sourceImagePreview?.startsWith('blob:')) {
-        URL.revokeObjectURL(sourceImagePreview);
-      }
+      sourceImagesRef.current.forEach((image) => {
+        if (image.preview.startsWith('blob:')) {
+          URL.revokeObjectURL(image.preview);
+        }
+      });
     };
-  }, [sourceImagePreview]);
+  }, []);
 
   useEffect(() => {
     if (!isModelPickerOpen) {
@@ -106,12 +137,13 @@ export default function GenerateView() {
       toast.error('请输入提示词');
       return;
     }
-    if (!sourceFile && mode === 'img') {
+    if (sourceImages.length === 0 && mode === 'img') {
       toast.error('请上传参考图');
       return;
     }
 
     setIsGenerating(true);
+    setSubmissionDialogOpen(true);
     clearResults();
     try {
       const response = mode === 'txt'
@@ -125,7 +157,7 @@ export default function GenerateView() {
             prompt: nextPrompt || '增强细节，提升画面质感',
             aspectRatio: imageAspectRatio,
             upscale: imageUpscale,
-            file: sourceFile as File,
+            files: sourceImages.map((image) => image.file),
             count: imageCount,
           });
 
@@ -151,17 +183,43 @@ export default function GenerateView() {
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
+    const pickedFiles: File[] = e.target.files ? Array.from(e.target.files) : [];
+    if (pickedFiles.length === 0) {
       return;
     }
 
-    if (sourceImagePreview?.startsWith('blob:')) {
-      URL.revokeObjectURL(sourceImagePreview);
+    const availableSlots = Math.max(0, MAX_SOURCE_IMAGES - sourceImages.length);
+    const acceptedFiles = pickedFiles.slice(0, availableSlots);
+    if (acceptedFiles.length < pickedFiles.length) {
+      toast.warning(`最多上传 ${MAX_SOURCE_IMAGES} 张参考图`);
+    }
+    if (acceptedFiles.length === 0) {
+      e.target.value = '';
+      return;
     }
 
-    setSourceFile(file);
-    setSourceImagePreview(URL.createObjectURL(file));
+    const nextImages = acceptedFiles.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+
+    setSourceImages((prev) => [...prev, ...nextImages]);
+    e.target.value = '';
+  };
+
+  const handleCancelSourceImage = (index: number, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    setSourceImages((prev) => {
+      const target = prev[index];
+      if (target?.preview.startsWith('blob:')) {
+        URL.revokeObjectURL(target.preview);
+      }
+      return prev.filter((_, itemIndex) => itemIndex !== index);
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleAspectRatioChange = (ratio: AspectRatio) => {
@@ -182,6 +240,30 @@ export default function GenerateView() {
 
   return (
     <div className="px-4 py-6 space-y-8 animate-in fade-in duration-500">
+      <Dialog open={submissionDialogOpen} onOpenChange={setSubmissionDialogOpen}>
+        <DialogContent className="rounded-3xl p-5" showCloseButton={false}>
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+            </div>
+            <div className="space-y-2">
+              <DialogTitle className="text-lg font-black">任务已经提交</DialogTitle>
+              <DialogDescription className="text-sm leading-6">
+                可以关闭弹窗，任务完成后可以到记录查询
+              </DialogDescription>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11 w-full rounded-2xl font-bold"
+              onClick={() => setSubmissionDialogOpen(false)}
+            >
+              关闭提示
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {imageNotice ? (
         <Card className="border-amber-500/25 bg-amber-500/10 px-4 py-3 rounded-3xl">
           <div className="flex items-start gap-3">
@@ -241,28 +323,61 @@ export default function GenerateView() {
         {mode === 'img' && (
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="relative aspect-video rounded-2xl border-2 border-dashed border-border/50 hover:border-primary/50 transition-colors flex flex-col items-center justify-center bg-background/50 overflow-hidden cursor-pointer group"
+            className="group relative aspect-video cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border/50 bg-background/50 transition-colors hover:border-primary/50"
           >
-            {sourceImagePreview ? (
-              <>
-                <img src={sourceImagePreview} className="w-full h-full object-cover" alt="Source" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                  <Button variant="secondary" size="sm" className="gap-2">
-                    <RefreshCw className="w-3 h-3" />
-                    更换图片
-                  </Button>
+            {sourceImages.length > 0 ? (
+              <div className="relative h-full w-full">
+                <div className={cn('grid h-full w-full gap-2.5 p-2.5', getSourceImageGridClass(sourceImages.length))}>
+                  {sourceImages.map((sourceImage, index) => (
+                    <div
+                      key={`${sourceImage.file.name}-${index}`}
+                      className={cn(
+                        'group/source relative min-h-0 overflow-hidden rounded-2xl border border-white/15 bg-background/70 shadow-lg shadow-black/10',
+                        getSourceImageTileClass(sourceImages.length, index),
+                      )}
+                    >
+                      <img
+                        src={sourceImage.preview}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover/source:scale-105"
+                        alt={`参考图 ${index + 1}`}
+                      />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/60 to-transparent" />
+                      <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur">
+                        参考图 {index + 1}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        aria-label={sourceImages.length === 1 ? '取消参考图' : `取消参考图 ${index + 1}`}
+                        className="absolute right-2 top-2 z-10 h-11 w-11 rounded-full bg-black/55 text-white shadow-lg shadow-black/25 backdrop-blur hover:bg-black/70"
+                        onClick={(event) => handleCancelSourceImage(index, event)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              </>
+                <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-[10px] font-bold text-white shadow-lg shadow-black/20 backdrop-blur">
+                  已选择 {sourceImages.length}/{MAX_SOURCE_IMAGES} 张
+                </div>
+                {sourceImages.length < MAX_SOURCE_IMAGES && (
+                  <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/90 px-3 py-2 text-[10px] font-black text-primary-foreground shadow-lg shadow-primary/20 backdrop-blur transition-transform group-hover:scale-105">
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    <span>继续添加</span>
+                  </div>
+                )}
+              </div>
             ) : (
-              <>
+              <div className="flex h-full w-full flex-col items-center justify-center">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                   <ImageIcon className="w-6 h-6 text-primary" />
                 </div>
                 <p className="text-xs font-bold">点击上传参考图</p>
-                <p className="text-[10px] text-muted-foreground mt-1">支持 PNG, JPG, WEBP</p>
-              </>
+                <p className="text-[10px] text-muted-foreground mt-1">支持 PNG, JPG, WEBP，最多 {MAX_SOURCE_IMAGES} 张</p>
+              </div>
             )}
-            <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden" />
           </div>
         )}
 
@@ -481,17 +596,10 @@ export default function GenerateView() {
           onClick={handleGenerate}
           disabled={isGenerating || !selectedImageModel}
         >
-          {isGenerating ? (
-            <div className="flex items-center gap-3">
-              <RefreshCw className="w-5 h-5 animate-spin" />
-              <span>AI 处理中...</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5" />
-              <span>开始创作</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5" />
+            <span>开始创作</span>
+          </div>
         </Button>
       </Card>
 
@@ -527,16 +635,6 @@ export default function GenerateView() {
           </motion.section>
         )}
       </AnimatePresence>
-
-      {resultImages.length === 0 && !isGenerating && (
-        <div className="flex flex-col items-center justify-center py-12 opacity-30 text-center space-y-3">
-          <AlertCircle className="w-8 h-8" />
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest">等待灵感输入</p>
-            <p className="text-[10px] mt-1">生成完成后会自动同步到记录页</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

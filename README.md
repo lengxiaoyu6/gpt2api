@@ -464,7 +464,7 @@ curl https://your-domain.com/v1/images/tasks/img_xxx \
 
 - **速度优先**:SSE 里出现 `file-service` / `sediment` 引用立即下载,**不等齐 N 张**;
 - **单轮单账号**:一次 `f/conversation` SSE 之后最多再短轮询 300 秒补齐(per-attempt 总上限 6 分钟,外层 handler 上限 7 分钟),超时仍有 ≥ 1 张也按成功返回;
-- **硬错误才切账号**:只有 `rate_limited` / `no_available_account` / `auth_required` 才会触发一次跨账号重试,其他错误直接暴露给调用方便于排障。
+- **硬错误才切账号**:`rate_limited` / `no_available_account` / `auth_required` / `network_transient` 继续按原规则做跨账号重试;若命中 `upstream_error`,图片账号池也会额外换账号补试 1 次。
 
 #### 如何判断本次成功出图?
 
@@ -477,7 +477,7 @@ image runner poll done                   poll_status=success poll_fids=[file_xxx
 image runner result summary              refs=[...] signed_count=2
 ```
 
-如果 Poll 超时(默认 300 秒内没拿到任何图),会直接落到 `poll_timeout`,不再悄悄换账号重试。
+如果 Poll 超时(默认 300 秒内没拿到任何图),会直接落到 `poll_timeout`,不会触发这次 `upstream_error` 补试规则。
 
 #### 数据库里复盘
 
@@ -755,11 +755,11 @@ chatgpt.com 的实际上游 slug 会随账号等级微调(例如 Plus 用 `gpt-5
 <details>
 <summary><b>Q2. 出图偶尔 poll_timeout 怎么办?</b></summary>
 
-IMG2 正式上线后,`gpt2api` 默认 SSE 解析完成后最多短轮询 **300 秒**补齐图片(per-attempt 硬上限 6 分钟,handler 硬上限 7 分钟)。如果依然没拿到任何 `file-service` / `sediment` 引用,会直接抛 `poll_timeout` 给调用方,**不会再悄悄换账号重试**(那样只会吞掉用户时间)。常见处理:
+IMG2 正式上线后,`gpt2api` 默认 SSE 解析完成后最多短轮询 **300 秒**补齐图片(per-attempt 硬上限 6 分钟,handler 硬上限 7 分钟)。如果依然没拿到任何 `file-service` / `sediment` 引用,会直接抛 `poll_timeout` 给调用方。当前图片链路仅对 `upstream_error` 增加一次托底补试:账号池会换账号再试 1 次,外置图片渠道会在同一渠道上再向上游补试 1 次,`poll_timeout` 语义保持不变。常见处理:
 
 1. 在「管理后台 → GPT账号」对该账号做「全部探测」,确认代理 / 账号本身可用;
 2. 把长期 `poll_timeout` 的账号绑定到更快的代理,或移出主力池;
-3. 如果想在网关层面做"失败切账号"的托底重试,自行在客户端实现即可——这符合"出错就让上层看到"的设计原则。
+3. `poll_timeout` 本身更适合作为账号质量或代理质量信号处理,长期出现时优先调整账号与代理分配。
 </details>
 
 <details>
