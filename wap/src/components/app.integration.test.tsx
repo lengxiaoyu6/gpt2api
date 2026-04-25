@@ -448,7 +448,7 @@ describe('wap integration', () => {
       generateImage,
       imageModels: [
         { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
-        { id: 2, slug: 'gpt-image-pro', type: 'image', description: '高质量模型', image_price_per_call: 3000 },
+        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高质量模型', image_price_per_call: 3000 },
       ],
       selectedImageModel: 'gpt-image-1',
       setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
@@ -469,6 +469,16 @@ describe('wap integration', () => {
 
     const modelList = screen.getByRole('listbox', { name: '图片模型列表' })
     expect(modelList).toBeInTheDocument()
+    expect(modelTrigger.className).toContain('ring-2')
+    expect(modelTrigger.className).toContain('border-primary/80')
+    expect(modelTrigger.className).toContain('bg-card')
+
+    const modelPickerPanel = document.querySelector('[data-model-picker-panel="true"]')
+    expect(modelPickerPanel).toBeInTheDocument()
+    expect(modelPickerPanel?.className).toContain('ring-primary/20')
+    expect(modelPickerPanel?.className).toContain('bg-popover')
+    expect(modelPickerPanel?.className).toContain('shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]')
+
     fireEvent.click(screen.getByRole('button', { name: /高质量模型/ }))
 
     await waitFor(() => {

@@ -72,6 +72,56 @@ describe('generate image notice', () => {
     expect(notice.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  test('generate page hides local upscale hint outside gpt-image-2 model', () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'GPT2API',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高清模型', image_price_per_call: 2500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    expect(screen.queryByText('Catmull-Rom 插值')).toBeNull()
+  })
+
+  test('generate page shows local upscale hint for gpt-image-2 model', () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'GPT2API',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高清模型', image_price_per_call: 2500 },
+      ],
+      selectedImageModel: 'gpt-image-2',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    expect(screen.getByText('Catmull-Rom 插值')).toBeInTheDocument()
+  })
+
 
   test('generate page shows pc experience hint in image-to-image mode', async () => {
     useStore.setState({

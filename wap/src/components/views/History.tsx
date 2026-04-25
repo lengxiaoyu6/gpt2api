@@ -6,8 +6,8 @@ import {
   CheckCircle2,
   Download,
   Image as ImageIcon,
-  History as HistoryIcon,
   LoaderCircle,
+  RefreshCw,
   Search,
   X,
 } from 'lucide-react';
@@ -199,7 +199,7 @@ async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
 }
 
 export default function HistoryView() {
-  const { user, history, fetchHistory } = useStore();
+  const { user, history, historyLoading, fetchHistory } = useStore();
   const [selectedImage, setSelectedImage] = useState<HistoryRecord | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [search, setSearch] = useState('');
@@ -210,6 +210,14 @@ export default function HistoryView() {
       void fetchHistory();
     }
   }, [fetchHistory, user]);
+
+  async function handleRefreshHistory() {
+    if (!user || historyLoading) {
+      return;
+    }
+
+    await fetchHistory(true);
+  }
 
   const filtered = history.filter((item) => item.prompt.toLowerCase().includes(search.toLowerCase()));
   const selectedImageKind = selectedImage ? getTaskStateKind(selectedImage.status) : null;
@@ -285,9 +293,19 @@ export default function HistoryView() {
           <h1 className="text-2xl font-black tracking-tight">时间轴</h1>
           <p className="text-xs text-muted-foreground font-medium">存档所有创意瞬间</p>
         </div>
-        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-          <HistoryIcon className="w-5 h-5 text-muted-foreground" />
-        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          aria-label="刷新记录"
+          disabled={historyLoading}
+          onClick={() => {
+            void handleRefreshHistory();
+          }}
+          className="h-11 w-11 rounded-full bg-secondary/80 text-foreground shadow-sm ring-1 ring-border/60"
+        >
+          <RefreshCw className={`w-5 h-5 ${historyLoading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       <div className="relative">

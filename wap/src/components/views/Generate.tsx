@@ -80,6 +80,7 @@ export default function GenerateView() {
   const imageNotice = siteInfo['site.image_notice']?.trim() || '';
   const activeAspectRatio = mode === 'txt' ? textAspectRatio : imageAspectRatio;
   const activeUpscale = mode === 'txt' ? textUpscale : imageUpscale;
+  const shouldShowUpscaleHint = currentModel?.slug === 'gpt-image-2';
 
   useEffect(() => {
     sourceImagesRef.current = sourceImages;
@@ -400,11 +401,11 @@ export default function GenerateView() {
                     aria-expanded={isModelPickerOpen}
                     onClick={() => setIsModelPickerOpen((open) => !open)}
                     className={cn(
-                      'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none',
+                      'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none ring-inset',
                       'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
                       isModelPickerOpen
-                        ? 'border-primary/50 bg-primary/12 shadow-lg shadow-primary/10'
-                        : 'border-border/50 bg-background/55 hover:border-primary/30 hover:bg-background/70',
+                        ? 'border-primary/80 bg-card shadow-[0_14px_34px_-22px_rgba(0,0,0,0.75)] ring-2 ring-primary/35'
+                        : 'border-border/60 bg-card/70 shadow-sm shadow-black/5 hover:border-primary/45 hover:bg-card',
                     )}
                   >
                     <span className="min-w-0 flex-1">
@@ -426,7 +427,10 @@ export default function GenerateView() {
                     />
                   </button>
                   {isModelPickerOpen ? (
-                    <div className="absolute left-0 top-[calc(100%+0.5rem)] z-20 w-full overflow-hidden rounded-2xl border border-border/60 bg-background/95 p-2 shadow-2xl shadow-black/20 backdrop-blur">
+                    <div
+                      data-model-picker-panel="true"
+                      className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full overflow-hidden rounded-2xl border border-primary/30 bg-popover p-2 shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)] ring-1 ring-primary/20 backdrop-blur"
+                    >
                       <ScrollArea className="max-h-72">
                         <div aria-label="图片模型列表" role="listbox" className="space-y-2 pr-2">
                           {imageModels.map((model) => {
@@ -446,8 +450,8 @@ export default function GenerateView() {
                                   'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none',
                                   'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
                                   isActive
-                                    ? 'border-primary/50 bg-primary/15 shadow-lg shadow-primary/10'
-                                    : 'border-border/50 bg-background/60 hover:border-primary/30 hover:bg-background/80',
+                                    ? 'border-primary/70 bg-primary/18 shadow-lg shadow-primary/15 ring-1 ring-primary/25'
+                                    : 'border-border/60 bg-card/80 shadow-sm shadow-black/5 hover:border-primary/45 hover:bg-primary/8',
                                 )}
                               >
                                 <span className="min-w-0 flex-1">
@@ -553,17 +557,19 @@ export default function GenerateView() {
                 );
               })}
             </div>
-            <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-[10px] leading-5 text-foreground/80">
-              <p>
-                {UPSCALE_HINT_LEAD}
-                <b className="font-semibold text-foreground">Catmull-Rom 插值</b>
-                放大并以 PNG 输出。
-              </p>
-              <p className="mt-1">
-                <span className="font-semibold text-amber-700 dark:text-amber-300">{UPSCALE_HINT_WARN}</span>
-                {UPSCALE_HINT_TAIL}
-              </p>
-            </div>
+            {shouldShowUpscaleHint ? (
+              <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-[10px] leading-5 text-foreground/80">
+                <p>
+                  {UPSCALE_HINT_LEAD}
+                  <b className="font-semibold text-foreground">Catmull-Rom 插值</b>
+                  放大并以 PNG 输出。
+                </p>
+                <p className="mt-1">
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">{UPSCALE_HINT_WARN}</span>
+                  {UPSCALE_HINT_TAIL}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-3">

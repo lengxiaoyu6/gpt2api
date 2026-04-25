@@ -107,6 +107,52 @@ describe('wap backend bindings', () => {
     expect(screen.getByAltText('Cloud city')).toHaveAttribute('src', '/p/img/task-1/0')
   })
 
+  test('history view refresh button forces server reload', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: true,
+      historyLoading: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    })
+
+    expect(fetchHistory).toHaveBeenCalledTimes(2)
+    expect(fetchHistory).toHaveBeenLastCalledWith(true)
+  })
+
   test('profile view loads history count when opened before history tab', async () => {
     const fetchHistory = vi.fn().mockImplementation(async () => {
       useStore.setState({
