@@ -565,6 +565,11 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 	rec.Status = usage.StatusSuccess
 	rec.CreditCost = cost
 	rec.DurationMs = int(time.Since(startAt).Milliseconds())
+	// chat-as-image 单轮固定 N=1,这里也按 SignedURLs 兜底,避免 0 张统计漂移。
+	rec.ImageCount = len(res.SignedURLs)
+	if rec.ImageCount <= 0 {
+		rec.ImageCount = 1
+	}
 
 	// 以 chat 响应返回(content 里内嵌 markdown 图片)。
 	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.ThumbURLs, res.FileIDs)
