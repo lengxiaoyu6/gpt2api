@@ -88,14 +88,14 @@ export default function AnnouncementCenter({ active }: Props) {
 
       {popupOpen && current && (
         <AnnouncementDialog title={current.title} onClose={() => setPopupOpen(false)}>
-          <div className="max-h-[55vh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-7 text-muted-foreground">
+          <div className="max-h-[48vh] overflow-y-auto whitespace-pre-wrap break-words rounded-2xl bg-muted/45 px-4 py-3 text-left text-sm leading-7 text-muted-foreground shadow-inner">
             {current.content}
           </div>
-          <div className="mt-5 flex gap-2">
-            <Button variant="outline" className="h-10 flex-1 rounded-2xl" onClick={() => setListOpen(true)}>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <Button variant="outline" className="h-11 rounded-2xl" onClick={() => setListOpen(true)}>
               公告列表
             </Button>
-            <Button className="h-10 flex-1 rounded-2xl" onClick={acknowledge}>
+            <Button className="h-11 rounded-2xl" onClick={acknowledge}>
               知道了
             </Button>
           </div>
@@ -104,7 +104,7 @@ export default function AnnouncementCenter({ active }: Props) {
 
       {listOpen && (
         <AnnouncementDialog title="公告列表" onClose={() => setListOpen(false)}>
-          <div className={cn('max-h-[62vh] space-y-3 overflow-y-auto', loading && 'opacity-60')}>
+          <div className={cn('max-h-[62vh] space-y-3 overflow-y-auto text-left', loading && 'opacity-60')}>
             {items.length === 0 && (
               <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                 暂无公告
@@ -134,15 +134,36 @@ function AnnouncementDialog({
   children: React.ReactNode
   onClose: () => void
 }) {
+  const titleId = React.useId()
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 backdrop-blur-sm">
-      <section className="w-full max-w-sm rounded-[28px] border border-border/70 bg-background p-5 text-foreground shadow-2xl">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-black tracking-tight">{title}</h2>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-slate-950/45 px-5 py-8 backdrop-blur-md"
+    >
+      <section className="relative w-full max-w-[min(92vw,24rem)] overflow-hidden rounded-[2rem] border border-white/70 bg-background/95 p-5 text-center text-foreground shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-card/95 dark:ring-white/10">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="关闭"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 rounded-full bg-background/70 text-muted-foreground shadow-sm backdrop-blur hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+        <div className="relative mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary ring-8 ring-primary/5">
+          <Bell className="h-5 w-5" />
         </div>
+        <div className="relative mb-2 text-xs font-semibold tracking-[0.24em] text-muted-foreground">
+          重要公告
+        </div>
+        <h2 id={titleId} className="relative mb-4 text-xl font-black tracking-tight">
+          {title}
+        </h2>
         {children}
       </section>
     </div>

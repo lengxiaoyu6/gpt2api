@@ -33,6 +33,23 @@ describe('wap announcement center', () => {
     await waitFor(() => expect(localStorage.getItem('gpt2api.announcement.read.ids')).toContain('2'))
   })
 
+  test('centers popup dialog and uses polished mobile styling', async () => {
+    vi.mocked(api.listPublicAnnouncements).mockResolvedValue({
+      items: [
+        { id: 3, title: '维护公告', content: '今晚维护', enabled: true, sort_order: 20, created_at: '2026-04-26T00:00:00Z', updated_at: '2026-04-26T00:00:00Z' },
+      ],
+      total: 1,
+    })
+
+    render(<AnnouncementCenter active />)
+
+    const dialog = await screen.findByRole('dialog', { name: '维护公告' })
+    expect(dialog).toHaveClass('min-h-[100dvh]', 'items-center', 'justify-center', 'px-5', 'py-8')
+    const panel = dialog.firstElementChild
+    expect(panel).toHaveClass('max-w-[min(92vw,24rem)]', 'text-center', 'shadow-[0_24px_80px_rgba(15,23,42,0.28)]')
+    expect(screen.getByText('重要公告')).toBeInTheDocument()
+  })
+
   test('keeps read announcement in list without auto popup', async () => {
     localStorage.setItem('gpt2api.announcement.read.ids', JSON.stringify([2]))
     vi.mocked(api.listPublicAnnouncements).mockResolvedValue({
