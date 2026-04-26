@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/432539/gpt2api/internal/account"
+	"github.com/432539/gpt2api/internal/announcement"
 	"github.com/432539/gpt2api/internal/apikey"
 	"github.com/432539/gpt2api/internal/audit"
 	"github.com/432539/gpt2api/internal/auth"
@@ -67,8 +68,9 @@ type Deps struct {
 	RedeemH        *redeem.Handler
 	AdminRedeemH   *redeem.AdminHandler
 
-	SettingsH   *settings.Handler
-	SettingsSvc *settings.Service
+	AnnouncementH *announcement.Handler
+	SettingsH     *settings.Handler
+	SettingsSvc   *settings.Service
 }
 
 // New 构建 gin.Engine 并挂载所有路由。
@@ -178,6 +180,9 @@ func New(d *Deps) *gin.Engine {
 		}
 		if d.SettingsH != nil {
 			pub.GET("/site-info", d.SettingsH.Public)
+		}
+		if d.AnnouncementH != nil {
+			pub.GET("/announcements", d.AnnouncementH.ListPublic)
 		}
 		if d.RechargeH != nil {
 			pub.POST("/epay/notify", d.RechargeH.EPayNotify)
@@ -368,6 +373,16 @@ func New(d *Deps) *gin.Engine {
 				{
 					rg.GET("", d.AdminRedeemH.List)
 					rg.POST("/generate", d.AdminRedeemH.Generate)
+				}
+			}
+
+			if d.AnnouncementH != nil {
+				ag := admin.Group("/announcements", middleware.RequirePerm(rbac.PermSystemSetting))
+				{
+					ag.GET("", d.AnnouncementH.ListAdmin)
+					ag.POST("", d.AnnouncementH.Create)
+					ag.PUT("/:id", d.AnnouncementH.Update)
+					ag.DELETE("/:id", d.AnnouncementH.Delete)
 				}
 			}
 

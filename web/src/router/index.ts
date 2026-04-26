@@ -90,6 +90,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据备份', perm: 'system:backup' } },
       { path: 'image-files', component: () => import('@/views/admin/ImageFiles.vue'),
         meta: { title: '图片文件', perm: 'system:image_file' } },
+      { path: 'announcements', component: () => import('@/views/admin/Announcements.vue'),
+        meta: { title: '公告管理', perm: 'system:setting' } },
       { path: 'settings', component: () => import('@/views/admin/Settings.vue'),
         meta: { title: '系统设置', perm: 'system:setting' } },
     ],

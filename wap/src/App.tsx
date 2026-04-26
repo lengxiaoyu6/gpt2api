@@ -9,6 +9,7 @@ import GenerateView from './components/views/Generate';
 import HistoryView from './components/views/History';
 import ProfileView from './components/views/Profile';
 import AuthOverlay from './components/AuthOverlay';
+import AnnouncementCenter from './components/AnnouncementCenter';
 
 import { Button } from '@/components/ui/button';
 import { cn, formatCredit } from '@/lib/utils';
@@ -67,17 +68,20 @@ export default function App() {
           <span className="font-bold text-lg tracking-tight">{siteName}</span>
         </div>
 
-        {user ? (
-          <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-full border border-border/50">
-            <Coins className="w-4 h-4 text-yellow-500" />
-            <span className="font-mono text-sm font-medium">{formatCredit(user.credit_balance)}</span>
-          </div>
-        ) : (
-          <Button variant="ghost" size="sm" onClick={() => openAuthForTab(activeTab)} className="gap-2">
-            <LogIn className="w-4 h-4" />
-            登录
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <AnnouncementCenter active={activeTab === 'home'} />
+          {user ? (
+            <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-full border border-border/50">
+              <Coins className="w-4 h-4 text-yellow-500" />
+              <span className="font-mono text-sm font-medium">{formatCredit(user.credit_balance)}</span>
+            </div>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => openAuthForTab(activeTab)} className="gap-2">
+              <LogIn className="w-4 h-4" />
+              登录
+            </Button>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 pt-16 pb-[calc(4rem+env(safe-area-inset-bottom))]">
