@@ -483,7 +483,9 @@ const i2iAbort = ref<AbortController | null>(null)
 const activeResultIndex = ref(0)
 const activeResultImage = computed<PlayImageData | null>(() => i2iResult.value[activeResultIndex.value] || null)
 const i2iResultUrls = computed(() => resultPreviewURLs(i2iResult.value))
-const MAX_REF_BYTES = 4 * 1024 * 1024 // 4MB
+// 与后端参考图限制保持一致：最多 4 张，单张最大 20MB。
+const MAX_REF_COUNT = 4
+const MAX_REF_BYTES = 20 * 1024 * 1024
 
 function setActiveResult(idx: number) {
   if (idx < 0 || idx >= i2iResult.value.length) return
@@ -495,8 +497,12 @@ function handleFilePick(e: Event) {
   const files = input.files
   if (!files) return
   for (const file of Array.from(files)) {
+    if (refImages.value.length >= MAX_REF_COUNT) {
+      ElMessage.warning('参考图最多 4 张')
+      break
+    }
     if (file.size > MAX_REF_BYTES) {
-      ElMessage.warning(`${file.name} 超过 4MB 限制`)
+      ElMessage.warning(`${file.name} 超过 20MB 限制`)
       continue
     }
     const reader = new FileReader()
@@ -1009,7 +1015,7 @@ watch(activeTab, (v) => {
                 <label :class="['ref-card', 'ref-card--adder', { 'ref-card--empty': !refImages.length }]">
                   <el-icon class="ref-card__adder-icon"><UploadFilled /></el-icon>
                   <div class="ref-card__adder-title">{{ refImages.length ? '添加图片' : '选择参考图' }}</div>
-                  <div class="ref-card__adder-sub">{{ refImages.length ? '继续追加多张参考图' : '支持多张 · 单张 ≤ 4MB' }}</div>
+                  <div class="ref-card__adder-sub">{{ refImages.length ? '继续追加参考图' : '最多 4 张 · 单张 ≤ 20MB' }}</div>
                   <input type="file" accept="image/*" multiple @change="handleFilePick" />
                 </label>
               </div>
