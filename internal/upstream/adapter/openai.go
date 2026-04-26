@@ -503,12 +503,26 @@ func parseOpenAIResponsesImageSSE(body io.ReadCloser) (*ImageResult, error) {
 		return true
 	})
 	if err != nil && !errors.Is(err, io.EOF) {
+		if bestB64 != "" && isSSEReadTimeout(err) {
+			return &ImageResult{B64s: []string{bestB64}}, nil
+		}
 		return nil, err
 	}
 	if bestB64 == "" {
 		return nil, errors.New("openai: empty image response")
 	}
 	return &ImageResult{B64s: []string{bestB64}}, nil
+}
+
+func isSSEReadTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var timeoutErr interface{ Timeout() bool }
+	return errors.As(err, &timeoutErr) && timeoutErr.Timeout()
 }
 
 // Ping 对已配置的完整 endpoint 发一次轻量探活请求。

@@ -474,17 +474,10 @@ const i2iResult = ref<PlayImageData[]>([])
 const i2iPreview = ref(false)
 const i2iError = ref('')
 const i2iAbort = ref<AbortController | null>(null)
-const activeRefIndex = ref(0)
 const activeResultIndex = ref(0)
-const activeRefImage = computed<RefImage | null>(() => refImages.value[activeRefIndex.value] || null)
 const activeResultImage = computed<PlayImageData | null>(() => i2iResult.value[activeResultIndex.value] || null)
 const i2iResultUrls = computed(() => i2iResult.value.map((item) => item.url))
 const MAX_REF_BYTES = 4 * 1024 * 1024 // 4MB
-
-function setActiveRef(idx: number) {
-  if (idx < 0 || idx >= refImages.value.length) return
-  activeRefIndex.value = idx
-}
 
 function setActiveResult(idx: number) {
   if (idx < 0 || idx >= i2iResult.value.length) return
@@ -495,7 +488,6 @@ function handleFilePick(e: Event) {
   const input = e.target as HTMLInputElement
   const files = input.files
   if (!files) return
-  const shouldResetActive = refImages.value.length === 0
   for (const file of Array.from(files)) {
     if (file.size > MAX_REF_BYTES) {
       ElMessage.warning(`${file.name} 超过 4MB 限制`)
@@ -508,7 +500,6 @@ function handleFilePick(e: Event) {
         dataUrl: String(reader.result || ''),
         size: file.size,
       })
-      if (shouldResetActive && refImages.value.length === 1) activeRefIndex.value = 0
     }
     reader.readAsDataURL(file)
   }
@@ -517,13 +508,6 @@ function handleFilePick(e: Event) {
 
 function removeRefImage(idx: number) {
   refImages.value.splice(idx, 1)
-  if (refImages.value.length === 0) {
-    activeRefIndex.value = 0
-    return
-  }
-  if (activeRefIndex.value >= refImages.value.length) {
-    activeRefIndex.value = refImages.value.length - 1
-  }
 }
 
 async function imageUrlToDataUrl(url: string) {
@@ -546,7 +530,6 @@ async function continueEditCurrentResult() {
       dataUrl,
       size: Math.round((dataUrl.length * 3) / 4),
     }]
-    activeRefIndex.value = 0
     ElMessage.success('当前结果已写回参考图区')
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -992,49 +975,35 @@ watch(activeTab, (v) => {
               <div class="compare-panel__head">
                 <div>
                   <div class="compare-panel__title">参考图</div>
-                  <div class="compare-panel__sub">左侧固定展示当前参考主图、参考图切换与生成参数</div>
+                  <div class="compare-panel__sub">参考图以方形卡片展示，点击卡片即可预览</div>
                 </div>
                 <span class="compare-panel__count">{{ refImages.length }} 张</span>
               </div>
 
-              <div class="compare-canvas compare-canvas--reference">
-                <label v-if="!activeRefImage" class="upload-zone upload-zone--canvas">
-                  <el-icon class="up-ic"><UploadFilled /></el-icon>
-                  <div class="up-t">点击选择 / 拖拽图片到这里</div>
-                  <div class="up-s">最多多张,每张 ≤ 4MB</div>
-                  <input type="file" accept="image/*" multiple @change="handleFilePick" />
-                </label>
-                <template v-else>
-                  <img
-                    :src="activeRefImage.dataUrl"
-                    :alt="activeRefImage.name"
-                    class="compare-image"
-                    loading="lazy"
-                  />
-                  <div class="compare-canvas__meta">
-                    <span class="compare-canvas__name">{{ activeRefImage.name }}</span>
-                    <span class="compare-canvas__size">{{ (activeRefImage.size / 1024).toFixed(0) }} KB</span>
-                  </div>
+              <div class="ref-card-grid">
+                <template v-if="refImages.length">
+                  <button
+                    v-for="(r, idx) in refImages"
+                    :key="`${r.name}-${idx}-${r.size}`"
+                    type="button"
+                    class="ref-card"
+                    @click="openPreview(refImages.map((r) => r.dataUrl), idx)"
+                  >
+                    <img :src="r.dataUrl" :alt="r.name" class="ref-card__image" loading="lazy" />
+                    <span class="ref-card__meta">
+                      <span class="ref-card__name">{{ r.name }}</span>
+                      <span class="ref-card__size">{{ (r.size / 1024).toFixed(0) }} KB</span>
+                    </span>
+                    <span class="ref-card__remove" @click.stop="removeRefImage(idx)">
+                      <el-icon><Close /></el-icon>
+                    </span>
+                  </button>
                 </template>
-              </div>
 
-              <div v-if="refImages.length" class="thumb-strip">
-                <button
-                  v-for="(r, idx) in refImages"
-                  :key="`${r.name}-${idx}-${r.size}`"
-                  type="button"
-                  :class="['thumb-strip__item', { active: idx === activeRefIndex }]"
-                  @click="setActiveRef(idx)"
-                >
-                  <img :src="r.dataUrl" :alt="r.name" class="thumb-strip__image" loading="lazy" />
-                  <span class="thumb-strip__meta">{{ (r.size / 1024).toFixed(0) }} KB</span>
-                  <span class="thumb-strip__remove" @click.stop="removeRefImage(idx)">
-                    <el-icon><Close /></el-icon>
-                  </span>
-                </button>
-                <label class="thumb-strip__adder">
-                  <el-icon><Plus /></el-icon>
-                  <span>添加图片</span>
+                <label :class="['ref-card', 'ref-card--adder', { 'ref-card--empty': !refImages.length }]">
+                  <el-icon class="ref-card__adder-icon"><UploadFilled /></el-icon>
+                  <div class="ref-card__adder-title">{{ refImages.length ? '添加图片' : '选择参考图' }}</div>
+                  <div class="ref-card__adder-sub">{{ refImages.length ? '继续追加多张参考图' : '支持多张 · 单张 ≤ 4MB' }}</div>
                   <input type="file" accept="image/*" multiple @change="handleFilePick" />
                 </label>
               </div>
@@ -1613,38 +1582,12 @@ watch(activeTab, (v) => {
   align-items: center;
   justify-content: center;
 }
-.compare-canvas--reference {
-  background: linear-gradient(180deg, rgba(64, 158, 255, 0.06) 0%, var(--el-bg-color) 100%);
-}
 .compare-canvas--result {
   background: linear-gradient(180deg, rgba(103, 194, 58, 0.06) 0%, var(--el-bg-color) 100%);
 }
 .compare-canvas__status {
   width: calc(100% - 24px);
   margin: 12px;
-}
-.compare-canvas__meta {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: 12px;
-  backdrop-filter: blur(6px);
-}
-.compare-canvas__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.compare-canvas__size {
-  flex-shrink: 0;
 }
 .compare-image {
   width: 100%;
@@ -1725,25 +1668,117 @@ watch(activeTab, (v) => {
 .chip { cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .chip:hover { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 
-/* 上传区 */
-.upload-zone {
-  position: relative;
-  display: flex; flex-direction: column; align-items: center;
-  padding: 20px 12px;
-  border: 2px dashed var(--el-border-color);
-  border-radius: 12px;
-  cursor: pointer;
-  background: var(--el-fill-color-lighter);
-  transition: all 0.2s;
-  &:hover { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
-  .up-ic { font-size: 32px; color: var(--el-color-primary); }
-  .up-t { font-size: 13px; margin-top: 6px; color: var(--el-text-color-primary); }
-  .up-s { font-size: 11px; color: var(--el-text-color-placeholder); margin-top: 2px; }
-  input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+/* 参考图区卡片 */
+.ref-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 12px;
 }
-.upload-zone--canvas {
-  width: calc(100% - 24px);
-  min-height: 300px;
+.ref-card {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color);
+  padding: 0;
+  cursor: zoom-in;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.ref-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--el-color-primary);
+  box-shadow: 0 8px 20px rgba(64, 158, 255, 0.14);
+}
+.ref-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ref-card__meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.76));
+  color: #fff;
+  text-align: left;
+}
+.ref-card__name {
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-card__size {
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.84);
+}
+.ref-card__remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ref-card__remove:hover {
+  background: rgba(245, 108, 108, 0.92);
+}
+.ref-card--adder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  border-style: dashed;
+  background: var(--el-fill-color-lighter);
+  color: var(--el-text-color-secondary);
+  text-align: center;
+  cursor: pointer;
+  input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+}
+.ref-card--adder:hover {
+  background: var(--el-color-primary-light-9);
+}
+.ref-card__adder-icon {
+  font-size: 24px;
+  color: var(--el-color-primary);
+}
+.ref-card__adder-title {
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.ref-card__adder-sub {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
+}
+.ref-card--empty {
+  min-height: 132px;
 }
 
 .thumb-strip {
@@ -1752,8 +1787,7 @@ watch(activeTab, (v) => {
   overflow-x: auto;
   padding-bottom: 4px;
 }
-.thumb-strip__item,
-.thumb-strip__adder {
+.thumb-strip__item {
   position: relative;
   flex: 0 0 88px;
   height: 88px;
@@ -1806,16 +1840,6 @@ watch(activeTab, (v) => {
   background: rgba(0, 0, 0, 0.58);
   color: #fff;
   cursor: pointer;
-}
-.thumb-strip__adder {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: var(--el-text-color-secondary);
-  cursor: pointer;
-  input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 }
 
 /* 主区 stage / 结果 */
@@ -1964,6 +1988,16 @@ watch(activeTab, (v) => {
   }
   .hero-sub { display: none; }
   .hero-stats { width: 100%; justify-content: flex-start; }
+  .ref-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .ref-card__adder-title {
+    font-size: 12px;
+  }
+  .ref-card__adder-sub {
+    font-size: 10px;
+  }
   .compare-canvas {
     min-height: 300px;
     height: min(52vh, 420px);
@@ -1971,7 +2005,6 @@ watch(activeTab, (v) => {
   .compare-image {
     max-height: 100%;
   }
-  .compare-canvas__meta,
   .result-actions {
     flex-direction: column;
     align-items: stretch;

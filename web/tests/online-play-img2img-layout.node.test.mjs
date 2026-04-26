@@ -15,12 +15,13 @@ test('图生图区移除旧的 Preview 占位提示', () => {
   assert.doesNotMatch(playVue, /当前提交会返回 501/)
 })
 
-test('图生图区维护参考主图与结果主图状态', () => {
+test('图生图区移除参考主图切换状态并保留结果主图状态', () => {
   const playVue = read('web/src/views/personal/OnlinePlay.vue')
-  assert.match(playVue, /const activeRefIndex = ref\(0\)/)
+  assert.doesNotMatch(playVue, /const activeRefIndex = ref\(0\)/)
   assert.match(playVue, /const activeResultIndex = ref\(0\)/)
-  assert.match(playVue, /const activeRefImage = computed(?:<[^>]+>)?\(\(\) =>/)
+  assert.doesNotMatch(playVue, /const activeRefImage = computed(?:<[^>]+>)?\(\(\) =>/)
   assert.match(playVue, /const activeResultImage = computed(?:<[^>]+>)?\(\(\) =>/)
+  assert.doesNotMatch(playVue, /function setActiveRef\(idx: number\)/)
 })
 
 test('图生图区提供查看放大下载与继续编辑入口', () => {
@@ -37,23 +38,27 @@ test('继续编辑逻辑会把当前结果图写回参考图区', () => {
   assert.match(playVue, /if \(!activeResultImage\.value\?\.url\) return/)
   assert.match(playVue, /const dataUrl = await imageUrlToDataUrl\(activeResultImage\.value\.url\)/)
   assert.match(playVue, /refImages\.value = \[\s*\{[\s\S]*dataUrl,[\s\S]*\}\s*\]/)
-  assert.match(playVue, /activeRefIndex\.value = 0/)
+  assert.doesNotMatch(playVue, /activeRefIndex\.value = 0/)
 })
 
-test('图生图区使用固定双栏画布与缩略条结构', () => {
+test('图生图区参考图改为方形卡片网格结构', () => {
   const playVue = read('web/src/views/personal/OnlinePlay.vue')
   assert.match(playVue, /class="img2img-compare"/)
   assert.match(playVue, /class="compare-panel compare-panel--reference"/)
   assert.match(playVue, /class="compare-panel compare-panel--result"/)
-  assert.match(playVue, /class="thumb-strip"/)
+  assert.match(playVue, /class="ref-card-grid"/)
+  assert.match(playVue, /class="ref-card"/)
+  assert.match(playVue, /class="ref-card__remove" @click\.stop="removeRefImage\(idx\)"/)
+  assert.match(playVue, /@click="openPreview\(refImages\.map\(\(r\) => r\.dataUrl\), idx\)"/)
   assert.match(playVue, /class="result-primary-actions"/)
 })
 
-test('图生图区为大尺寸参考图提供固定画布约束', () => {
+test('图生图区使用方形卡片网格压缩纵向空间', () => {
   const playVue = read('web/src/views/personal/OnlinePlay.vue')
-  assert.match(playVue, /\.compare-canvas\s*\{[\s\S]*height:\s*min\(62vh, 560px\);/)
+  assert.match(playVue, /\.ref-card-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill, minmax\(104px, 1fr\)\);/)
+  assert.match(playVue, /\.ref-card\s*\{[\s\S]*aspect-ratio:\s*1;/)
+  assert.match(playVue, /\.ref-card__image\s*\{[\s\S]*object-fit:\s*cover;/)
   assert.match(playVue, /\.compare-panel__card\s*\{[\s\S]*min-width:\s*0;/)
-  assert.match(playVue, /\.compare-image\s*\{[\s\S]*max-width:\s*100%;[\s\S]*max-height:\s*100%;/)
 })
 
 test('在线体验页已清除冲突标记并保留比例与预览提示', () => {
