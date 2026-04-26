@@ -2,8 +2,10 @@ package gateway
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -134,14 +136,64 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	}
 	finalCost := billing.ComputeImageCost(m, actualN, ratio*channelRatio, req.Size)
 
+	taskID := ""
 	data := make([]ImageGenData, 0, actualN)
-	for _, u := range result.URLs {
-		data = append(data, ImageGenData{URL: u})
-	}
-	// base64 → data: URL,浏览器直接可渲染。
-	// (若后续需要 b64_json 直返,ImageGenData 补一个 B64 字段即可。)
-	for _, b := range result.B64s {
-		data = append(data, ImageGenData{URL: "data:image/png;base64," + b})
+	if h.Runner != nil {
+		taskID = image.GenerateTaskID()
+		if h.DAO != nil {
+			if err := h.DAO.Create(c.Request.Context(), &image.Task{
+				TaskID:          taskID,
+				UserID:          ak.UserID,
+				KeyID:           ak.ID,
+				ModelID:         m.ID,
+				Prompt:          req.Prompt,
+				N:               req.N,
+				Size:            req.Size,
+				StorageMode:     h.currentStorageMode(),
+				Status:          image.StatusDispatched,
+				EstimatedCredit: cost,
+			}); err != nil {
+				refund("billing_error")
+				openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
+				return true
+			}
+		}
+		inlineImages, err := decodeChannelInlineImages(result.B64s, len(result.URLs))
+		if err != nil {
+			refund(image.ErrArchive)
+			if h.DAO != nil {
+				_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			}
+			openAIError(c, http.StatusBadGateway, image.ErrArchive, "图片归档失败:"+err.Error())
+			return true
+		}
+		archived, err := h.Runner.ArchiveExternalImages(ctx, taskID, result.URLs, inlineImages)
+		if err != nil {
+			refund(image.ErrArchive)
+			if h.DAO != nil {
+				_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			}
+			openAIError(c, http.StatusBadGateway, image.ErrArchive, "图片归档失败:"+err.Error())
+			return true
+		}
+		if h.DAO != nil {
+			if err := h.DAO.MarkSuccess(c.Request.Context(), taskID, "", nil,
+				archived.SignedURLs, archived.ThumbURLs, archived.StorageMode, finalCost); err != nil {
+				refund("billing_error")
+				openAIError(c, http.StatusInternalServerError, "internal_error", "更新任务失败:"+err.Error())
+				return true
+			}
+		}
+		data = buildAPIImageData(taskID, archived.StorageMode, archived.SignedURLs, archived.ThumbURLs, nil)
+	} else {
+		for _, u := range result.URLs {
+			data = append(data, ImageGenData{URL: u})
+		}
+		// base64 → data: URL,浏览器直接可渲染。
+		// (若后续需要 b64_json 直返,ImageGenData 补一个 B64 字段即可。)
+		for _, b := range result.B64s {
+			data = append(data, ImageGenData{URL: "data:image/png;base64," + b})
+		}
 	}
 
 	if finalCost > 0 {
@@ -159,6 +211,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	c.JSON(http.StatusOK, ImageGenResponse{
 		Created: time.Now().Unix(),
 		Data:    data,
+		TaskID:  taskID,
 	})
 	return true
 }
@@ -206,6 +259,31 @@ func actualCount(r *adapter.ImageResult) int {
 		return 0
 	}
 	return len(r.URLs) + len(r.B64s)
+}
+
+func decodeChannelInlineImages(b64s []string, startIndex int) ([]imagestore.SourceImage, error) {
+	out := make([]imagestore.SourceImage, 0, len(b64s))
+	for idx, raw := range b64s {
+		contentType := "image/png"
+		payload := strings.TrimSpace(raw)
+		if before, after, ok := strings.Cut(payload, ","); ok && strings.HasPrefix(strings.ToLower(before), "data:") {
+			meta := strings.TrimPrefix(before, "data:")
+			if ct, _, found := strings.Cut(meta, ";"); found && strings.TrimSpace(ct) != "" {
+				contentType = strings.TrimSpace(ct)
+			}
+			payload = after
+		}
+		data, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, imagestore.SourceImage{
+			Index:       startIndex + idx,
+			Data:        data,
+			ContentType: contentType,
+		})
+	}
+	return out, nil
 }
 
 func (h *ImagesHandler) buildChannelImageRequest(ctx context.Context, routes []*channel.Route, req *ImageGenRequest, refs []image.ReferenceImage) (*adapter.ImageRequest, []*channel.Route, error) {

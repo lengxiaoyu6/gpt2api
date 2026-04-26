@@ -20,6 +20,7 @@ import (
 
 	"github.com/432539/gpt2api/internal/apikey"
 	"github.com/432539/gpt2api/internal/channel"
+	"github.com/432539/gpt2api/internal/config"
 	"github.com/432539/gpt2api/internal/image"
 	"github.com/432539/gpt2api/internal/imagestore"
 	modelpkg "github.com/432539/gpt2api/internal/model"
@@ -491,6 +492,68 @@ func TestImageGenerationsRoutesReferenceImagesToResponsesChannel(t *testing.T) {
 	}
 	if got := resp.Data[0].URL; got != "data:image/png;base64,cGFydGlhbA==" {
 		t.Fatalf("resp.Data[0].URL = %q", got)
+	}
+}
+
+func TestImageGenerationsArchivesChannelBase64ResultLocally(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const png1x1Base64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGL6z8DwnwEZAAIAAP//HxcCAa7PZcoAAAAASUVORK5CYII="
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: response.image_generation_call.partial_image\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\""+png1x1Base64+"\",\"output_format\":\"png\"}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	h, ak := newChannelBackedImageHandlerForTest(
+		t,
+		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/responses", "gpt-image-1", "gpt-5.4"),
+		nil,
+	)
+	store := imagestore.NewLocal(imagestore.LocalOptions{RootDir: t.TempDir()})
+	h.LocalImageStore = store
+	h.Runner = image.NewRunner(nil, nil, config.ImageConfig{}, store)
+
+	reqBody, err := json.Marshal(ImageGenRequest{
+		Model:  "gpt-image-1",
+		Prompt: "生成图片",
+		N:      1,
+		Size:   "1024x1024",
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/generations", bytes.NewReader(reqBody), "application/json", ak)
+	h.ImageGenerations(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp ImageGenResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode handler response: %v", err)
+	}
+	if resp.TaskID == "" {
+		t.Fatalf("task_id should be returned for archived channel images")
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("len(resp.Data) = %d, want 1", len(resp.Data))
+	}
+	if got := resp.Data[0].URL; got == "" || got == "data:image/png;base64,"+png1x1Base64 {
+		t.Fatalf("response url should be archived proxy url, got %q", got)
+	}
+	if resp.Data[0].ThumbURL == "" || resp.Data[0].ThumbURL == resp.Data[0].URL {
+		t.Fatalf("thumb_url should be archived proxy thumb url, got %#v", resp.Data[0])
+	}
+	if _, ok, err := store.FindOriginal(resp.TaskID, 0); err != nil || !ok {
+		t.Fatalf("original image missing, ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := store.FindThumb(resp.TaskID, 0); err != nil || !ok {
+		t.Fatalf("thumb image missing, ok=%v err=%v", ok, err)
 	}
 }
 

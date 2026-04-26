@@ -302,6 +302,42 @@ func TestRunnerRunUsesConfiguredHuggingFaceChannelWithoutTelegramFallback(t *tes
 	}
 }
 
+func TestRunnerArchiveExternalImagesUploadsInlineImageToCloud(t *testing.T) {
+	uploader := &runnerCloudUploaderStub{results: []runnerCloudUploadResult{
+		{channel: "telegram", url: "https://cdn.example.com/external.png"},
+		{channel: "telegram", url: "https://cdn.example.com/external_thumb.jpg"},
+	}}
+	r := &Runner{
+		settings:      runnerStorageSettingsStub{mode: StorageModeCloud},
+		cloudUploader: uploader,
+	}
+
+	res, err := r.ArchiveExternalImages(context.Background(), "img_external_cloud", nil, []imagestore.SourceImage{
+		{Data: mustRunnerPNG(t), ContentType: "image/png"},
+	})
+	if err != nil {
+		t.Fatalf("ArchiveExternalImages: %v", err)
+	}
+	if res.Status != StatusSuccess {
+		t.Fatalf("status = %s", res.Status)
+	}
+	if res.StorageMode != StorageModeCloud {
+		t.Fatalf("storage mode = %s", res.StorageMode)
+	}
+	if got := uploader.callNames; len(got) != 2 || got[0] != "img_external_cloud_0" || got[1] != "tmp_img_external_cloud_0" {
+		t.Fatalf("upload file names = %#v", got)
+	}
+	if got := uploader.callCompress; len(got) != 2 || got[0] || !got[1] {
+		t.Fatalf("upload compress flags = %#v", got)
+	}
+	if got := res.SignedURLs; len(got) != 1 || got[0] != "https://cdn.example.com/external.png" {
+		t.Fatalf("signed urls = %#v", got)
+	}
+	if got := res.ThumbURLs; len(got) != 1 || got[0] != "https://cdn.example.com/external_thumb.jpg" {
+		t.Fatalf("thumb urls = %#v", got)
+	}
+}
+
 func mustRunnerPNG(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 64, 48))

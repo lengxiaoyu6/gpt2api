@@ -412,6 +412,62 @@ func (r *Runner) archiveSourceImages(ctx context.Context, result *RunResult) ([]
 	return r.downloadArchiveImages(ctx, result)
 }
 
+// ArchiveExternalImages 归档外置渠道已经生成的图片。
+//
+// urls 会先按 Runner 的下载规则拉取原图字节；inlineImages 用于上游只返回
+// base64 字节的场景。归档成功后返回的 RunResult 会带有最终对外展示用的
+// StorageMode、SignedURLs 与 ThumbURLs。
+func (r *Runner) ArchiveExternalImages(ctx context.Context, taskID string, urls []string, inlineImages []imagestore.SourceImage) (*RunResult, error) {
+	result := &RunResult{
+		Status:      StatusSuccess,
+		StorageMode: r.storageMode(),
+	}
+	images := make([]imagestore.SourceImage, 0, len(urls)+len(inlineImages))
+	if len(urls) > 0 {
+		urlResult := &RunResult{SignedURLs: append([]string(nil), urls...)}
+		downloaded, err := r.downloadArchiveImages(ctx, urlResult)
+		if err != nil {
+			result.Status = StatusFailed
+			result.ErrorCode = ErrArchive
+			result.ErrorMessage = err.Error()
+			return result, err
+		}
+		images = append(images, downloaded...)
+	}
+	base := len(images)
+	for idx, src := range inlineImages {
+		cloned := src
+		cloned.Index = base + idx
+		images = append(images, cloned)
+	}
+	if len(images) == 0 {
+		err := errors.New("no archive images")
+		result.Status = StatusFailed
+		result.ErrorCode = ErrArchive
+		result.ErrorMessage = err.Error()
+		return result, err
+	}
+	result.archiveImages = images
+	result.SignedURLs = make([]string, len(images))
+	for idx := range result.SignedURLs {
+		if idx < len(urls) {
+			result.SignedURLs[idx] = urls[idx]
+			continue
+		}
+		result.SignedURLs[idx] = fmt.Sprintf("inline://image/%d", idx)
+	}
+	if err := r.archiveResultImages(ctx, taskID, result); err != nil {
+		result.Status = StatusFailed
+		result.ErrorCode = ErrArchive
+		result.ErrorMessage = err.Error()
+		return result, err
+	}
+	result.Status = StatusSuccess
+	result.ErrorCode = ""
+	result.ErrorMessage = ""
+	return result, nil
+}
+
 func (r *Runner) uploadCloudImages(ctx context.Context, taskID string, images []imagestore.SourceImage, result *RunResult) error {
 	uploader, err := r.resolveCloudUploader()
 	if err != nil {
