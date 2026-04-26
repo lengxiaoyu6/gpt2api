@@ -263,6 +263,39 @@ describe('wap integration', () => {
     expect(screen.queryByText('帮助与反馈')).toBeNull()
   })
 
+  test('profile header does not render settings icon button', () => {
+    useStore.setState({
+      activeTab: 'profile',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 0,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 0,
+        awarded_credits: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    const { container } = render(<App />)
+
+    expect(screen.getByText('个人中心')).toBeInTheDocument()
+    expect(container.querySelector('.lucide-settings')).toBeNull()
+  })
+
   test('profile recharge entry opens redeem dialog and submits redeem code', async () => {
     vi.mocked(rechargeApi.redeemCode).mockResolvedValue({
       code: 'ABC123',

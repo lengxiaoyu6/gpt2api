@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { deleteMyImageTask, listMyImageTasks, type ImageTask } from '@/api/me';
 import { formatCredit, formatDateTime } from '@/utils/format';
@@ -7,6 +7,7 @@ import { formatCredit, formatDateTime } from '@/utils/format';
 type FlattenedImageTask = {
     task: ImageTask;
     image_url: string;
+    original_image_url: string;
     image_index: number;
     image_total: number;
     image_key: string;
@@ -16,6 +17,11 @@ const imageTasks = ref<ImageTask[]>([]);
 const imagePage = ref({ limit: 12, offset: 0 });
 const imageLoading = ref(false);
 const hasMoreImage = ref(false);
+const imageFilter = reactive({
+    status: '' as '' | 'success' | 'failed' | 'running' | 'queued' | 'dispatched',
+    keyword: '',
+    range: [] as string[],
+});
 const deletingTaskID = ref('');
 const previewVisible = ref(false);
 const previewList = ref<string[]>([]);
@@ -23,12 +29,12 @@ const previewIndex = ref(0);
 
 const flattenedImageTasks = computed<FlattenedImageTask[]>(() =>
     imageTasks.value.flatMap((task) => {
-        const urls = previewURLs(task);
-        const imageTotal = urls?.length || task.image_urls?.length || 0;
-        const safeURLs = urls?.length ? urls : [''];
-        return safeURLs.map((imageURL, index) => ({
+        const imageTotal = Math.max(task.thumb_urls?.length || 0, task.image_urls?.length || 0);
+        const safeLength = imageTotal > 0 ? imageTotal : 1;
+        return Array.from({ length: safeLength }, (_, index) => ({
             task,
-            image_url: imageURL,
+            image_url: task.thumb_urls?.[index] || task.image_urls?.[index] || '',
+            original_image_url: task.image_urls?.[index] || '',
             image_index: index,
             image_total: imageTotal,
             image_key: `${task.task_id}-${index}`,
@@ -38,6 +44,17 @@ const flattenedImageTasks = computed<FlattenedImageTask[]>(() =>
 
 function previewURLs(task: ImageTask) {
     return task.thumb_urls?.length ? task.thumb_urls : task.image_urls;
+}
+
+function imageFilterParams() {
+    const p: Record<string, string> = {};
+    if (imageFilter.status) p.status = imageFilter.status;
+    if (imageFilter.keyword) p.keyword = imageFilter.keyword;
+    if (imageFilter.range && imageFilter.range.length === 2) {
+        p.start_at = imageFilter.range[0];
+        p.end_at = imageFilter.range[1];
+    }
+    return p;
 }
 
 async function loadImageTasks(reset = true) {
@@ -50,6 +67,7 @@ async function loadImageTasks(reset = true) {
         const data = await listMyImageTasks({
             limit: imagePage.value.limit,
             offset: imagePage.value.offset,
+            ...imageFilterParams(),
         });
         if (reset) imageTasks.value = data.items;
         else imageTasks.value.push(...data.items);
@@ -64,11 +82,43 @@ function imageLoadMore() {
     loadImageTasks(false);
 }
 
+function onImageFilterReset() {
+    imageFilter.status = '';
+    imageFilter.keyword = '';
+    imageFilter.range = [];
+    loadImageTasks(true);
+}
+
 function openPreview(urls: string[], idx = 0) {
     if (!urls.length || !urls[idx]) return;
     previewList.value = urls;
     previewIndex.value = idx;
     previewVisible.value = true;
+}
+
+async function downloadOriginalImage(item: FlattenedImageTask) {
+    if (!item.original_image_url) return;
+    try {
+        const res = await fetch(item.original_image_url, { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const ct = blob.type || 'image/png';
+        const ext = ct.includes('jpeg') ? 'jpg' : ct.split('/')[1]?.split(';')[0] || 'png';
+        triggerOriginalDownload(blob, `${item.task.task_id}-${item.image_index + 1}.${ext}`);
+    } catch (e: any) {
+        ElMessage.error('下载失败:' + (e?.message || e));
+    }
+}
+
+function triggerOriginalDownload(blob: Blob, filename: string) {
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function emptyImageLabel(task: ImageTask) {
@@ -142,6 +192,28 @@ onMounted(() => {
                 <h3 class="section-title">图片任务历史</h3>
                 <el-button size="small" @click="loadImageTasks(true)">刷新</el-button>
             </div>
+            <el-form inline class="flex-wrap-gap" style="margin-bottom:10px" @submit.prevent="loadImageTasks(true)">
+                <el-input v-model="imageFilter.keyword" placeholder="提示词关键字" clearable style="width:220px" />
+                <el-select v-model="imageFilter.status" placeholder="状态" clearable style="width:130px">
+                    <el-option label="成功" value="success" />
+                    <el-option label="失败" value="failed" />
+                    <el-option label="运行中" value="running" />
+                    <el-option label="队列中" value="queued" />
+                </el-select>
+                <el-date-picker
+                    v-model="imageFilter.range"
+                    type="datetimerange"
+                    unlink-panels
+                    range-separator="~"
+                    start-placeholder="开始时间"
+                    end-placeholder="结束时间"
+                    format="YYYY-MM-DD HH:mm"
+                    value-format="YYYY-MM-DD HH:mm:ss"
+                    style="width:340px"
+                />
+                <el-button type="primary" @click="loadImageTasks(true)">查询</el-button>
+                <el-button @click="onImageFilterReset">重置</el-button>
+            </el-form>
             <div v-loading="imageLoading">
                 <div v-if="imageTasks.length === 0 && !imageLoading" class="empty">
                     暂无图片任务，复制接口文档中的图片代码调用一次或者在线体验即可生成记录。
@@ -185,6 +257,19 @@ onMounted(() => {
                             <div class="foot">
                                 <span class="mute">{{ formatDateTime(item.task.created_at) }}</span>
                                 <span class="credit">{{ formatCredit(item.task.credit_cost) }} 积分</span>
+                            </div>
+                            <div class="actions">
+                                <el-button
+                                    v-if="item.original_image_url"
+                                    size="small"
+                                    type="primary"
+                                    plain
+                                    title="下载原图"
+                                    aria-label="下载原图"
+                                    @click="downloadOriginalImage(item)"
+                                >
+                                    下载原图
+                                </el-button>
                             </div>
                             <div v-if="item.task.error" class="err">{{ item.task.error }}</div>
                         </div>
@@ -255,6 +340,12 @@ onMounted(() => {
     padding: 24px 0;
     color: var(--el-text-color-secondary);
     text-align: center;
+}
+.flex-wrap-gap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
 }
 
 .grid {
@@ -347,6 +438,11 @@ onMounted(() => {
             color: #e6a23c;
             font-weight: 600;
         }
+    }
+    .actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
     }
     .err {
         color: var(--el-color-danger);

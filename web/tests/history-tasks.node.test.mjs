@@ -33,6 +33,17 @@ test('历史任务页面复用图片任务列表能力', () => {
   assert.match(pageVue, /imageLoadMore/)
 })
 
+test('历史任务页面承接图片任务查询筛选能力', () => {
+  const pageVue = read('web/src/views/personal/HistoryTasks.vue')
+  assert.match(pageVue, /const imageFilter = reactive\(\{/)
+  assert.match(pageVue, /function imageFilterParams\(\)/)
+  assert.match(pageVue, /\.\.\.imageFilterParams\(\)/)
+  assert.match(pageVue, /v-model="imageFilter\.keyword"/)
+  assert.match(pageVue, /v-model="imageFilter\.status"/)
+  assert.match(pageVue, /v-model="imageFilter\.range"/)
+  assert.match(pageVue, /function onImageFilterReset\(\)/)
+})
+
 test('历史任务页面支持点击缩略图全屏放大查看', () => {
   const pageVue = read('web/src/views/personal/HistoryTasks.vue')
   assert.match(pageVue, /const previewVisible = ref\(false\)/)
@@ -51,6 +62,23 @@ test('历史任务页面按图片拆分多图任务展示', () => {
   assert.match(pageVue, /v-for="item in flattenedImageTasks"/)
   assert.match(pageVue, /@click="openPreview\(previewURLs\(item\.task\), item\.image_index\)"/)
   assert.match(pageVue, /第\{\{ item\.image_index \+ 1 \}\}张，共\{\{ item\.image_total \}\}张/)
+})
+
+test('历史任务页面放大使用缩略图且下载原图文件', () => {
+  const pageVue = read('web/src/views/personal/HistoryTasks.vue')
+  assert.match(pageVue, /original_image_url: task\.image_urls\?\.\[index\] \|\| ''/)
+  assert.match(pageVue, /image_url: task\.thumb_urls\?\.\[index\] \|\| task\.image_urls\?\.\[index\] \|\| ''/)
+  assert.match(pageVue, /function previewURLs\(task: ImageTask\)/)
+  assert.match(pageVue, /return task\.thumb_urls\?\.length \? task\.thumb_urls : task\.image_urls/)
+  assert.match(pageVue, /async function downloadOriginalImage\(item: FlattenedImageTask\)/)
+  assert.match(pageVue, /await fetch\(item\.original_image_url, \{ credentials: 'include' \}\)/)
+  assert.match(pageVue, /triggerOriginalDownload\(blob, `\$\{item\.task\.task_id\}-\$\{item\.image_index \+ 1\}\.\$\{ext\}`\)/)
+  assert.match(pageVue, /@click="downloadOriginalImage\(item\)"/)
+  assert.match(pageVue, /title="下载原图"/)
+  assert.match(pageVue, /aria-label="下载原图"/)
+  assert.match(pageVue, /\n\s*type="primary"\n\s*plain\n\s*title="下载原图"/)
+  assert.match(pageVue, />\s*下载原图\s*<\/el-button>/)
+  assert.doesNotMatch(pageVue, /downloadOriginalImage\(item\.image_url/)
 })
 
 test('历史任务页面将任务状态显示为中文', () => {

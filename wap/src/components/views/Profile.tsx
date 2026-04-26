@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatCredit } from '@/lib/utils';
 import {
-  Settings,
   Coins,
   ChevronRight,
   Gift,
@@ -174,9 +173,6 @@ export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) 
     <div className="px-4 pt-6 pb-4 space-y-8 animate-in slide-in-from-bottom-10 duration-500">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black tracking-tight">个人中心</h1>
-        <Button variant="ghost" size="icon" className="rounded-full">
-          <Settings className="w-5 h-5" />
-        </Button>
       </div>
 
       <section className="relative">

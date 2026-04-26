@@ -37,10 +37,17 @@ export default defineConfig(({ mode }) => {
         dts: 'src/components.d.ts',
       }),
     ],
+    css: {
+      preprocessorOptions: {
+        scss: {
+          api: 'modern-compiler',
+        },
+      },
+    },
     build: {
       outDir: 'dist',
       sourcemap: false,
-      chunkSizeWarningLimit: 700,
+      chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
           /**
