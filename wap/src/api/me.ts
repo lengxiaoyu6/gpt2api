@@ -45,6 +45,7 @@ export interface ImageTask {
   error?: string
   credit_cost: number
   image_urls: string[]
+  thumb_urls?: string[]
   file_ids?: string[]
   created_at: string
   started_at?: string | null
@@ -61,6 +62,7 @@ export interface PlayImageRequest {
 
 export interface PlayImageData {
   url: string
+  thumb_url?: string
   file_id?: string
   revised_prompt?: string
 }

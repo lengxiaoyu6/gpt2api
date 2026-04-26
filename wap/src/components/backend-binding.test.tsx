@@ -68,7 +68,7 @@ describe('wap backend bindings', () => {
     expect(screen.queryByRole('button', { name: '立即注册' })).toBeNull()
   })
 
-  test('history view loads server records and renders preview from image_urls', async () => {
+  test('history view loads server records and renders preview from thumb_urls', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
     useStore.setState({
       user: {
@@ -96,6 +96,7 @@ describe('wap backend bindings', () => {
           status: 'succeeded',
           credit_cost: 5,
           image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
           created_at: '2026-04-22T10:00:00Z',
         },
       ],
@@ -104,7 +105,7 @@ describe('wap backend bindings', () => {
     render(<HistoryView />)
 
     await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
-    expect(screen.getByAltText('Cloud city')).toHaveAttribute('src', '/p/img/task-1/0')
+    expect(screen.getByAltText('Cloud city')).toHaveAttribute('src', '/p/thumb/task-1/0')
   })
 
   test('history view refresh button forces server reload', async () => {
@@ -136,6 +137,7 @@ describe('wap backend bindings', () => {
           status: 'succeeded',
           credit_cost: 5,
           image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
           created_at: '2026-04-22T10:00:00Z',
         },
       ],
@@ -356,6 +358,7 @@ describe('wap backend bindings', () => {
           status: 'succeeded',
           credit_cost: 5,
           image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
           created_at: '2026-04-22T10:00:00Z',
         },
       ],
@@ -380,6 +383,7 @@ describe('wap backend bindings', () => {
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: '分享链接' })).toBeNull()
+      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-1/0')
 
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
@@ -440,6 +444,7 @@ describe('wap backend bindings', () => {
           status: 'succeeded',
           credit_cost: 10,
           image_urls: ['/p/img/task-2/0', '/p/img/task-2/1'],
+          thumb_urls: ['/p/thumb/task-2/0', '/p/thumb/task-2/1'],
           created_at: '2026-04-22T12:00:00Z',
         },
       ],
@@ -460,7 +465,7 @@ describe('wap backend bindings', () => {
       })
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
-      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-2/0')
+      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/0')
       expect(screen.getByText('1 / 2')).toBeInTheDocument()
 
       await act(async () => {
@@ -473,7 +478,7 @@ describe('wap backend bindings', () => {
         })
       })
 
-      await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-2/1'))
+      await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/1'))
       expect(screen.getByText('2 / 2')).toBeInTheDocument()
 
       await act(async () => {

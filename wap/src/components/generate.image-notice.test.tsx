@@ -248,7 +248,7 @@ describe('generate image notice', () => {
   })
 
   test('generate click shows dismissible submission dialog instead of loading button text', async () => {
-    let resolveGenerate: (value: { created: number; data: Array<{ url: string }> }) => void = () => {}
+    let resolveGenerate: (value: { created: number; data: Array<{ url: string; thumb_url?: string }> }) => void = () => {}
     const pendingGenerate = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -292,10 +292,15 @@ describe('generate image notice', () => {
     })
 
     await act(async () => {
-      resolveGenerate({ created: 1, data: [{ url: 'https://example.com/result.png' }] })
+      resolveGenerate({
+        created: 1,
+        data: [{ url: 'https://example.com/original.png', thumb_url: 'https://example.com/thumb.png' }],
+      })
     })
 
     expect(await screen.findByText('生成结果')).toBeInTheDocument()
+    expect(screen.getByAltText('Result 1')).toHaveAttribute('src', 'https://example.com/thumb.png')
+    expect(screen.getByRole('link', { name: '下载原图 1' })).toHaveAttribute('href', 'https://example.com/original.png')
   })
 
   test('image-to-image upload can be cancelled after selecting a source image', async () => {

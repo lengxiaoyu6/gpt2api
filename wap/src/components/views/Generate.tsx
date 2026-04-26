@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wand2, Image as ImageIcon, RefreshCw, Sparkles, AlertCircle, X, Check, ChevronDown } from 'lucide-react';
+import { Wand2, Image as ImageIcon, RefreshCw, Sparkles, AlertCircle, X, Check, ChevronDown, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,6 +24,11 @@ const MAX_SOURCE_IMAGES = 4;
 interface SourceImage {
   file: File;
   preview: string;
+}
+
+interface GeneratedImage {
+  originalUrl: string;
+  displayUrl: string;
 }
 
 const getSourceImageGridClass = (count: number) => {
@@ -103,7 +108,7 @@ export default function GenerateView() {
   const [mode, setMode] = useState<'txt' | 'img'>('txt');
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [resultImages, setResultImages] = useState<string[]>([]);
+  const [resultImages, setResultImages] = useState<GeneratedImage[]>([]);
   const [isPreviewResult, setIsPreviewResult] = useState(false);
   const [textAspectRatio, setTextAspectRatio] = useState<AspectRatio>('1:1');
   const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('1:1');
@@ -210,19 +215,22 @@ export default function GenerateView() {
             count: effectiveImageCount,
           });
 
-      const imageUrls = (response.data || [])
-        .map((item) => item.url)
-        .filter((url): url is string => Boolean(url));
-      if (imageUrls.length === 0) {
+      const images = (response.data || [])
+        .filter((item) => Boolean(item.url))
+        .map((item) => ({
+          originalUrl: item.url,
+          displayUrl: item.thumb_url || item.url,
+        }));
+      if (images.length === 0) {
         throw new Error('当前任务尚未返回图像结果');
       }
 
-      setResultImages(imageUrls);
+      setResultImages(images);
       setIsPreviewResult(!!response.is_preview);
       if (response.is_preview) {
         toast.message('当前结果为预览图，稍后可在记录页查看任务状态');
       } else {
-        toast.success(`创作完成，共 ${imageUrls.length} 张`);
+        toast.success(`创作完成，共 ${images.length} 张`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成失败，请稍后重试');
@@ -666,14 +674,24 @@ export default function GenerateView() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {resultImages.map((imageUrl, index) => (
-                <div key={`${imageUrl}-${index}`} className="relative overflow-hidden rounded-3xl border border-primary/20 bg-card shadow-xl">
-                  <img src={imageUrl} alt={`Result ${index + 1}`} className="aspect-square w-full object-cover" />
+              {resultImages.map((image, index) => (
+                <div key={`${image.originalUrl}-${index}`} className="relative overflow-hidden rounded-3xl border border-primary/20 bg-card shadow-xl">
+                  <img src={image.displayUrl} alt={`Result ${index + 1}`} className="aspect-square w-full object-cover" />
                   {isPreviewResult && (
                     <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
                       预览图
                     </div>
                   )}
+                  <a
+                    href={image.originalUrl}
+                    download
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={`下载原图 ${index + 1}`}
+                    className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm"
+                  >
+                    <Download className="h-4 w-4" />
+                  </a>
                 </div>
               ))}
             </div>

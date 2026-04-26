@@ -81,7 +81,7 @@ func TestBuildHistoryImageURLsReturnsExpiredPlaceholderWhenOriginalMissing(t *te
 	}
 }
 
-func TestBuildHistoryImageURLsReturnsCloudRemoteURLsWithoutThumbs(t *testing.T) {
+func TestBuildHistoryImageURLsReturnsCloudRemoteURLsWithThumbs(t *testing.T) {
 	task := &Task{
 		TaskID:      "img_hist_cloud",
 		StorageMode: StorageModeCloud,
@@ -89,16 +89,20 @@ func TestBuildHistoryImageURLsReturnsCloudRemoteURLsWithoutThumbs(t *testing.T) 
 			"https://cdn.example.com/1.png",
 			"https://cdn.example.com/2.png",
 		}),
+		ThumbURLs: mustJSON(t, []string{
+			"https://cdn.example.com/1_thumb.jpg",
+			"https://cdn.example.com/2_thumb.jpg",
+		}),
 	}
 
 	images, thumbs := buildHistoryImageURLs(task, stubHistoryImageStore{})
-	if len(images) != 2 {
-		t.Fatalf("unexpected image count: %d", len(images))
-	}
-	if len(thumbs) != 0 {
-		t.Fatalf("expected empty thumbs, got %d", len(thumbs))
+	if len(images) != 2 || len(thumbs) != 2 {
+		t.Fatalf("unexpected counts: images=%d thumbs=%d", len(images), len(thumbs))
 	}
 	if images[0] != "https://cdn.example.com/1.png" || images[1] != "https://cdn.example.com/2.png" {
 		t.Fatalf("unexpected images: %#v", images)
+	}
+	if thumbs[0] != "https://cdn.example.com/1_thumb.jpg" || thumbs[1] != "https://cdn.example.com/2_thumb.jpg" {
+		t.Fatalf("unexpected thumbs: %#v", thumbs)
 	}
 }

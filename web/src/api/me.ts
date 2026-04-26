@@ -280,6 +280,7 @@ export interface PlayImageRequest {
 
 export interface PlayImageData {
   url: string
+  thumb_url?: string
   file_id?: string
   revised_prompt?: string
 }

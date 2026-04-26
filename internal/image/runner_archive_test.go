@@ -20,15 +20,17 @@ type runnerArchiveDAO struct {
 	lastSuccessTask  string
 	lastStorageMode  string
 	lastResultURLs   []string
+	lastThumbURLs    []string
 }
 
 func (d *runnerArchiveDAO) MarkRunning(context.Context, string, uint64) error { return nil }
 func (d *runnerArchiveDAO) SetAccount(context.Context, string, uint64) error  { return nil }
-func (d *runnerArchiveDAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, storageMode string, creditCost int64) error {
+func (d *runnerArchiveDAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs, thumbURLs []string, storageMode string, creditCost int64) error {
 	d.markSuccessCalls++
 	d.lastSuccessTask = taskID
 	d.lastStorageMode = storageMode
 	d.lastResultURLs = append([]string(nil), resultURLs...)
+	d.lastThumbURLs = append([]string(nil), thumbURLs...)
 	return nil
 }
 func (d *runnerArchiveDAO) MarkFailed(ctx context.Context, taskID, errorCode string) error {
@@ -49,6 +51,8 @@ type runnerCloudUploaderStub struct {
 	results      []runnerCloudUploadResult
 	callData     [][]byte
 	callChannels []string
+	callCompress []bool
+	callNames    []string
 }
 
 type runnerCloudUploadResult struct {
@@ -57,9 +61,11 @@ type runnerCloudUploadResult struct {
 	err     error
 }
 
-func (s *runnerCloudUploaderStub) Upload(ctx context.Context, src imagestore.SourceImage, channel string) (string, error) {
+func (s *runnerCloudUploaderStub) Upload(ctx context.Context, src imagestore.SourceImage, channel string, serverCompress bool) (string, error) {
 	s.callData = append(s.callData, append([]byte(nil), src.Data...))
 	s.callChannels = append(s.callChannels, channel)
+	s.callCompress = append(s.callCompress, serverCompress)
+	s.callNames = append(s.callNames, src.FileName)
 	idx := len(s.callChannels) - 1
 	if idx >= len(s.results) {
 		return "", errors.New("missing upload result")
@@ -125,7 +131,9 @@ func TestRunnerRunUploadsCloudImagesAndStoresRemoteURLs(t *testing.T) {
 	dao := &runnerArchiveDAO{}
 	uploader := &runnerCloudUploaderStub{results: []runnerCloudUploadResult{
 		{channel: "telegram", url: "https://cdn.example.com/1.png"},
+		{channel: "telegram", url: "https://cdn.example.com/1_thumb.jpg"},
 		{channel: "telegram", url: "https://cdn.example.com/2.png"},
+		{channel: "telegram", url: "https://cdn.example.com/2_thumb.jpg"},
 	}}
 	r := &Runner{
 		dao:           dao,
@@ -149,20 +157,32 @@ func TestRunnerRunUploadsCloudImagesAndStoresRemoteURLs(t *testing.T) {
 	if res.StorageMode != StorageModeCloud {
 		t.Fatalf("storage mode = %s", res.StorageMode)
 	}
-	if len(uploader.callData) != 2 {
+	if len(uploader.callData) != 4 {
 		t.Fatalf("upload calls = %d", len(uploader.callData))
 	}
-	if got := uploader.callChannels; len(got) != 2 || got[0] != "telegram" || got[1] != "telegram" {
+	if got := uploader.callChannels; len(got) != 4 || got[0] != "telegram" || got[1] != "telegram" || got[2] != "telegram" || got[3] != "telegram" {
 		t.Fatalf("upload channels = %#v", got)
+	}
+	if got := uploader.callCompress; len(got) != 4 || got[0] || !got[1] || got[2] || !got[3] {
+		t.Fatalf("upload compress flags = %#v", got)
+	}
+	if got := uploader.callNames; len(got) != 4 || got[0] != "img_cloud_ok_0" || got[1] != "tmp_img_cloud_ok_0" || got[2] != "img_cloud_ok_1" || got[3] != "tmp_img_cloud_ok_1" {
+		t.Fatalf("upload file names = %#v", got)
 	}
 	if got := res.SignedURLs; len(got) != 2 || got[0] != "https://cdn.example.com/1.png" || got[1] != "https://cdn.example.com/2.png" {
 		t.Fatalf("signed urls = %#v", got)
+	}
+	if got := res.ThumbURLs; len(got) != 2 || got[0] != "https://cdn.example.com/1_thumb.jpg" || got[1] != "https://cdn.example.com/2_thumb.jpg" {
+		t.Fatalf("thumb urls = %#v", got)
 	}
 	if dao.lastStorageMode != StorageModeCloud {
 		t.Fatalf("dao storage mode = %s", dao.lastStorageMode)
 	}
 	if got := dao.lastResultURLs; len(got) != 2 || got[0] != "https://cdn.example.com/1.png" || got[1] != "https://cdn.example.com/2.png" {
 		t.Fatalf("dao result urls = %#v", got)
+	}
+	if got := dao.lastThumbURLs; len(got) != 2 || got[0] != "https://cdn.example.com/1_thumb.jpg" || got[1] != "https://cdn.example.com/2_thumb.jpg" {
+		t.Fatalf("dao thumb urls = %#v", got)
 	}
 }
 
@@ -213,6 +233,8 @@ func TestRunnerRunFallsBackToHuggingFaceWhenTelegramUploadFails(t *testing.T) {
 	uploader := &runnerCloudUploaderStub{results: []runnerCloudUploadResult{
 		{channel: "telegram", err: errors.New("telegram failed")},
 		{channel: "huggingface", url: "https://cdn.example.com/fallback.png"},
+		{channel: "telegram", err: errors.New("telegram failed")},
+		{channel: "huggingface", url: "https://cdn.example.com/fallback_thumb.jpg"},
 	}}
 	r := &Runner{
 		dao:           dao,
@@ -233,11 +255,14 @@ func TestRunnerRunFallsBackToHuggingFaceWhenTelegramUploadFails(t *testing.T) {
 	if res.Status != StatusSuccess {
 		t.Fatalf("status = %s", res.Status)
 	}
-	if got := uploader.callChannels; len(got) != 2 || got[0] != "telegram" || got[1] != "huggingface" {
+	if got := uploader.callChannels; len(got) != 4 || got[0] != "telegram" || got[1] != "huggingface" || got[2] != "telegram" || got[3] != "huggingface" {
 		t.Fatalf("upload channels = %#v", got)
 	}
 	if got := res.SignedURLs; len(got) != 1 || got[0] != "https://cdn.example.com/fallback.png" {
 		t.Fatalf("signed urls = %#v", got)
+	}
+	if got := res.ThumbURLs; len(got) != 1 || got[0] != "https://cdn.example.com/fallback_thumb.jpg" {
+		t.Fatalf("thumb urls = %#v", got)
 	}
 }
 
@@ -245,9 +270,10 @@ func TestRunnerRunUsesConfiguredHuggingFaceChannelWithoutTelegramFallback(t *tes
 	dao := &runnerArchiveDAO{}
 	uploader := &runnerCloudUploaderStub{results: []runnerCloudUploadResult{
 		{channel: "huggingface", url: "https://cdn.example.com/hf.png"},
+		{channel: "huggingface", url: "https://cdn.example.com/hf_thumb.jpg"},
 	}}
 	r := &Runner{
-		dao:           dao,
+		dao: dao,
 		settings: runnerStorageSettingsStub{
 			mode:        StorageModeCloud,
 			cloudConfig: `{"upload_url":"https://example.test/upload","auth_code":"abc","server_compress":false,"return_format":"full","upload_channel":"huggingface"}`,
@@ -268,8 +294,11 @@ func TestRunnerRunUsesConfiguredHuggingFaceChannelWithoutTelegramFallback(t *tes
 	if res.Status != StatusSuccess {
 		t.Fatalf("status = %s", res.Status)
 	}
-	if got := uploader.callChannels; len(got) != 1 || got[0] != "huggingface" {
+	if got := uploader.callChannels; len(got) != 2 || got[0] != "huggingface" || got[1] != "huggingface" {
 		t.Fatalf("upload channels = %#v", got)
+	}
+	if got := res.ThumbURLs; len(got) != 1 || got[0] != "https://cdn.example.com/hf_thumb.jpg" {
+		t.Fatalf("thumb urls = %#v", got)
 	}
 }
 

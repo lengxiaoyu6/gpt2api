@@ -8,8 +8,9 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"net/textproto"
+	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,10 @@ func (u *SanyueImgHubUploader) Upload(ctx context.Context, src SourceImage) (str
 }
 
 func (u *SanyueImgHubUploader) UploadToChannel(ctx context.Context, src SourceImage, channel string) (string, error) {
+	return u.UploadToChannelWithOptions(ctx, src, channel, u.serverCompress)
+}
+
+func (u *SanyueImgHubUploader) UploadToChannelWithOptions(ctx context.Context, src SourceImage, channel string, serverCompress bool) (string, error) {
 	if u == nil {
 		return "", fmt.Errorf("sanyue imghub uploader is nil")
 	}
@@ -66,7 +71,7 @@ func (u *SanyueImgHubUploader) UploadToChannel(ctx context.Context, src SourceIm
 	}
 	query := uploadURL.Query()
 	query.Set("authCode", u.authCode)
-	query.Set("serverCompress", strconv.FormatBool(u.serverCompress))
+	query.Set("serverCompress", strconv.FormatBool(serverCompress))
 	query.Set("returnFormat", u.returnFormat)
 	query.Set("uploadChannel", u.effectiveUploadChannel(channel))
 	uploadURL.RawQuery = query.Encode()
@@ -151,5 +156,23 @@ func (u *SanyueImgHubUploader) fileName(src SourceImage) string {
 	if ext == "" {
 		ext = "bin"
 	}
+	if base := cleanSourceFileName(src.FileName); base != "" {
+		return fmt.Sprintf("%s.%s", base, ext)
+	}
 	return fmt.Sprintf("image_%d.%s", src.Index, ext)
+}
+
+func cleanSourceFileName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	if name == "." || name == string(filepath.Separator) {
+		return ""
+	}
+	if ext := filepath.Ext(name); ext != "" {
+		name = strings.TrimSuffix(name, ext)
+	}
+	return strings.TrimSpace(name)
 }

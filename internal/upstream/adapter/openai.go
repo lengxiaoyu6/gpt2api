@@ -453,7 +453,10 @@ func (a *openaiAdapter) imageGenerateViaResponsesOnce(ctx context.Context, upstr
 		return nil, err
 	}
 
-	resp, err := a.client.Do(httpReq)
+	localClient := *a.client
+	localClient.Timeout = 0
+
+	resp, err := localClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("openai: responses image request: %w", err)
 	}

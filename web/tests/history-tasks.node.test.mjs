@@ -49,7 +49,7 @@ test('历史任务页面按图片拆分多图任务展示', () => {
   assert.match(pageVue, /const flattenedImageTasks = computed(?:<FlattenedImageTask\[\]>)?\(\(\) =>/)
   assert.match(pageVue, /imageTasks\.value\.flatMap\(\(task\) =>/)
   assert.match(pageVue, /v-for="item in flattenedImageTasks"/)
-  assert.match(pageVue, /@click="openPreview\(item\.task\.image_urls, item\.image_index\)"/)
+  assert.match(pageVue, /@click="openPreview\(previewURLs\(item\.task\), item\.image_index\)"/)
   assert.match(pageVue, /第\{\{ item\.image_index \+ 1 \}\}张，共\{\{ item\.image_total \}\}张/)
 })
 

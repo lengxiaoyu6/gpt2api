@@ -25,13 +25,13 @@ func (d *DAO) Create(ctx context.Context, t *Task) error {
 	res, err := d.db.ExecContext(ctx, `
 INSERT INTO image_tasks
   (task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, storage_mode, status,
-   conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
+   conversation_id, file_ids, result_urls, thumb_urls, error, estimated_credit, credit_cost,
    created_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
 		t.TaskID, t.UserID, t.KeyID, t.ModelID, t.AccountID,
 		t.Prompt, t.N, t.Size, "", NormalizeStorageMode(t.StorageMode),
 		nullEmpty(t.Status, StatusQueued),
-		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs),
+		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs), nullJSON(t.ThumbURLs),
 		t.Error, t.EstimatedCredit, t.CreditCost,
 	)
 	if err != nil {
@@ -62,19 +62,21 @@ func (d *DAO) SetAccount(ctx context.Context, taskID string, accountID uint64) e
 }
 
 // MarkSuccess 更新成功状态。
-func (d *DAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, storageMode string, creditCost int64) error {
+func (d *DAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs, thumbURLs []string, storageMode string, creditCost int64) error {
 	fidB, _ := json.Marshal(fileIDs)
 	urlB, _ := json.Marshal(resultURLs)
+	thumbB, _ := json.Marshal(thumbURLs)
 	_, err := d.db.ExecContext(ctx, `
 UPDATE image_tasks
    SET status='success',
        conversation_id=?,
        file_ids=?,
        result_urls=?,
+       thumb_urls=?,
        storage_mode=?,
        credit_cost=?,
        finished_at=NOW()
- WHERE task_id=?`, convID, fidB, urlB, NormalizeStorageMode(storageMode), creditCost, taskID)
+ WHERE task_id=?`, convID, fidB, urlB, thumbB, NormalizeStorageMode(storageMode), creditCost, taskID)
 	return err
 }
 
@@ -99,7 +101,7 @@ func (d *DAO) Get(ctx context.Context, taskID string) (*Task, error) {
 	var t Task
 	err := d.db.GetContext(ctx, &t, `
 SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
-       storage_mode, conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
+       storage_mode, conversation_id, file_ids, result_urls, thumb_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE task_id = ? AND deleted_at IS NULL`, taskID)
@@ -120,7 +122,7 @@ func (d *DAO) ListByUser(ctx context.Context, userID uint64, limit, offset int) 
 	var out []Task
 	err := d.db.SelectContext(ctx, &out, `
 SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
-       storage_mode, conversation_id, file_ids, result_urls, error, estimated_credit, credit_cost,
+       storage_mode, conversation_id, file_ids, result_urls, thumb_urls, error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE user_id = ?
@@ -173,7 +175,7 @@ func (d *DAO) ListAdmin(ctx context.Context, f AdminTaskFilter, limit, offset in
 	listSQL := `
 SELECT t.id, t.task_id, t.user_id, t.key_id, t.model_id, t.account_id,
        t.prompt, t.n, t.size, t.upscale, t.storage_mode, t.status,
-       t.conversation_id, t.file_ids, t.result_urls, t.error,
+       t.conversation_id, t.file_ids, t.result_urls, t.thumb_urls, t.error,
        t.estimated_credit, t.credit_cost,
        t.created_at, t.started_at, t.finished_at,
        COALESCE(u.email, '') AS user_email
@@ -221,6 +223,15 @@ func (t *Task) DecodeResultURLs() []string {
 	var out []string
 	if len(t.ResultURLs) > 0 {
 		_ = json.Unmarshal(t.ResultURLs, &out)
+	}
+	return out
+}
+
+// DecodeThumbURLs 把 JSON 列解出字符串数组。
+func (t *Task) DecodeThumbURLs() []string {
+	var out []string
+	if len(t.ThumbURLs) > 0 {
+		_ = json.Unmarshal(t.ThumbURLs, &out)
 	}
 	return out
 }

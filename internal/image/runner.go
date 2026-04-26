@@ -33,7 +33,7 @@ type QuotaDecrementor interface {
 type runnerDAO interface {
 	MarkRunning(ctx context.Context, taskID string, accountID uint64) error
 	SetAccount(ctx context.Context, taskID string, accountID uint64) error
-	MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, storageMode string, creditCost int64) error
+	MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs, thumbURLs []string, storageMode string, creditCost int64) error
 	MarkFailed(ctx context.Context, taskID, errorCode string) error
 }
 
@@ -47,15 +47,15 @@ type runnerSettings interface {
 }
 
 type runnerCloudUploader interface {
-	Upload(ctx context.Context, src imagestore.SourceImage, channel string) (string, error)
+	Upload(ctx context.Context, src imagestore.SourceImage, channel string, serverCompress bool) (string, error)
 }
 
 type runnerSanyueCloudUploader struct {
 	uploader *imagestore.SanyueImgHubUploader
 }
 
-func (u runnerSanyueCloudUploader) Upload(ctx context.Context, src imagestore.SourceImage, channel string) (string, error) {
-	return u.uploader.UploadToChannel(ctx, src, channel)
+func (u runnerSanyueCloudUploader) Upload(ctx context.Context, src imagestore.SourceImage, channel string, serverCompress bool) (string, error) {
+	return u.uploader.UploadToChannelWithOptions(ctx, src, channel, serverCompress)
 }
 
 type runnerDownloadFunc func(ctx context.Context, signedURL string) ([]byte, string, error)
@@ -126,6 +126,7 @@ type RunResult struct {
 	AccountID      uint64
 	FileIDs        []string // chatgpt.com 侧的原始 ref("sed:" 前缀表示 sediment)
 	SignedURLs     []string // 直接可访问的签名 URL(15 分钟有效)
+	ThumbURLs      []string
 	ContentTypes   []string
 	StorageMode    string
 	ErrorCode      string
@@ -185,7 +186,7 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 	if r.dao != nil && opt.TaskID != "" {
 		if result.Status == StatusSuccess {
 			if err := r.dao.MarkSuccess(ctx, opt.TaskID, result.ConversationID,
-				result.FileIDs, result.SignedURLs, result.StorageMode, 0 /* credit_cost 由网关负责写 */); err == nil && r.quotaDecr != nil {
+				result.FileIDs, result.SignedURLs, result.ThumbURLs, result.StorageMode, 0 /* credit_cost 由网关负责写 */); err == nil && r.quotaDecr != nil {
 				quotaUsed := result.quotaUsed
 				if len(quotaUsed) == 0 && result.AccountID > 0 {
 					quotaUsed = map[uint64]int{
@@ -375,6 +376,7 @@ func copyRunResultState(dst, src *RunResult) {
 	dst.AccountID = src.AccountID
 	dst.FileIDs = append([]string(nil), src.FileIDs...)
 	dst.SignedURLs = append([]string(nil), src.SignedURLs...)
+	dst.ThumbURLs = append([]string(nil), src.ThumbURLs...)
 	dst.ContentTypes = append([]string(nil), src.ContentTypes...)
 	dst.archiveImages = append([]imagestore.SourceImage(nil), src.archiveImages...)
 	dst.quotaUsed = nil
@@ -387,7 +389,7 @@ func (r *Runner) archiveResultImages(ctx context.Context, taskID string, result 
 		if err != nil {
 			return err
 		}
-		return r.uploadCloudImages(ctx, images, result)
+		return r.uploadCloudImages(ctx, taskID, images, result)
 	}
 	if r.files == nil || taskID == "" {
 		return nil
@@ -410,7 +412,7 @@ func (r *Runner) archiveSourceImages(ctx context.Context, result *RunResult) ([]
 	return r.downloadArchiveImages(ctx, result)
 }
 
-func (r *Runner) uploadCloudImages(ctx context.Context, images []imagestore.SourceImage, result *RunResult) error {
+func (r *Runner) uploadCloudImages(ctx context.Context, taskID string, images []imagestore.SourceImage, result *RunResult) error {
 	uploader, err := r.resolveCloudUploader()
 	if err != nil {
 		return err
@@ -419,22 +421,33 @@ func (r *Runner) uploadCloudImages(ctx context.Context, images []imagestore.Sour
 		return errors.New("no archive images")
 	}
 	urls := make([]string, 0, len(images))
+	thumbURLs := make([]string, 0, len(images))
 	channels := r.cloudUploadChannels()
 	for _, src := range images {
-		uploadedURL, err := r.uploadCloudImage(ctx, uploader, src, channels)
+		original := src
+		original.FileName = fmt.Sprintf("%s_%d", taskID, src.Index)
+		uploadedURL, err := r.uploadCloudImage(ctx, uploader, original, channels, false)
+		if err != nil {
+			return err
+		}
+		thumb := src
+		thumb.FileName = fmt.Sprintf("tmp_%s_%d", taskID, src.Index)
+		thumbURL, err := r.uploadCloudImage(ctx, uploader, thumb, channels, true)
 		if err != nil {
 			return err
 		}
 		urls = append(urls, uploadedURL)
+		thumbURLs = append(thumbURLs, thumbURL)
 	}
 	result.SignedURLs = urls
+	result.ThumbURLs = thumbURLs
 	return nil
 }
 
-func (r *Runner) uploadCloudImage(ctx context.Context, uploader runnerCloudUploader, src imagestore.SourceImage, channels []string) (string, error) {
+func (r *Runner) uploadCloudImage(ctx context.Context, uploader runnerCloudUploader, src imagestore.SourceImage, channels []string, serverCompress bool) (string, error) {
 	var lastErr error
 	for _, channel := range channels {
-		uploadedURL, err := uploader.Upload(ctx, src, channel)
+		uploadedURL, err := uploader.Upload(ctx, src, channel, serverCompress)
 		if err == nil {
 			return uploadedURL, nil
 		}

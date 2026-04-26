@@ -35,6 +35,7 @@ type LocalOptions struct {
 
 type SourceImage struct {
 	Index       int
+	FileName    string
 	Data        []byte
 	ContentType string
 }

@@ -23,7 +23,7 @@ const previewIndex = ref(0);
 
 const flattenedImageTasks = computed<FlattenedImageTask[]>(() =>
     imageTasks.value.flatMap((task) => {
-        const urls = task.thumb_urls?.length ? task.thumb_urls : task.image_urls;
+        const urls = previewURLs(task);
         const imageTotal = urls?.length || task.image_urls?.length || 0;
         const safeURLs = urls?.length ? urls : [''];
         return safeURLs.map((imageURL, index) => ({
@@ -35,6 +35,10 @@ const flattenedImageTasks = computed<FlattenedImageTask[]>(() =>
         }));
     }),
 );
+
+function previewURLs(task: ImageTask) {
+    return task.thumb_urls?.length ? task.thumb_urls : task.image_urls;
+}
 
 async function loadImageTasks(reset = true) {
     imageLoading.value = true;
@@ -90,7 +94,7 @@ async function onDeleteTask(task: ImageTask) {
     try {
         await deleteMyImageTask(task.task_id);
         imageTasks.value = imageTasks.value.filter((item) => item.task_id !== task.task_id);
-        if (previewVisible.value && previewList.value[0] === task.image_urls?.[0]) {
+        if (previewVisible.value && previewList.value[0] === previewURLs(task)?.[0]) {
             previewVisible.value = false;
             previewList.value = [];
             previewIndex.value = 0;
@@ -147,7 +151,7 @@ onMounted(() => {
                         <div
                             class="thumb"
                             :class="{ 'is-clickable': !!item.image_url }"
-                            @click="openPreview(item.task.image_urls, item.image_index)"
+                            @click="openPreview(previewURLs(item.task), item.image_index)"
                         >
                             <img v-if="item.image_url" :src="item.image_url" :alt="item.task.prompt" />
                             <div v-if="item.image_url" class="thumb-mask">

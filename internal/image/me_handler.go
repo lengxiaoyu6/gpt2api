@@ -87,12 +87,20 @@ func buildHistoryImageURLs(t *Task, files historyImageStore) ([]string, []string
 	}
 	if NormalizeStorageMode(t.StorageMode) == StorageModeCloud {
 		images := make([]string, count)
+		thumbs := make([]string, count)
+		storedThumbURLs := t.DecodeThumbURLs()
 		for i := 0; i < count; i++ {
 			if i < len(storedURLs) {
 				images[i] = strings.TrimSpace(storedURLs[i])
 			}
+			if i < len(storedThumbURLs) {
+				thumbs[i] = strings.TrimSpace(storedThumbURLs[i])
+			}
+			if thumbs[i] == "" {
+				thumbs[i] = images[i]
+			}
 		}
-		return images, []string{}
+		return images, thumbs
 	}
 	images := make([]string, count)
 	thumbs := make([]string, count)

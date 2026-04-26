@@ -441,6 +441,12 @@ function openPreview(urls: string[], idx: number) {
   previewIndex.value = idx
   previewVisible.value = true
 }
+function displayImageURL(img: PlayImageData) {
+  return img.thumb_url || img.url
+}
+function resultPreviewURLs(items: PlayImageData[]) {
+  return items.map(displayImageURL).filter(Boolean)
+}
 function downloadUrl(url: string) {
   const a = document.createElement('a')
   a.href = url
@@ -476,7 +482,7 @@ const i2iError = ref('')
 const i2iAbort = ref<AbortController | null>(null)
 const activeResultIndex = ref(0)
 const activeResultImage = computed<PlayImageData | null>(() => i2iResult.value[activeResultIndex.value] || null)
-const i2iResultUrls = computed(() => i2iResult.value.map((item) => item.url))
+const i2iResultUrls = computed(() => resultPreviewURLs(i2iResult.value))
 const MAX_REF_BYTES = 4 * 1024 * 1024 // 4MB
 
 function setActiveResult(idx: number) {
@@ -522,9 +528,9 @@ async function imageUrlToDataUrl(url: string) {
 }
 
 async function continueEditCurrentResult() {
-  if (!activeResultImage.value?.url) return
+  if (!activeResultImage.value) return
   try {
-    const dataUrl = await imageUrlToDataUrl(activeResultImage.value.url)
+    const dataUrl = await imageUrlToDataUrl(displayImageURL(activeResultImage.value))
     refImages.value = [{
       name: `generated-${Date.now()}.png`,
       dataUrl,
@@ -943,11 +949,11 @@ watch(activeTab, (v) => {
                   v-for="(img, idx) in t2iResult"
                   :key="idx"
                   class="img-cell"
-                  @click="openPreview(t2iResult.map((x) => x.url), idx)"
+                  @click="openPreview(resultPreviewURLs(t2iResult), idx)"
                 >
-                  <img :src="img.url" :alt="`result-${idx}`" loading="lazy" />
+                  <img :src="displayImageURL(img)" :alt="`result-${idx}`" loading="lazy" />
                   <div class="img-actions" @click.stop>
-                    <button class="iact" @click="openPreview(t2iResult.map((x) => x.url), idx)">
+                    <button class="iact" @click="openPreview(resultPreviewURLs(t2iResult), idx)">
                       <el-icon><ZoomIn /></el-icon>
                     </button>
                     <button class="iact" @click="downloadUrl(img.url)">
@@ -1121,7 +1127,7 @@ watch(activeTab, (v) => {
                 </div>
                 <template v-else>
                   <img
-                    :src="activeResultImage.url"
+                    :src="displayImageURL(activeResultImage)"
                     :alt="`result-${activeResultIndex}`"
                     class="compare-image"
                     loading="lazy"
@@ -1137,7 +1143,7 @@ watch(activeTab, (v) => {
                   :class="['thumb-strip__item', 'thumb-strip__item--result', { active: idx === activeResultIndex }]"
                   @click="setActiveResult(idx)"
                 >
-                  <img :src="img.url" :alt="`result-${idx}`" class="thumb-strip__image" loading="lazy" />
+                  <img :src="displayImageURL(img)" :alt="`result-${idx}`" class="thumb-strip__image" loading="lazy" />
                   <span class="thumb-strip__meta">第 {{ idx + 1 }} 张</span>
                 </button>
               </div>
@@ -1146,7 +1152,7 @@ watch(activeTab, (v) => {
                 <div class="result-primary-actions">
                   <a
                     class="result-action-btn result-action-btn--link"
-                    :href="activeResultImage.url"
+                    :href="displayImageURL(activeResultImage)"
                     target="_blank"
                     rel="noopener"
                   >查看</a>

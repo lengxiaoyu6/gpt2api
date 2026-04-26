@@ -116,6 +116,7 @@ func TestSanyueImgHubUploadReturnsErrorsForBadResponses(t *testing.T) {
 }
 
 func TestSanyueImgHubUploadBuildsMultipartFileField(t *testing.T) {
+	var gotFileName string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType := r.Header.Get("Content-Type")
 		_, params, err := mime.ParseMediaType(contentType)
@@ -134,13 +135,17 @@ func TestSanyueImgHubUploadBuildsMultipartFileField(t *testing.T) {
 		if part.FormName() != "file" {
 			t.Fatalf("field name = %q", part.FormName())
 		}
+		gotFileName = part.FileName()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[{"src":"https://cdn.example.com/b.png"}]`))
 	}))
 	defer ts.Close()
 
 	uploader := NewSanyueImgHubUploader(SanyueImgHubUploaderOptions{UploadURL: ts.URL, AuthCode: "a", ReturnFormat: "full"})
-	if _, err := uploader.Upload(context.Background(), SourceImage{Index: 1, Data: []byte("hello"), ContentType: "image/png"}); err != nil {
+	if _, err := uploader.Upload(context.Background(), SourceImage{Index: 1, FileName: "img_task_1", Data: []byte("hello"), ContentType: "image/png"}); err != nil {
 		t.Fatalf("Upload: %v", err)
+	}
+	if gotFileName != "img_task_1.png" {
+		t.Fatalf("file name = %q", gotFileName)
 	}
 }

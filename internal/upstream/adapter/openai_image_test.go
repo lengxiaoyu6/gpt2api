@@ -344,6 +344,30 @@ func TestOpenAIImageGenerateResponsesEndpointReturnsPartialImageWhenStreamTimesO
 	}
 }
 
+func TestOpenAIImageGenerateResponsesEndpointWaitsPastClientTimeoutForFirstPartialImage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		time.Sleep(1500 * time.Millisecond)
+		_, _ = io.WriteString(w, "event: response.image_generation_call.partial_image\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"cGFydGlhbA==\",\"output_format\":\"png\"}\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	a := NewOpenAI(Params{BaseURL: srv.URL + "/v1/responses", APIKey: "test", TimeoutS: 1})
+	result, err := a.ImageGenerate(context.Background(), "gpt-5.4", &ImageRequest{Prompt: "prompt"})
+	if err != nil {
+		t.Fatalf("ImageGenerate: %v", err)
+	}
+	if len(result.B64s) != 1 || result.B64s[0] != "cGFydGlhbA==" {
+		t.Fatalf("result.B64s = %#v, want partial image b64", result.B64s)
+	}
+}
+
 
 func TestOpenAIImageGenerateRejectsReferenceImagesForGenerationsEndpoint(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -180,6 +180,17 @@ function triggerLinkDownload(href: string, fileName: string, openInNewTab = fals
   anchor.remove();
 }
 
+function getPreviewImageUrls(item: HistoryRecord | null) {
+  if (!item) {
+    return [];
+  }
+  return item.thumb_urls?.length ? item.thumb_urls : item.image_urls || [];
+}
+
+function getOriginalImageUrls(item: HistoryRecord | null) {
+  return item?.image_urls || [];
+}
+
 async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
   const response = await fetch(imageUrl);
 
@@ -221,9 +232,11 @@ export default function HistoryView() {
 
   const filtered = history.filter((item) => item.prompt.toLowerCase().includes(search.toLowerCase()));
   const selectedImageKind = selectedImage ? getTaskStateKind(selectedImage.status) : null;
-  const selectedImageUrls = selectedImage?.image_urls || [];
-  const selectedPreviewUrl = selectedImageUrls[previewIndex] || null;
-  const hasMultiplePreviewImages = selectedImageUrls.length > 1;
+  const selectedPreviewUrls = getPreviewImageUrls(selectedImage);
+  const selectedOriginalUrls = getOriginalImageUrls(selectedImage);
+  const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
+  const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
+  const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
 
   function openImageDetail(item: HistoryRecord) {
     touchStartXRef.current = null;
@@ -265,7 +278,7 @@ export default function HistoryView() {
     }
 
     if (deltaX > 0) {
-      setPreviewIndex((current) => Math.min(selectedImageUrls.length - 1, current + 1));
+      setPreviewIndex((current) => Math.min(selectedPreviewUrls.length - 1, current + 1));
       return;
     }
 
@@ -273,16 +286,16 @@ export default function HistoryView() {
   }
 
   async function handleDownloadOriginal() {
-    if (!selectedImage || !selectedPreviewUrl) {
+    if (!selectedImage || !selectedOriginalUrl) {
       return;
     }
 
-    const fallbackFileName = getDownloadFileName(selectedImage, selectedPreviewUrl);
+    const fallbackFileName = getDownloadFileName(selectedImage, selectedOriginalUrl);
 
     try {
-      await downloadOriginalImage(selectedImage, selectedPreviewUrl);
+      await downloadOriginalImage(selectedImage, selectedOriginalUrl);
     } catch {
-      triggerLinkDownload(selectedPreviewUrl, fallbackFileName, true);
+      triggerLinkDownload(selectedOriginalUrl, fallbackFileName, true);
     }
   }
 
@@ -321,7 +334,7 @@ export default function HistoryView() {
       {filtered.length > 0 ? (
         <div className="grid grid-cols-2 gap-4">
           {filtered.map((item, i) => {
-            const previewUrl = item.image_urls?.[0] || null;
+            const previewUrl = getPreviewImageUrls(item)[0] || null;
             const taskStateKind = getTaskStateKind(item.status);
             const cardStateLabel = getTaskCardLabel(item.status);
             const detailStateLabel = getTaskDetailLabel(item.status);
@@ -439,7 +452,7 @@ export default function HistoryView() {
                 )}
                 {hasMultiplePreviewImages ? (
                   <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-xs font-semibold text-white/90 backdrop-blur-md">
-                    {previewIndex + 1} / {selectedImageUrls.length}
+                    {previewIndex + 1} / {selectedPreviewUrls.length}
                   </div>
                 ) : null}
                 <Button
@@ -463,7 +476,7 @@ export default function HistoryView() {
 
                 <div className="grid grid-cols-1 gap-3">
                   <Button
-                    disabled={!selectedPreviewUrl}
+                    disabled={!selectedOriginalUrl}
                     onClick={() => {
                       void handleDownloadOriginal();
                     }}

@@ -60,5 +60,17 @@ test('历史任务页面改为优先使用缩略图并展示已过期占位', ()
   assert.match(apiTs, /thumb_urls: string\[\]/)
   assert.match(pageVue, /task\.thumb_urls\?\.length \? task\.thumb_urls : task\.image_urls/)
   assert.match(pageVue, /已过期/)
-  assert.match(pageVue, /openPreview\(item\.task\.image_urls, item\.image_index\)/)
+  assert.match(pageVue, /openPreview\(previewURLs\(item\.task\), item\.image_index\)/)
+})
+
+test('在线体验响应类型包含缩略图并且展示使用缩略图下载使用原图', () => {
+  const apiTs = read('web/src/api/me.ts')
+  const pageVue = read('web/src/views/personal/OnlinePlay.vue')
+
+  assert.match(apiTs, /thumb_url\?: string/)
+  assert.match(pageVue, /function displayImageURL\(img: PlayImageData\)/)
+  assert.match(pageVue, /return img\.thumb_url \|\| img\.url/)
+  assert.match(pageVue, /function resultPreviewURLs\(items: PlayImageData\[\]\)/)
+  assert.match(pageVue, /@click="downloadUrl\(img\.url\)"/)
+  assert.match(pageVue, /@click="downloadUrl\(activeResultImage\.url\)"/)
 })

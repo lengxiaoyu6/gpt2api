@@ -80,6 +80,7 @@ type ImageGenRequest struct {
 // ImageGenData 单张图响应。
 type ImageGenData struct {
 	URL           string `json:"url,omitempty"`
+	ThumbURL      string `json:"thumb_url,omitempty"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 	FileID        string `json:"file_id,omitempty"` // chatgpt.com 侧原始 id(用于对账)
 }
@@ -91,8 +92,11 @@ type ImageGenResponse struct {
 	TaskID  string         `json:"task_id,omitempty"`
 }
 
-func buildAPIImageData(taskID, storageMode string, urls, fileIDs []string) []ImageGenData {
+func buildAPIImageData(taskID, storageMode string, urls, thumbURLs, fileIDs []string) []ImageGenData {
 	count := len(urls)
+	if len(thumbURLs) > count {
+		count = len(thumbURLs)
+	}
 	if len(fileIDs) > count {
 		count = len(fileIDs)
 	}
@@ -111,6 +115,16 @@ func buildAPIImageData(taskID, storageMode string, urls, fileIDs []string) []Ima
 			url = BuildImageProxyURL(taskID, i, imageproxy.ResourceOriginal, ImageProxyTTL)
 		}
 		d := ImageGenData{URL: url}
+		if mode == image.StorageModeCloud {
+			if i < len(thumbURLs) {
+				d.ThumbURL = strings.TrimSpace(thumbURLs[i])
+			}
+			if d.ThumbURL == "" {
+				d.ThumbURL = d.URL
+			}
+		} else {
+			d.ThumbURL = BuildImageProxyURL(taskID, i, imageproxy.ResourceThumb, ImageProxyTTL)
+		}
 		if i < len(fileIDs) {
 			d.FileID = strings.TrimPrefix(fileIDs[i], "sed:")
 		}
@@ -341,7 +355,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		return
 	}
 
-	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
+	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.ThumbURLs, res.FileIDs)
 	actualN, actualCost := imageResponseAccounting(m, data, ratio, req.Size)
 	if actualN == 0 {
 		refund("upstream_error")
@@ -410,8 +424,9 @@ func (h *ImagesHandler) ImageTask(c *gin.Context) {
 	}
 
 	urls := t.DecodeResultURLs()
+	thumbURLs := t.DecodeThumbURLs()
 	fileIDs := t.DecodeFileIDs()
-	data := buildAPIImageData(t.TaskID, t.StorageMode, urls, fileIDs)
+	data := buildAPIImageData(t.TaskID, t.StorageMode, urls, thumbURLs, fileIDs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"task_id":         t.TaskID,
@@ -552,7 +567,7 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 	rec.DurationMs = int(time.Since(startAt).Milliseconds())
 
 	// 以 chat 响应返回(content 里内嵌 markdown 图片)。
-	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
+	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.ThumbURLs, res.FileIDs)
 	var sb strings.Builder
 	for i, item := range data {
 		if i > 0 {
@@ -866,7 +881,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		return
 	}
 
-	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
+	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.ThumbURLs, res.FileIDs)
 	actualN, actualCost := imageResponseAccounting(m, data, ratio, size)
 	if actualN == 0 {
 		refund("upstream_error")
