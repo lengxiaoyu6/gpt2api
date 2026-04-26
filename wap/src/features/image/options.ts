@@ -1,48 +1,58 @@
-export type AspectRatio = '1:1' | '5:4' | '9:16' | '21:9' | '16:9' | '4:3' | '3:2' | '4:5' | '3:4' | '2:3'
-export type UpscaleLevel = '' | '2k' | '4k'
+export type AspectRatio =
+  | '1:1'
+  | '5:4'
+  | '9:16'
+  | '16:9'
+  | '4:3'
+  | '3:2'
+  | '4:5'
+  | '3:4'
+  | '2:3'
+  | '21:9'
+export type OutputQualityValue = '1K' | '2K' | '4K'
 
 export interface ImageRatioOption {
   label: string
   ratio: AspectRatio
   w: number
   h: number
-  size: string
   desc: string
 }
 
 export const IMAGE_RATIO_OPTIONS: ReadonlyArray<ImageRatioOption> = [
-  { label: '方形', ratio: '1:1', w: 1, h: 1, size: '1024x1024', desc: '社交媒体' },
-  { label: '横屏', ratio: '5:4', w: 5, h: 4, size: '1792x1024', desc: '平面海报' },
-  { label: '故事', ratio: '9:16', w: 9, h: 16, size: '1024x1792', desc: '短视频' },
-  { label: '超宽屏', ratio: '21:9', w: 21, h: 9, size: '1792x1024', desc: '影院横幅' },
-  { label: '宽屏', ratio: '16:9', w: 16, h: 9, size: '1792x1024', desc: '电影宽屏' },
-  { label: '横屏', ratio: '4:3', w: 4, h: 3, size: '1792x1024', desc: '经典画幅' },
-  { label: '宽幅', ratio: '3:2', w: 3, h: 2, size: '1792x1024', desc: '风景摄影' },
-  { label: '标准', ratio: '4:5', w: 4, h: 5, size: '1024x1792', desc: '社媒封面' },
-  { label: '竖版', ratio: '3:4', w: 3, h: 4, size: '1024x1792', desc: '人像摄影' },
-  { label: '竖版', ratio: '2:3', w: 2, h: 3, size: '1024x1792', desc: '海报竖幅' },
+  { label: '方形', ratio: '1:1', w: 1, h: 1, desc: '社交媒体' },
+  { label: '横屏', ratio: '5:4', w: 5, h: 4, desc: '海报横幅' },
+  { label: '故事', ratio: '9:16', w: 9, h: 16, desc: '竖屏短片' },
+  { label: '宽屏', ratio: '16:9', w: 16, h: 9, desc: '电影宽屏' },
+  { label: '横屏', ratio: '4:3', w: 4, h: 3, desc: '经典画幅' },
+  { label: '宽幅', ratio: '3:2', w: 3, h: 2, desc: '摄影横幅' },
+  { label: '标准', ratio: '4:5', w: 4, h: 5, desc: '社媒竖幅' },
+  { label: '竖版', ratio: '3:4', w: 3, h: 4, desc: '人像摄影' },
+  { label: '竖版', ratio: '2:3', w: 2, h: 3, desc: '海报竖幅' },
+  { label: '超宽屏', ratio: '21:9', w: 21, h: 9, desc: '全景横幅' },
 ] as const
 
-export const ASPECT_RATIO_TO_SIZE: Record<AspectRatio, string> = Object.fromEntries(
-  IMAGE_RATIO_OPTIONS.map((option) => [option.ratio, option.size]),
-) as Record<AspectRatio, string>
+const OUTPUT_SIZE_BY_RATIO: Record<AspectRatio, Record<OutputQualityValue, string>> = {
+  '1:1': { '1K': '1024x1024', '2K': '2048x2048', '4K': '2880x2880' },
+  '5:4': { '1K': '1040x832', '2K': '2080x1664', '4K': '3200x2560' },
+  '9:16': { '1K': '720x1280', '2K': '1152x2048', '4K': '2160x3840' },
+  '16:9': { '1K': '1280x720', '2K': '2048x1152', '4K': '3840x2160' },
+  '4:3': { '1K': '1024x768', '2K': '2048x1536', '4K': '3264x2448' },
+  '3:2': { '1K': '1008x672', '2K': '2016x1344', '4K': '3504x2336' },
+  '4:5': { '1K': '832x1040', '2K': '1664x2080', '4K': '2560x3200' },
+  '3:4': { '1K': '768x1024', '2K': '1536x2048', '4K': '2448x3264' },
+  '2:3': { '1K': '672x1008', '2K': '1344x2016', '4K': '2336x3504' },
+  '21:9': { '1K': '1344x576', '2K': '2016x864', '4K': '3696x1584' },
+}
 
-export const OUTPUT_SIZE_OPTIONS: ReadonlyArray<{ value: UpscaleLevel; label: string; desc: string }> = [
-  { value: '', label: '原图', desc: '保持原始尺寸' },
-  { value: '2k', label: '2K 高清', desc: '适合细节展示' },
-  { value: '4k', label: '4K 高清', desc: '适合大图查看' },
+export const OUTPUT_QUALITY_OPTIONS: ReadonlyArray<{ value: OutputQualityValue; label: string }> = [
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' },
 ] as const
 
-const RATIO_PREFIX_RE = /^\s*Make the aspect ratio\s+\S+\s*,\s*/i
-
-export function applyRatioPrefix(prompt: string, ratio: AspectRatio) {
-  const prefix = `Make the aspect ratio ${ratio} , `
-  const lines = prompt.split(/\r?\n/)
-  if (lines.length > 0 && RATIO_PREFIX_RE.test(lines[0])) {
-    lines[0] = lines[0].replace(RATIO_PREFIX_RE, prefix)
-    return lines.join('\n')
-  }
-  return prefix + prompt
+export function resolveOutputSize(ratio: AspectRatio, quality: OutputQualityValue) {
+  return OUTPUT_SIZE_BY_RATIO[ratio][quality]
 }
 
 export function getRatioPreviewStyle(option: Pick<ImageRatioOption, 'w' | 'h'>) {

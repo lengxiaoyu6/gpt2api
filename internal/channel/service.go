@@ -102,7 +102,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Channel, error) 
 	}
 	c := &Channel{
 		Name: in.Name, Type: in.Type,
-		BaseURL:   strings.TrimRight(in.BaseURL, "/"),
+		BaseURL:   in.BaseURL,
 		APIKeyEnc: enc,
 		Enabled:   in.Enabled, Priority: in.Priority, Weight: in.Weight,
 		TimeoutS: in.TimeoutS, Ratio: in.Ratio,
@@ -131,7 +131,7 @@ func (s *Service) Update(ctx context.Context, id uint64, in UpdateInput) (*Chann
 		c.Type = in.Type
 	}
 	if in.BaseURL != "" {
-		c.BaseURL = strings.TrimRight(in.BaseURL, "/")
+		c.BaseURL = in.BaseURL
 	}
 	if in.APIKey != "" {
 		enc, err := s.cipher.EncryptString(in.APIKey)

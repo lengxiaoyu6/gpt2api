@@ -24,6 +24,11 @@ export interface ImageModel {
   type: 'chat' | 'image' | string
   description: string
   image_price_per_call: number
+  image_price_per_call_2k?: number
+  image_price_per_call_4k?: number
+  has_image_channel?: boolean
+  supports_multi_image?: boolean
+  supports_output_size?: boolean
 }
 
 export interface ImageTask {
@@ -52,7 +57,6 @@ export interface PlayImageRequest {
   n?: number
   size?: string
   reference_images?: string[]
-  upscale?: '' | '2k' | '4k'
 }
 
 export interface PlayImageData {
@@ -124,7 +128,7 @@ export async function playEditImage(
   model: string,
   prompt: string,
   files: File[],
-  opts?: { n?: number; size?: string; upscale?: '' | '2k' | '4k'; signal?: AbortSignal },
+  opts?: { n?: number; size?: string; signal?: AbortSignal },
 ) {
   if (!files.length) {
     throw new Error('至少需要选择一张参考图')
@@ -135,7 +139,6 @@ export async function playEditImage(
   fd.append('prompt', prompt)
   if (opts?.size) fd.append('size', opts.size)
   if (opts?.n) fd.append('n', String(opts.n))
-  if (opts?.upscale) fd.append('upscale', opts.upscale)
   files.forEach((file, index) => {
     fd.append(index === 0 ? 'image' : 'image[]', file, file.name)
   })

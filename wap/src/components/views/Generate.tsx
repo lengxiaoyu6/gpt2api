@@ -11,18 +11,15 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { cn, formatCredit } from '@/lib/utils';
 import { useStore } from '../../store/useStore';
 import {
-  getRatioPreviewStyle,
   IMAGE_RATIO_OPTIONS,
-  OUTPUT_SIZE_OPTIONS,
+  OUTPUT_QUALITY_OPTIONS,
+  getRatioPreviewStyle,
   type AspectRatio,
-  type UpscaleLevel,
+  type OutputQualityValue,
 } from '../../features/image/options';
 
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 const MAX_SOURCE_IMAGES = 4;
-const UPSCALE_HINT_LEAD = '上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地';
-const UPSCALE_HINT_WARN = '注意:这是传统算法放大,不是 AI 超分,';
-const UPSCALE_HINT_TAIL = '不会补出新的纹理或毛发,只会让画面更大更平滑。4K 首次加载约 +0.5~1.5s,之后命中缓存。';
 
 interface SourceImage {
   file: File;
@@ -46,6 +43,54 @@ const getSourceImageTileClass = (count: number, index: number) => (
   count === 3 && index === 0 ? 'row-span-2' : ''
 );
 
+const resolveImageUnitPrice = (
+  model: {
+    image_price_per_call: number;
+    image_price_per_call_2k?: number;
+    image_price_per_call_4k?: number;
+  } | undefined,
+  quality: OutputQualityValue,
+  supportsOutputSize: boolean,
+) => {
+  if (!model) {
+    return 0;
+  }
+  if (!supportsOutputSize) {
+    return model.image_price_per_call ?? 0;
+  }
+  if (quality === '2K' && (model.image_price_per_call_2k ?? 0) > 0) {
+    return model.image_price_per_call_2k ?? 0;
+  }
+  if (quality === '4K' && (model.image_price_per_call_4k ?? 0) > 0) {
+    return model.image_price_per_call_4k ?? 0;
+  }
+  return model.image_price_per_call ?? 0;
+};
+
+const getModelPrimaryLabel = (
+  model:
+    | {
+        slug?: string | null;
+      }
+    | undefined,
+) => model?.slug?.trim() || '暂无可用模型';
+
+const getModelSecondaryLabel = (
+  model:
+    | {
+        slug?: string | null;
+        description?: string | null;
+      }
+    | undefined,
+) => {
+  const description = model?.description?.trim();
+  const slug = model?.slug?.trim();
+  if (!description || description === slug) {
+    return '';
+  }
+  return description;
+};
+
 export default function GenerateView() {
   const {
     generateImage,
@@ -62,8 +107,8 @@ export default function GenerateView() {
   const [isPreviewResult, setIsPreviewResult] = useState(false);
   const [textAspectRatio, setTextAspectRatio] = useState<AspectRatio>('1:1');
   const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('1:1');
-  const [textUpscale, setTextUpscale] = useState<UpscaleLevel>('');
-  const [imageUpscale, setImageUpscale] = useState<UpscaleLevel>('');
+  const [textOutputQuality, setTextOutputQuality] = useState<OutputQualityValue>('1K');
+  const [imageOutputQuality, setImageOutputQuality] = useState<OutputQualityValue>('1K');
   const [imageCount, setImageCount] = useState<1 | 2 | 3 | 4>(1);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [submissionDialogOpen, setSubmissionDialogOpen] = useState(false);
@@ -74,13 +119,16 @@ export default function GenerateView() {
   const sourceImagesRef = useRef<SourceImage[]>([]);
 
   const currentModel = imageModels.find((item) => item.slug === selectedImageModel);
-  const currentPrice = currentModel?.image_price_per_call ?? 5;
-  const totalPrice = currentPrice * imageCount;
-  const currentModelLabel = currentModel?.description?.trim() || currentModel?.slug || '暂无可用模型';
+  const supportsMultiImage = currentModel?.supports_multi_image ?? true;
+  const supportsOutputSize = currentModel?.supports_output_size ?? true;
+  const currentModelTitle = getModelPrimaryLabel(currentModel);
+  const currentModelSubtitle = getModelSecondaryLabel(currentModel);
   const imageNotice = siteInfo['site.image_notice']?.trim() || '';
   const activeAspectRatio = mode === 'txt' ? textAspectRatio : imageAspectRatio;
-  const activeUpscale = mode === 'txt' ? textUpscale : imageUpscale;
-  const shouldShowUpscaleHint = currentModel?.slug === 'gpt-image-2';
+  const activeOutputQuality = mode === 'txt' ? textOutputQuality : imageOutputQuality;
+  const currentQualityPrice = resolveImageUnitPrice(currentModel, activeOutputQuality, supportsOutputSize);
+  const effectiveImageCount = supportsMultiImage ? imageCount : 1;
+  const totalPrice = currentQualityPrice * effectiveImageCount;
 
   useEffect(() => {
     sourceImagesRef.current = sourceImages;
@@ -151,15 +199,15 @@ export default function GenerateView() {
         ? await generateImage({
             prompt: nextPrompt,
             aspectRatio: textAspectRatio,
-            upscale: textUpscale,
-            count: imageCount,
+            quality: textOutputQuality,
+            count: effectiveImageCount,
           })
         : await editImage({
             prompt: nextPrompt || '增强细节，提升画面质感',
             aspectRatio: imageAspectRatio,
-            upscale: imageUpscale,
+            quality: imageOutputQuality,
             files: sourceImages.map((image) => image.file),
-            count: imageCount,
+            count: effectiveImageCount,
           });
 
       const imageUrls = (response.data || [])
@@ -231,12 +279,12 @@ export default function GenerateView() {
     setImageAspectRatio(ratio);
   };
 
-  const handleUpscaleChange = (value: UpscaleLevel) => {
+  const handleOutputQualityChange = (value: OutputQualityValue) => {
     if (mode === 'txt') {
-      setTextUpscale(value);
+      setTextOutputQuality(value);
       return;
     }
-    setImageUpscale(value);
+    setImageOutputQuality(value);
   };
 
   return (
@@ -284,9 +332,11 @@ export default function GenerateView() {
           <p className="text-xs text-muted-foreground font-medium">释放视觉想象力</p>
         </div>
         <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-right text-[10px] font-bold text-primary">
-          <p>单张基准价格：{formatCredit(currentPrice)} 积分 / 张</p>
-          <p className="mt-1 text-[9px] font-medium text-foreground/80">多张生成会按张数累计扣费</p>
-          <p className="mt-1 text-[9px] font-medium text-foreground/80">当前 {imageCount} 张，预计消耗 {formatCredit(totalPrice)} 积分</p>
+          <p>当前质量价格：{formatCredit(currentQualityPrice)} 积分 / 张</p>
+          {supportsMultiImage ? (
+            <p className="mt-1 text-[9px] font-medium text-foreground/80">多张生成会按张数累计扣费</p>
+          ) : null}
+          <p className="mt-1 text-[9px] font-medium text-foreground/80">当前 {effectiveImageCount} 张，预计消耗 {formatCredit(totalPrice)} 积分</p>
         </div>
       </div>
 
@@ -396,7 +446,7 @@ export default function GenerateView() {
                 <>
                   <button
                     type="button"
-                    aria-label={`图片模型 ${currentModelLabel}`}
+                    aria-label={`图片模型 ${currentModelTitle}`}
                     aria-haspopup="listbox"
                     aria-expanded={isModelPickerOpen}
                     onClick={() => setIsModelPickerOpen((open) => !open)}
@@ -410,11 +460,11 @@ export default function GenerateView() {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-foreground">
-                        {currentModelLabel}
+                        {currentModelTitle}
                       </span>
-                      {currentModel?.description?.trim() && currentModel.description.trim() !== currentModel.slug ? (
+                      {currentModelSubtitle ? (
                         <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
-                          {currentModel.slug}
+                          {currentModelSubtitle}
                         </span>
                       ) : null}
                     </span>
@@ -435,7 +485,8 @@ export default function GenerateView() {
                         <div aria-label="图片模型列表" role="listbox" className="space-y-2 pr-2">
                           {imageModels.map((model) => {
                             const isActive = selectedImageModel === model.slug;
-                            const modelLabel = model.description?.trim() || model.slug;
+                            const modelTitle = getModelPrimaryLabel(model);
+                            const modelSubtitle = getModelSecondaryLabel(model);
 
                             return (
                               <button
@@ -456,11 +507,11 @@ export default function GenerateView() {
                               >
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-sm font-semibold text-foreground">
-                                    {modelLabel}
+                                    {modelTitle}
                                   </span>
-                                  {model.description?.trim() && model.description.trim() !== model.slug ? (
+                                  {modelSubtitle ? (
                                     <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
-                                      {model.slug}
+                                      {modelSubtitle}
                                     </span>
                                   ) : null}
                                 </span>
@@ -531,70 +582,58 @@ export default function GenerateView() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">输出尺寸</p>
-            <div className="grid grid-cols-3 gap-2">
-              {OUTPUT_SIZE_OPTIONS.map((option) => {
-                const isActive = activeUpscale === option.value;
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    aria-label={option.label}
-                    onClick={() => handleUpscaleChange(option.value)}
-                    className={cn(
-                      'rounded-2xl border px-2 py-3 text-center transition-all',
-                      isActive
-                        ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                        : 'border-border/50 bg-background/50 hover:border-primary/30',
-                    )}
-                  >
-                    <span className="block text-[11px] font-bold">{option.label}</span>
-                    <span className={cn('mt-1 block text-[9px]', isActive ? 'text-foreground/80' : 'text-muted-foreground')}>
-                      {option.desc}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {shouldShowUpscaleHint ? (
-              <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-[10px] leading-5 text-foreground/80">
-                <p>
-                  {UPSCALE_HINT_LEAD}
-                  <b className="font-semibold text-foreground">Catmull-Rom 插值</b>
-                  放大并以 PNG 输出。
-                </p>
-                <p className="mt-1">
-                  <span className="font-semibold text-amber-700 dark:text-amber-300">{UPSCALE_HINT_WARN}</span>
-                  {UPSCALE_HINT_TAIL}
-                </p>
+          {supportsOutputSize ? (
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">输出质量</p>
+              <div className="grid grid-cols-3 gap-2">
+                {OUTPUT_QUALITY_OPTIONS.map((option) => {
+                  const isActive = activeOutputQuality === option.value;
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
+                      aria-label={option.label}
+                      onClick={() => handleOutputQualityChange(option.value)}
+                      className={cn(
+                        'rounded-2xl border px-2 py-3 text-center transition-all',
+                        isActive
+                          ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                          : 'border-border/50 bg-background/50 hover:border-primary/30',
+                      )}
+                    >
+                      <span className="block text-[11px] font-bold">{option.label}</span>
+                    </button>
+                  );
+                })}
               </div>
-            ) : null}
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">生成张数</p>
-            <div className="grid grid-cols-4 gap-2">
-              {IMAGE_COUNT_OPTIONS.map((count) => {
-                const isActive = imageCount === count;
-                return (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => setImageCount(count)}
-                    className={cn(
-                      'rounded-2xl border px-3 py-3 text-sm font-bold transition-all',
-                      isActive
-                        ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                        : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground',
-                    )}
-                  >
-                    {count} 张
-                  </button>
-                );
-              })}
             </div>
-          </div>
+          ) : null}
+
+          {supportsMultiImage ? (
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">生成张数</p>
+              <div className="grid grid-cols-4 gap-2">
+                {IMAGE_COUNT_OPTIONS.map((count) => {
+                  const isActive = imageCount === count;
+                  return (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setImageCount(count)}
+                      className={cn(
+                        'rounded-2xl border px-3 py-3 text-sm font-bold transition-all',
+                        isActive
+                          ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                          : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                      )}
+                    >
+                      {count} 张
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <Button

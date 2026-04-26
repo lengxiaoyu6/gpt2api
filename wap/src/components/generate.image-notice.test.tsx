@@ -72,7 +72,7 @@ describe('generate image notice', () => {
     expect(notice.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  test('generate page hides local upscale hint outside gpt-image-2 model', () => {
+  test('generate page shows the original ratio grid and quality labels without resolution text', () => {
     useStore.setState({
       siteInfo: {
         'site.name': 'GPT2API',
@@ -94,10 +94,27 @@ describe('generate image notice', () => {
 
     render(<GenerateView />)
 
+    expect(screen.queryByText('选择画布比例')).toBeNull()
+    expect(screen.queryByRole('button', { name: '画布比例 1:1 方形 社交媒体' })).toBeNull()
+    expect(screen.getByRole('button', { name: '1:1 方形' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '3:2 宽幅' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '4:5 标准' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2:3 竖版' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '21:9 超宽屏' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '16:9 宽屏' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '16:9 宽屏' }))
+    expect(screen.getByRole('button', { name: '16:9 宽屏' })).toHaveClass('border-primary/50', 'bg-primary/15')
+    expect(screen.getByRole('button', { name: '1K' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2K' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '4K' })).toBeInTheDocument()
+    expect(screen.queryByText('1024x1024')).toBeNull()
+    expect(screen.queryByText('2048x2048')).toBeNull()
+    expect(screen.queryByText('2880x2880')).toBeNull()
+    expect(screen.getByText('输出质量')).toBeInTheDocument()
     expect(screen.queryByText('Catmull-Rom 插值')).toBeNull()
   })
 
-  test('generate page shows local upscale hint for gpt-image-2 model', () => {
+  test('generate page updates price by selected output quality', async () => {
     useStore.setState({
       siteInfo: {
         'site.name': 'GPT2API',
@@ -110,16 +127,68 @@ describe('generate image notice', () => {
       generateImage,
       editImage,
       imageModels: [
-        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
-        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高清模型', image_price_per_call: 2500 },
+        {
+          id: 1,
+          slug: 'gpt-image-1',
+          type: 'image',
+          description: '标准模型',
+          image_price_per_call: 1500,
+          image_price_per_call_2k: 2600,
+          image_price_per_call_4k: 4200,
+        },
       ],
-      selectedImageModel: 'gpt-image-2',
+      selectedImageModel: 'gpt-image-1',
       setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
     } as any)
 
     render(<GenerateView />)
 
-    expect(screen.getByText('Catmull-Rom 插值')).toBeInTheDocument()
+    expect(screen.getByText('当前质量价格：0.15 积分 / 张')).toBeInTheDocument()
+    expect(screen.getByText('当前 1 张，预计消耗 0.15 积分')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '4K' }))
+    expect(screen.getByText('当前质量价格：0.42 积分 / 张')).toBeInTheDocument()
+    expect(screen.getByText('当前 1 张，预计消耗 0.42 积分')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '3 张' }))
+    expect(screen.getByText('当前 3 张，预计消耗 1.26 积分')).toBeInTheDocument()
+  })
+
+  test('generate page hides output size and count controls when model disables them', () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'GPT2API',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        {
+          id: 1,
+          slug: 'single-default-size',
+          type: 'image',
+          description: '单张默认尺寸模型',
+          image_price_per_call: 1500,
+          supports_multi_image: false,
+          supports_output_size: false,
+        },
+      ],
+      selectedImageModel: 'single-default-size',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    expect(screen.queryByRole('button', { name: '1K' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '2K' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '4K' })).toBeNull()
+    expect(screen.queryByText('输出质量')).toBeNull()
+    expect(screen.queryByText('生成张数')).toBeNull()
+    expect(screen.queryByText('多张生成会按张数累计扣费')).toBeNull()
   })
 
 

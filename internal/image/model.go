@@ -63,7 +63,7 @@ type Task struct {
 	Prompt          string     `db:"prompt" json:"prompt"`
 	N               int        `db:"n" json:"n"`
 	Size            string     `db:"size" json:"size"`
-	Upscale         string     `db:"upscale" json:"upscale"` // '' | '2k' | '4k',ImageProxy 读取后对原图做 Catmull-Rom 放大
+	Upscale         string     `db:"upscale" json:"upscale"` // 历史兼容字段；新任务固定为空，图片代理层不再执行本地放大。
 	StorageMode     string     `db:"storage_mode" json:"storage_mode"`
 	Status          string     `db:"status" json:"status"`
 	ConversationID  string     `db:"conversation_id" json:"conversation_id"`

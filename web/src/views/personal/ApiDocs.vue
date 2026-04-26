@@ -21,6 +21,14 @@ const imageModels = computed(() => models.value.filter((m) => m.type === 'image'
 const selectedChatModel = ref<string>('')
 const selectedImageModel = ref<string>('')
 
+function pickPreferredImageModel(models: SimpleModel[], current?: string) {
+  const available = models.filter((item) => item.type === 'image')
+  if (current && available.some((item) => item.slug === current)) {
+    return current
+  }
+  return available.find((item) => item.has_image_channel)?.slug ?? available[0]?.slug ?? ''
+}
+
 // 原点:浏览器当前地址,用于 SDK 示例的 base_url
 const origin = computed(() => window.location.origin)
 
@@ -151,9 +159,8 @@ onMounted(async () => {
       ? m.items
       : m.items.filter((x) => x.type !== 'chat')
     const firstChat = m.items.find((x) => x.type === 'chat')
-    const firstImage = m.items.find((x) => x.type === 'image')
     if (firstChat) selectedChatModel.value = firstChat.slug
-    if (firstImage) selectedImageModel.value = firstImage.slug
+    selectedImageModel.value = pickPreferredImageModel(models.value, selectedImageModel.value)
   } catch {
     // 忽略
   }

@@ -31,6 +31,14 @@ const imageModels = computed(() => models.value.filter((m) => m.type === 'image'
 const selectedChatModel = ref('')
 const selectedImageModel = ref('')
 
+function pickPreferredImageModel(models: SimpleModel[], current?: string) {
+  const available = models.filter((item) => item.type === 'image')
+  if (current && available.some((item) => item.slug === current)) {
+    return current
+  }
+  return available.find((item) => item.has_image_channel)?.slug ?? available[0]?.slug ?? ''
+}
+
 const currentChatDesc = computed(
   () => chatModels.value.find((m) => m.slug === selectedChatModel.value)?.description || '',
 )
@@ -38,7 +46,10 @@ const currentImageModel = computed(
   () => imageModels.value.find((m) => m.slug === selectedImageModel.value),
 )
 const currentImageDesc = computed(() => currentImageModel.value?.description || '')
-const currentImageBasePrice = computed(() => currentImageModel.value?.image_price_per_call ?? 0)
+const supportsMultiImage = computed(() => currentImageModel.value?.supports_multi_image ?? true)
+const supportsOutputSize = computed(() => currentImageModel.value?.supports_output_size ?? true)
+const effectiveT2iN = computed(() => supportsMultiImage.value ? t2iN.value : 1)
+const effectiveI2iN = computed(() => 1)
 const noticeText = computed(() => siteStore.get('site.image_notice'))
 
 onMounted(async () => {
@@ -56,9 +67,8 @@ onMounted(async () => {
       ? m.items
       : m.items.filter((x) => x.type !== 'chat')
     const firstChat = m.items.find((x) => x.type === 'chat')
-    const firstImage = m.items.find((x) => x.type === 'image')
     if (firstChat) selectedChatModel.value = firstChat.slug
-    if (firstImage) selectedImageModel.value = firstImage.slug
+    selectedImageModel.value = pickPreferredImageModel(models.value, selectedImageModel.value)
   } catch {
     // 静默;错误拦截器已提示
   }
@@ -261,53 +271,86 @@ function renderMarkdown(raw: string): string {
 // 文生图(Text2Img)
 // ====================================================
 
-// 10 档比例:对应上游 chatgpt.com 实际靠 prompt 第一行 "Make the aspect ratio X:Y , "
-// 控制画面比例。OpenAI 兼容 size 仅作占位,按宽高比就近映射到官方支持的三档。
+// 10 档比例。请求 size 根据比例与输出质量共同计算。
 interface RatioOpt {
-  v: string
   l: string
   w: number
   h: number
 }
 const TEXT2IMG_RATIO_OPTIONS: readonly RatioOpt[] = [
-  { v: '1024x1024', l: '1:1', w: 36, h: 36 },
-  { v: '1792x1024', l: '5:4', w: 45, h: 36 },
-  { v: '1024x1792', l: '9:16', w: 27, h: 48 },
-  { v: '1792x1024', l: '21:9', w: 48, h: 21 },
-  { v: '1792x1024', l: '16:9', w: 48, h: 27 },
-  { v: '1536x1152', l: '4:3', w: 44, h: 33 },
-  { v: '1792x1024', l: '3:2', w: 48, h: 32 },
-  { v: '1024x1792', l: '4:5', w: 29, h: 36 },
-  { v: '1152x1536', l: '3:4', w: 33, h: 44 },
-  { v: '1024x1792', l: '2:3', w: 32, h: 48 },
+  { l: '1:1', w: 36, h: 36 },
+  { l: '5:4', w: 45, h: 36 },
+  { l: '9:16', w: 27, h: 48 },
+  { l: '16:9', w: 48, h: 27 },
+  { l: '4:3', w: 44, h: 33 },
+  { l: '3:2', w: 48, h: 32 },
+  { l: '4:5', w: 29, h: 36 },
+  { l: '3:4', w: 33, h: 44 },
+  { l: '2:3', w: 32, h: 48 },
+  { l: '21:9', w: 48, h: 21 },
 ] as const
 const IMG2IMG_RATIO_OPTIONS: readonly RatioOpt[] = [
-  { v: '1024x1024', l: '1:1', w: 36, h: 36 },
-  { v: '1792x1024', l: '5:4', w: 45, h: 36 },
-  { v: '1024x1792', l: '9:16', w: 27, h: 48 },
-  { v: '1792x1024', l: '21:9', w: 48, h: 21 },
-  { v: '1792x1024', l: '16:9', w: 48, h: 27 },
-  { v: '1536x1152', l: '4:3', w: 44, h: 33 },
-  { v: '1792x1024', l: '3:2', w: 48, h: 32 },
-  { v: '1024x1792', l: '4:5', w: 29, h: 36 },
-  { v: '1152x1536', l: '3:4', w: 33, h: 44 },
-  { v: '1024x1792', l: '2:3', w: 32, h: 48 },
+  { l: '1:1', w: 36, h: 36 },
+  { l: '5:4', w: 45, h: 36 },
+  { l: '9:16', w: 27, h: 48 },
+  { l: '16:9', w: 48, h: 27 },
+  { l: '4:3', w: 44, h: 33 },
+  { l: '3:2', w: 48, h: 32 },
+  { l: '4:5', w: 29, h: 36 },
+  { l: '3:4', w: 33, h: 44 },
+  { l: '2:3', w: 32, h: 48 },
+  { l: '21:9', w: 48, h: 21 },
 ] as const
+type OutputQualityValue = '1K' | '2K' | '4K'
+const OUTPUT_QUALITY_OPTIONS: ReadonlyArray<{ value: OutputQualityValue; label: string }> = [
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' },
+] as const
+
+function resolveImageUnitPrice(model: SimpleModel | undefined, quality: OutputQualityValue): number {
+  if (!model) return 0
+  if (quality === '2K' && (model.image_price_per_call_2k ?? 0) > 0) {
+    return model.image_price_per_call_2k ?? 0
+  }
+  if (quality === '4K' && (model.image_price_per_call_4k ?? 0) > 0) {
+    return model.image_price_per_call_4k ?? 0
+  }
+  return model.image_price_per_call ?? 0
+}
+
+const OUTPUT_SIZE_BY_RATIO: Record<string, Record<OutputQualityValue, string>> = {
+  '1:1': { '1K': '1024x1024', '2K': '2048x2048', '4K': '2880x2880' },
+  '5:4': { '1K': '1040x832', '2K': '2080x1664', '4K': '3200x2560' },
+  '9:16': { '1K': '720x1280', '2K': '1152x2048', '4K': '2160x3840' },
+  '16:9': { '1K': '1280x720', '2K': '2048x1152', '4K': '3840x2160' },
+  '4:3': { '1K': '1024x768', '2K': '2048x1536', '4K': '3264x2448' },
+  '3:2': { '1K': '1008x672', '2K': '2016x1344', '4K': '3504x2336' },
+  '4:5': { '1K': '832x1040', '2K': '1664x2080', '4K': '2560x3200' },
+  '3:4': { '1K': '768x1024', '2K': '1536x2048', '4K': '2448x3264' },
+  '2:3': { '1K': '672x1008', '2K': '1344x2016', '4K': '2336x3504' },
+  '21:9': { '1K': '1344x576', '2K': '2016x864', '4K': '3696x1584' },
+}
 const RATIO_LABELS: Record<string, string> = {
   '1:1': '方形',
   '5:4': '横屏',
   '9:16': '故事',
-  '21:9': '超宽屏',
   '16:9': '宽屏',
   '4:3': '横屏',
   '3:2': '宽幅',
   '4:5': '标准',
   '3:4': '竖版',
   '2:3': '竖版',
+  '21:9': '超宽屏',
 }
 
 function ratioLabel(ratio: string) {
   return RATIO_LABELS[ratio] || ratio
+}
+
+function resolveOutputSize(ratio: string, quality: OutputQualityValue): string {
+  const ratioSizes = OUTPUT_SIZE_BY_RATIO[ratio] || OUTPUT_SIZE_BY_RATIO['1:1']
+  return ratioSizes[quality]
 }
 
 // 预览小框的尺寸(按比例缩放后的 CSS px)。
@@ -315,37 +358,17 @@ function ratioBoxStyle(r: RatioOpt) {
   return { width: `${r.w}px`, height: `${r.h}px` }
 }
 
-// 统一的 prompt 前缀同步工具:
-// - 若第一行已经是 "Make the aspect ratio X:Y ,",就把 X:Y 换成新的 ratio
-// - 否则把 "Make the aspect ratio {ratio} , " 插到最前面
-// - 用户手动删掉这行后不会再自动补回(只有再次切换比例时才重新插入)
-const RATIO_PREFIX_RE = /^\s*Make the aspect ratio\s+\S+\s*,\s*/i
-function applyRatioPrefix(prompt: string, ratio: string): string {
-  const prefix = `Make the aspect ratio ${ratio} , `
-  const lines = prompt.split(/\r?\n/)
-  if (lines.length > 0 && RATIO_PREFIX_RE.test(lines[0])) {
-    lines[0] = lines[0].replace(RATIO_PREFIX_RE, prefix)
-    return lines.join('\n')
-  }
-  return prefix + prompt
-}
+// 比例选择仅更新状态,输入框保留原始文本。
 
 const t2iPrompt = ref('')
 const t2iRatio = ref<string>('1:1')
-const t2iSize = computed(() =>
-  TEXT2IMG_RATIO_OPTIONS.find((r) => r.l === t2iRatio.value)?.v ?? '1024x1024',
-)
+const t2iQuality = ref<OutputQualityValue>('1K')
 const t2iN = ref(1)
-// 本地高清放大档位(空=原图 / '2k' / '4k')。
-// 仅在图片代理 URL 首次请求时触发 decode + Catmull-Rom + PNG 编码,
-// 进程内 LRU 缓存命中后毫秒级返回。
-type UpscaleLevel = '' | '2k' | '4k'
-const t2iUpscale = ref<UpscaleLevel>('')
-
-// 切换比例时,实时把 prompt 第一行同步成新的 "Make the aspect ratio X:Y , "
-watch(t2iRatio, (nv) => {
-  t2iPrompt.value = applyRatioPrefix(t2iPrompt.value, nv)
-})
+const currentT2iPrice = computed(() => resolveImageUnitPrice(
+  currentImageModel.value,
+  supportsOutputSize.value ? t2iQuality.value : '1K',
+))
+const currentT2iTotalPrice = computed(() => currentT2iPrice.value * effectiveT2iN.value)
 const t2iSending = ref(false)
 const t2iResult = ref<PlayImageData[]>([])
 const t2iError = ref('')
@@ -358,17 +381,17 @@ const imgExamples = [
   '童话风格蘑菇屋,黄昏光线,柔和景深',
 ]
 
-// 点击示例 prompt 时,自动把当前比例的前缀拼到最前面,保持和 ratio 同步
 function useT2iExample(p: string) {
-  t2iPrompt.value = applyRatioPrefix(p, t2iRatio.value)
+  t2iPrompt.value = p
 }
 
 async function sendText2Img() {
-  const prompt = t2iPrompt.value.trim()
-  if (!prompt) {
+  const rawPrompt = t2iPrompt.value.trim()
+  if (!rawPrompt) {
     ElMessage.warning('请输入描述词 prompt')
     return
   }
+  const prompt = rawPrompt
   if (!selectedImageModel.value) {
     ElMessage.warning('请选择一个图片模型')
     return
@@ -378,14 +401,14 @@ async function sendText2Img() {
   t2iResult.value = []
   t2iAbort.value = new AbortController()
   try {
+    const body = {
+      model: selectedImageModel.value,
+      prompt,
+      n: effectiveT2iN.value,
+      ...(supportsOutputSize.value ? { size: resolveOutputSize(t2iRatio.value, t2iQuality.value) } : {}),
+    }
     const resp = await playGenerateImage(
-      {
-        model: selectedImageModel.value,
-        prompt,
-        n: t2iN.value,
-        size: t2iSize.value,
-        upscale: t2iUpscale.value || undefined,
-      },
+      body,
       t2iAbort.value.signal,
     )
     t2iResult.value = resp.data || []
@@ -440,13 +463,12 @@ interface RefImage {
 const refImages = ref<RefImage[]>([])
 const i2iPrompt = ref('')
 const i2iRatio = ref<string>('1:1')
-const i2iSize = computed(() =>
-  IMG2IMG_RATIO_OPTIONS.find((r) => r.l === i2iRatio.value)?.v ?? '1024x1024',
-)
-const i2iUpscale = ref<UpscaleLevel>('')
-watch(i2iRatio, (nv) => {
-  i2iPrompt.value = applyRatioPrefix(i2iPrompt.value, nv)
-})
+const i2iQuality = ref<OutputQualityValue>('1K')
+const currentI2iPrice = computed(() => resolveImageUnitPrice(
+  currentImageModel.value,
+  supportsOutputSize.value ? i2iQuality.value : '1K',
+))
+const currentI2iTotalPrice = computed(() => currentI2iPrice.value * effectiveI2iN.value)
 const i2iSending = ref(false)
 const i2iResult = ref<PlayImageData[]>([])
 const i2iPreview = ref(false)
@@ -537,10 +559,12 @@ async function sendImg2Img() {
     ElMessage.warning('请先上传至少一张参考图')
     return
   }
-  if (!i2iPrompt.value.trim()) {
+  const rawPrompt = i2iPrompt.value.trim()
+  if (!rawPrompt) {
     ElMessage.warning('请描述希望的改动')
     return
   }
+  const prompt = rawPrompt
   if (!selectedImageModel.value) {
     ElMessage.warning('请选择一个图片模型')
     return
@@ -552,15 +576,15 @@ async function sendImg2Img() {
   activeResultIndex.value = 0
   i2iAbort.value = new AbortController()
   try {
+    const body = {
+      model: selectedImageModel.value,
+      prompt,
+      n: 1,
+      reference_images: refImages.value.map((r) => r.dataUrl),
+      ...(supportsOutputSize.value ? { size: resolveOutputSize(i2iRatio.value, i2iQuality.value) } : {}),
+    }
     const resp = await playGenerateImage(
-      {
-        model: selectedImageModel.value,
-        prompt: i2iPrompt.value.trim(),
-        n: 1,
-        size: i2iSize.value,
-        reference_images: refImages.value.map((r) => r.dataUrl),
-        upscale: i2iUpscale.value || undefined,
-      },
+      body,
       i2iAbort.value.signal,
     )
     i2iResult.value = resp.data || []
@@ -833,9 +857,10 @@ watch(activeTab, (v) => {
               <div v-if="currentImageDesc" class="side-hint">{{ currentImageDesc }}</div>
               <div class="price-hint">
                 <span class="price-hint__title">
-                  单张基准价格：{{ formatCredit(currentImageBasePrice) }} 积分 / 张
+                  当前质量价格：{{ formatCredit(currentT2iPrice) }} 积分 / 张
                 </span>
-                <span class="price-hint__sub">多张生成会按张数累计扣费</span>
+                <span v-if="supportsMultiImage" class="price-hint__sub">多张生成会按张数累计扣费</span>
+                <span class="price-hint__sub">当前 {{ effectiveT2iN }} 张，预计消耗 {{ formatCredit(currentT2iTotalPrice) }} 积分</span>
               </div>
             </div>
 
@@ -857,35 +882,23 @@ watch(activeTab, (v) => {
                   <span class="ratio-val-sm">{{ r.l }}</span>
                 </button>
               </div>
-              <div class="side-hint">
-                选中后会把 <code class="hint-code">Make the aspect ratio {{ t2iRatio }} ,</code>
-                作为 prompt 第一行传给上游
-              </div>
             </div>
 
-            <div class="side-row">
+            <div v-if="supportsMultiImage" class="side-row">
               <label class="side-lbl">张数 <span class="side-val">{{ t2iN }}</span></label>
               <el-slider v-model="t2iN" :min="1" :max="4" show-stops />
             </div>
 
-            <div class="side-row">
-              <label class="side-lbl">
-                输出尺寸
-                <el-tooltip placement="top" effect="light">
-                  <template #content>
-                    <div style="max-width:260px;line-height:1.55;">
-                      上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地
-                      <b>Catmull-Rom 插值</b>放大并以 PNG 输出。<br>
-                      <span style="color:#a16207;">注意:这是传统算法放大,不是 AI 超分,</span>不会补出新的纹理或毛发,只会让画面更大更平滑。4K 首次加载约 +0.5~1.5s,之后命中缓存。
-                    </div>
-                  </template>
-                  <el-icon style="margin-left:4px;color:#94a3b8;cursor:help;"><InfoFilled /></el-icon>
-                </el-tooltip>
-              </label>
-              <el-radio-group v-model="t2iUpscale" size="small" class="upscale-group">
-                <el-radio-button label="">原图</el-radio-button>
-                <el-radio-button label="2k">2K 高清</el-radio-button>
-                <el-radio-button label="4k">4K 高清</el-radio-button>
+            <div v-if="supportsOutputSize" class="side-row">
+              <label class="side-lbl">输出质量 <span class="side-val">{{ t2iQuality }}</span></label>
+              <el-radio-group v-model="t2iQuality" size="small" class="output-size-group">
+                <el-radio-button
+                  v-for="option in OUTPUT_QUALITY_OPTIONS"
+                  :key="option.value"
+                  :label="option.value"
+                >
+                  {{ option.label }}
+                </el-radio-button>
               </el-radio-group>
             </div>
 
@@ -1035,9 +1048,10 @@ watch(activeTab, (v) => {
                   <div v-if="currentImageDesc" class="side-hint">{{ currentImageDesc }}</div>
                   <div class="price-hint">
                     <span class="price-hint__title">
-                      单张基准价格：{{ formatCredit(currentImageBasePrice) }} 积分 / 张
+                      当前质量价格：{{ formatCredit(currentI2iPrice) }} 积分 / 张
                     </span>
-                    <span class="price-hint__sub">多张生成会按张数累计扣费</span>
+                    <span v-if="supportsMultiImage" class="price-hint__sub">多张生成会按张数累计扣费</span>
+                    <span class="price-hint__sub">当前 {{ effectiveI2iN }} 张，预计消耗 {{ formatCredit(currentI2iTotalPrice) }} 积分</span>
                   </div>
                 </div>
 
@@ -1060,30 +1074,18 @@ watch(activeTab, (v) => {
                       <span class="ratio-val-sm">{{ r.l }}</span>
                     </button>
                   </div>
-                  <div class="side-hint">
-                    切换后会把 <code class="hint-code">Make the aspect ratio {{ i2iRatio }} ,</code>
-                    作为 prompt 第一行
-                  </div>
                 </div>
 
-                <div class="side-row">
-                  <label class="side-lbl">
-                    输出尺寸
-                    <el-tooltip placement="top" effect="light">
-                      <template #content>
-                        <div style="max-width:260px;line-height:1.55;">
-                          上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地
-                          <b>Catmull-Rom 插值</b>放大并以 PNG 输出。<br>
-                          <span style="color:#a16207;">注意:这是传统算法放大,不是 AI 超分,</span>不会补出新的纹理或毛发,只会让画面更大更平滑。4K 首次加载约 +0.5~1.5s,之后命中缓存。
-                        </div>
-                      </template>
-                      <el-icon style="margin-left:4px;color:#94a3b8;cursor:help;"><InfoFilled /></el-icon>
-                    </el-tooltip>
-                  </label>
-                  <el-radio-group v-model="i2iUpscale" size="small" class="upscale-group">
-                    <el-radio-button label="">原图</el-radio-button>
-                    <el-radio-button label="2k">2K 高清</el-radio-button>
-                    <el-radio-button label="4k">4K 高清</el-radio-button>
+                <div v-if="supportsOutputSize" class="side-row">
+                  <label class="side-lbl">输出质量 <span class="side-val">{{ i2iQuality }}</span></label>
+                  <el-radio-group v-model="i2iQuality" size="small" class="output-size-group">
+                    <el-radio-button
+                      v-for="option in OUTPUT_QUALITY_OPTIONS"
+                      :key="option.value"
+                      :label="option.value"
+                    >
+                      {{ option.label }}
+                    </el-radio-button>
                   </el-radio-group>
                 </div>
 
@@ -1342,10 +1344,10 @@ watch(activeTab, (v) => {
 .gen-btn { box-shadow: 0 6px 18px -6px rgba(64, 158, 255, 0.55); }
 .opt-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
-/* ---- 输出尺寸(本地高清放大)单选组 ---- */
-.upscale-group { display: flex; width: 100%; }
-.upscale-group :deep(.el-radio-button) { flex: 1; }
-.upscale-group :deep(.el-radio-button__inner) {
+/* ---- 输出质量单选组 ---- */
+.output-size-group { display: flex; width: 100%; }
+.output-size-group :deep(.el-radio-button) { flex: 1; }
+.output-size-group :deep(.el-radio-button__inner) {
   width: 100%;
   padding-left: 0;
   padding-right: 0;

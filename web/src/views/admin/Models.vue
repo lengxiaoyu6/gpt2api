@@ -32,10 +32,16 @@ const filteredRows = computed(() =>
  * 价目说明:
  *   chat  模型: input_price_per_1m / output_price_per_1m / cache_read_price_per_1m
  *              单位"每百万 token 积分(厘)"。展示时换成"每 1M tokens"的积分值。
- *   image 模型: image_price_per_call 每张图积分(厘)。
+ *   image 模型: image_price_per_call / image_price_per_call_2k / image_price_per_call_4k
+ *              分别对应 1K / 2K / 4K 每张图积分(厘)。
  */
 function perMillion(c: number) { return formatCredit(c) }
 function perImage(c: number)   { return formatCredit(c) }
+function resolveImageTierPrice(row: statsApi.Model, tier: '1K' | '2K' | '4K') {
+  if (tier === '2K' && (row.image_price_per_call_2k ?? 0) > 0) return row.image_price_per_call_2k ?? 0
+  if (tier === '4K' && (row.image_price_per_call_4k ?? 0) > 0) return row.image_price_per_call_4k ?? 0
+  return row.image_price_per_call
+}
 
 // ---------- 新增 / 编辑 ----------
 type EditState = 'create' | 'edit'
@@ -53,6 +59,10 @@ const emptyForm = (): statsApi.ModelUpsert & { id: number } => ({
   output_price_per_1m: 0,
   cache_read_price_per_1m: 0,
   image_price_per_call: 0,
+  image_price_per_call_2k: 0,
+  image_price_per_call_4k: 0,
+  supports_multi_image: true,
+  supports_output_size: true,
   description: '',
   enabled: true,
 })
@@ -82,6 +92,10 @@ function openEdit(row: statsApi.Model) {
     output_price_per_1m: row.output_price_per_1m,
     cache_read_price_per_1m: row.cache_read_price_per_1m,
     image_price_per_call: row.image_price_per_call,
+    image_price_per_call_2k: row.image_price_per_call_2k ?? row.image_price_per_call,
+    image_price_per_call_4k: row.image_price_per_call_4k ?? row.image_price_per_call,
+    supports_multi_image: row.supports_multi_image ?? true,
+    supports_output_size: row.supports_output_size ?? true,
     description: row.description,
     enabled: row.enabled,
   })
@@ -101,6 +115,10 @@ async function submit() {
     output_price_per_1m: form.output_price_per_1m,
     cache_read_price_per_1m: form.cache_read_price_per_1m,
     image_price_per_call: form.image_price_per_call,
+    image_price_per_call_2k: form.image_price_per_call_2k,
+    image_price_per_call_4k: form.image_price_per_call_4k,
+    supports_multi_image: form.supports_multi_image,
+    supports_output_size: form.supports_output_size,
     description: form.description,
     enabled: form.enabled,
   }
@@ -196,11 +214,13 @@ onMounted(load)
             <span v-else style="color:var(--el-text-color-secondary)">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="价目(image)" width="160">
+        <el-table-column label="价目(image)" width="200">
           <template #default="{ row }">
-            <span v-if="row.type === 'image'">
-              <b>{{ perImage(row.image_price_per_call) }}</b> / 张
-            </span>
+            <div v-if="row.type === 'image'" style="font-size:12px;line-height:1.5">
+              <div>1K / 张 <b>{{ perImage(resolveImageTierPrice(row, '1K')) }}</b></div>
+              <div>2K / 张 <b>{{ perImage(resolveImageTierPrice(row, '2K')) }}</b></div>
+              <div>4K / 张 <b>{{ perImage(resolveImageTierPrice(row, '4K')) }}</b></div>
+            </div>
             <span v-else style="color:var(--el-text-color-secondary)">-</span>
           </template>
         </el-table-column>
@@ -271,8 +291,22 @@ onMounted(load)
           </el-form-item>
         </template>
         <template v-else>
-          <el-form-item label="每张图(厘)">
+          <el-form-item label="1K / 张(厘)">
             <el-input-number v-model="form.image_price_per_call" :min="0" :step="100" style="width:100%" />
+          </el-form-item>
+          <el-form-item label="2K / 张(厘)">
+            <el-input-number v-model="form.image_price_per_call_2k" :min="0" :step="100" style="width:100%" />
+            <div class="hint">填 0 时按 1K 价格计费。</div>
+          </el-form-item>
+          <el-form-item label="4K / 张(厘)">
+            <el-input-number v-model="form.image_price_per_call_4k" :min="0" :step="100" style="width:100%" />
+            <div class="hint">填 0 时按 1K 价格计费。</div>
+          </el-form-item>
+          <el-form-item label="支持多张生成">
+            <el-switch v-model="form.supports_multi_image" />
+          </el-form-item>
+          <el-form-item label="支持输出质量选择">
+            <el-switch v-model="form.supports_output_size" />
           </el-form-item>
         </template>
 

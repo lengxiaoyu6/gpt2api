@@ -9,6 +9,10 @@ export interface Model {
   output_price_per_1m: number
   cache_read_price_per_1m: number
   image_price_per_call: number
+  image_price_per_call_2k?: number
+  image_price_per_call_4k?: number
+  supports_multi_image?: boolean
+  supports_output_size?: boolean
   description: string
   enabled: boolean
   created_at: string
@@ -27,6 +31,10 @@ export interface ModelUpsert {
   output_price_per_1m: number
   cache_read_price_per_1m: number
   image_price_per_call: number
+  image_price_per_call_2k?: number
+  image_price_per_call_4k?: number
+  supports_multi_image?: boolean
+  supports_output_size?: boolean
   description: string
   enabled?: boolean
 }

@@ -40,6 +40,10 @@ type upsertReq struct {
 	OutputPricePer1M    int64  `json:"output_price_per_1m"`
 	CacheReadPricePer1M int64  `json:"cache_read_price_per_1m"`
 	ImagePricePerCall   int64  `json:"image_price_per_call"`
+	ImagePricePerCall2K int64  `json:"image_price_per_call_2k"`
+	ImagePricePerCall4K int64  `json:"image_price_per_call_4k"`
+	SupportsMultiImage  *bool  `json:"supports_multi_image,omitempty"`
+	SupportsOutputSize  *bool  `json:"supports_output_size,omitempty"`
 	Description         string `json:"description"`
 	Enabled             *bool  `json:"enabled,omitempty"`
 }
@@ -63,6 +67,7 @@ func (r *upsertReq) validate(forCreate bool) error {
 	for _, v := range []int64{
 		r.InputPricePer1M, r.OutputPricePer1M,
 		r.CacheReadPricePer1M, r.ImagePricePerCall,
+		r.ImagePricePerCall2K, r.ImagePricePerCall4K,
 	} {
 		if v < 0 {
 			return errors.New("价格不能为负数")
@@ -106,6 +111,14 @@ func (h *AdminHandler) Create(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	supportsMultiImage := true
+	if req.SupportsMultiImage != nil {
+		supportsMultiImage = *req.SupportsMultiImage
+	}
+	supportsOutputSize := true
+	if req.SupportsOutputSize != nil {
+		supportsOutputSize = *req.SupportsOutputSize
+	}
 	m := &Model{
 		Slug: req.Slug, Type: req.Type,
 		UpstreamModelSlug:   req.UpstreamModelSlug,
@@ -113,6 +126,10 @@ func (h *AdminHandler) Create(c *gin.Context) {
 		OutputPricePer1M:    req.OutputPricePer1M,
 		CacheReadPricePer1M: req.CacheReadPricePer1M,
 		ImagePricePerCall:   req.ImagePricePerCall,
+		ImagePricePerCall2K: req.ImagePricePerCall2K,
+		ImagePricePerCall4K: req.ImagePricePerCall4K,
+		SupportsMultiImage:  supportsMultiImage,
+		SupportsOutputSize:  supportsOutputSize,
 		Description:         req.Description,
 		Enabled:             enabled,
 	}
@@ -162,6 +179,14 @@ func (h *AdminHandler) Update(c *gin.Context) {
 	cur.OutputPricePer1M = req.OutputPricePer1M
 	cur.CacheReadPricePer1M = req.CacheReadPricePer1M
 	cur.ImagePricePerCall = req.ImagePricePerCall
+	cur.ImagePricePerCall2K = req.ImagePricePerCall2K
+	cur.ImagePricePerCall4K = req.ImagePricePerCall4K
+	if req.SupportsMultiImage != nil {
+		cur.SupportsMultiImage = *req.SupportsMultiImage
+	}
+	if req.SupportsOutputSize != nil {
+		cur.SupportsOutputSize = *req.SupportsOutputSize
+	}
 	cur.Description = req.Description
 	if req.Enabled != nil {
 		cur.Enabled = *req.Enabled
@@ -229,26 +254,36 @@ func (h *AdminHandler) Delete(c *gin.Context) {
 // GET /api/me/models
 // 普通用户视角,只返回 enabled 模型,用于「生成面板」下拉选择。
 func (h *AdminHandler) ListEnabledForMe(c *gin.Context) {
-	rows, err := h.dao.ListEnabled(c.Request.Context())
+	rows, err := h.dao.ListEnabledForMe(c.Request.Context())
 	if err != nil {
 		resp.Internal(c, err.Error())
 		return
 	}
 	type simple struct {
-		ID                uint64 `json:"id"`
-		Slug              string `json:"slug"`
-		Type              string `json:"type"`
-		Description       string `json:"description"`
-		ImagePricePerCall int64  `json:"image_price_per_call"`
+		ID                  uint64 `json:"id"`
+		Slug                string `json:"slug"`
+		Type                string `json:"type"`
+		Description         string `json:"description"`
+		ImagePricePerCall   int64  `json:"image_price_per_call"`
+		ImagePricePerCall2K int64  `json:"image_price_per_call_2k"`
+		ImagePricePerCall4K int64  `json:"image_price_per_call_4k"`
+		HasImageChannel     bool   `json:"has_image_channel"`
+		SupportsMultiImage  bool   `json:"supports_multi_image"`
+		SupportsOutputSize  bool   `json:"supports_output_size"`
 	}
 	out := make([]simple, 0, len(rows))
 	for _, m := range rows {
 		out = append(out, simple{
-			ID:                m.ID,
-			Slug:              m.Slug,
-			Type:              m.Type,
-			Description:       m.Description,
-			ImagePricePerCall: m.ImagePricePerCall,
+			ID:                  m.ID,
+			Slug:                m.Slug,
+			Type:                m.Type,
+			Description:         m.Description,
+			ImagePricePerCall:   m.ImagePricePerCall,
+			ImagePricePerCall2K: m.ImagePricePerCall2K,
+			ImagePricePerCall4K: m.ImagePricePerCall4K,
+			HasImageChannel:     m.HasImageChannel,
+			SupportsMultiImage:  m.SupportsMultiImage,
+			SupportsOutputSize:  m.SupportsOutputSize,
 		})
 	}
 	resp.OK(c, gin.H{"items": out, "total": len(out)})

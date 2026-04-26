@@ -34,7 +34,7 @@ const emptyForm = (): channelsApi.ChannelUpsert & { id: number } => ({
   id: 0,
   name: '',
   type: 'openai',
-  base_url: 'https://api.openai.com',
+  base_url: 'https://api.openai.com/v1/images/generations',
   api_key: '',
   enabled: true,
   priority: 100,
@@ -84,7 +84,7 @@ function onPickType(t: 'openai' | 'gemini') {
     }
   } else {
     if (!form.base_url || form.base_url.includes('googleapis')) {
-      form.base_url = 'https://api.openai.com'
+      form.base_url = 'https://api.openai.com/v1/images/generations'
     }
   }
 }
@@ -241,7 +241,7 @@ onMounted(load)
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="base_url" label="Base URL" min-width="240" show-overflow-tooltip>
+        <el-table-column prop="base_url" label="接口 URL" min-width="240" show-overflow-tooltip>
           <template #default="{ row }"><code>{{ row.base_url }}</code></template>
         </el-table-column>
         <el-table-column label="API Key" width="160">
@@ -341,11 +341,18 @@ onMounted(load)
             Gemini 兼容:generativelanguage.googleapis.com 或其兼容代理。
           </div>
         </el-form-item>
-        <el-form-item label="Base URL" prop="base_url">
-          <el-input v-model="form.base_url" placeholder="例如 https://api.openai.com" />
+        <el-form-item label="接口 URL" prop="base_url">
+          <el-input
+            v-model="form.base_url"
+            placeholder="例如 https://api.openai.com/v1/images/generations"
+          />
           <div class="hint">
-            OpenAI 类填到根,<code>/v1/...</code> 由系统自动拼接;Gemini 类填到
-            <code>https://...googleapis.com</code> 即可。
+            OpenAI 类请填写完整接口地址。图片可填写
+            <code>https://api.openai.com/v1/images/generations</code>，文本可填写
+            <code>https://api.openai.com/v1/chat/completions</code>；如果上游走 Responses API，
+            文本或图片都可填写 <code>https://api.openai.com/v1/responses</code>。
+            同一供应商如果同时提供文本与图片，建议分别建立渠道。Gemini 类仍填写
+            <code>https://...googleapis.com</code> 根地址。
           </div>
         </el-form-item>
         <el-form-item label="API Key">

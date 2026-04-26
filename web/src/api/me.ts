@@ -8,6 +8,11 @@ export interface SimpleModel {
   type: 'chat' | 'image' | string
   description: string
   image_price_per_call: number
+  image_price_per_call_2k?: number
+  image_price_per_call_4k?: number
+  has_image_channel?: boolean
+  supports_multi_image?: boolean
+  supports_output_size?: boolean
 }
 
 export function listMyModels(): Promise<{ items: SimpleModel[]; total: number }> {
@@ -271,9 +276,6 @@ export interface PlayImageRequest {
   n?: number
   size?: string
   reference_images?: string[] // base64 data:image/png;base64,... 支持多张参考图
-  // 本地 Catmull-Rom 高清放大档位:"" 原图 / "2k" 长边 2560 / "4k" 长边 3840。
-  // 服务端仅保存标记,放大在图片代理 URL 首次被请求时做,PNG 输出并进程内缓存。
-  upscale?: '' | '2k' | '4k'
 }
 
 export interface PlayImageData {
@@ -321,7 +323,7 @@ export async function playEditImage(
   model: string,
   prompt: string,
   files: File[],
-  opts?: { n?: number; size?: string; upscale?: '' | '2k' | '4k'; signal?: AbortSignal },
+  opts?: { n?: number; size?: string; signal?: AbortSignal },
 ): Promise<PlayImageResponse> {
   if (!files.length) throw new Error('至少需要选择一张参考图')
   const fd = new FormData()
@@ -329,7 +331,6 @@ export async function playEditImage(
   fd.append('prompt', prompt)
   if (opts?.n) fd.append('n', String(opts.n))
   if (opts?.size) fd.append('size', opts.size)
-  if (opts?.upscale) fd.append('upscale', opts.upscale)
   files.forEach((f, idx) => {
     // OpenAI 规范:第一张用 `image`,后续用 `image[]`;服务端两个字段都认。
     fd.append(idx === 0 ? 'image' : 'image[]', f, f.name)

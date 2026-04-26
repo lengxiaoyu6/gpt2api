@@ -13,7 +13,10 @@ import (
 	"github.com/432539/gpt2api/internal/apikey"
 	"github.com/432539/gpt2api/internal/billing"
 	"github.com/432539/gpt2api/internal/channel"
+	"github.com/432539/gpt2api/internal/image"
+	"github.com/432539/gpt2api/internal/imagestore"
 	modelpkg "github.com/432539/gpt2api/internal/model"
+	"github.com/432539/gpt2api/internal/settings"
 	"github.com/432539/gpt2api/internal/upstream/adapter"
 	"github.com/432539/gpt2api/internal/usage"
 	"github.com/432539/gpt2api/pkg/logger"
@@ -24,17 +27,17 @@ import (
 // 返回:
 //   - handled=true:已完成响应(成功或失败),调用方直接返回;
 //   - handled=false:没有渠道映射或全部候选失败且需要回退到内置 ChatGPT 账号池。
-//
-// 仅覆盖纯 prompt 文生图场景;reference_images 分支继续走原 Runner(ChatGPT 账号池)。
+var errNoReferenceCapableImageRoute = errors.New("image channel has no reference-capable route")
+
+type referenceImageUploader interface {
+	UploadToChannel(ctx context.Context, src imagestore.SourceImage, channel string) (string, error)
+}
+
 func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	ak *apikey.APIKey, m *modelpkg.Model, req *ImageGenRequest,
-	rec *usage.Log, ratio float64,
+	refs []image.ReferenceImage, rec *usage.Log, ratio float64,
 ) bool {
 	if h.Channels == nil {
-		return false
-	}
-	// 参考图 / 图像编辑场景不走渠道(需要上游 file upload 能力,后续再接入)。
-	if len(req.ReferenceImages) > 0 {
 		return false
 	}
 	routes, err := h.Channels.Resolve(c.Request.Context(), m.Slug, channel.ModalityImage)
@@ -48,11 +51,25 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	if len(routes) == 0 {
 		return false
 	}
+	ir, routes, err := h.buildChannelImageRequest(c.Request.Context(), routes, req, refs)
+	if err != nil {
+		if errors.Is(err, errNoReferenceCapableImageRoute) {
+			rec.Status = usage.StatusFailed
+			rec.ErrorCode = "image_reference_unsupported"
+			openAIError(c, http.StatusBadGateway, "image_reference_unsupported",
+				"当前上游图片渠道不支持参考图输入,请将渠道地址配置为 /v1/responses")
+			return true
+		}
+		rec.Status = usage.StatusFailed
+		rec.ErrorCode = "image_reference_upload_error"
+		openAIError(c, http.StatusBadGateway, "image_reference_upload_error", "参考图上传失败:"+err.Error())
+		return true
+	}
 
 	refID := uuid.NewString()
 	rec.RequestID = refID
 
-	cost := billing.ComputeImageCost(m, req.N, ratio)
+	cost := billing.ComputeImageCost(m, req.N, ratio, req.Size)
 	if cost > 0 {
 		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "image prepay"); err != nil {
 			rec.Status = usage.StatusFailed
@@ -76,14 +93,6 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 		}
 		refunded = true
 		_ = h.Billing.Refund(context.Background(), ak.UserID, ak.ID, cost, refID, "image refund")
-	}
-
-	ir := &adapter.ImageRequest{
-		Model:  m.Slug,
-		Prompt: req.Prompt,
-		N:      req.N,
-		Size:   req.Size,
-		Format: req.ResponseFormat,
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 7*time.Minute)
@@ -123,7 +132,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	if channelRatio <= 0 {
 		channelRatio = 1.0
 	}
-	finalCost := billing.ComputeImageCost(m, actualN, ratio*channelRatio)
+	finalCost := billing.ComputeImageCost(m, actualN, ratio*channelRatio, req.Size)
 
 	data := make([]ImageGenData, 0, actualN)
 	for _, u := range result.URLs {
@@ -172,6 +181,9 @@ func imageGenerateWithRetry(ctx context.Context, rt *channel.Route, req *adapter
 		if err == nil {
 			err = errors.New("empty image response")
 		}
+		if errors.Is(err, adapter.ErrImageReferencesUnsupported) {
+			return nil, err
+		}
 		lastErr = err
 	}
 	return nil, lastErr
@@ -194,4 +206,87 @@ func actualCount(r *adapter.ImageResult) int {
 		return 0
 	}
 	return len(r.URLs) + len(r.B64s)
+}
+
+func (h *ImagesHandler) buildChannelImageRequest(ctx context.Context, routes []*channel.Route, req *ImageGenRequest, refs []image.ReferenceImage) (*adapter.ImageRequest, []*channel.Route, error) {
+	ir := &adapter.ImageRequest{
+		Model:  req.Model,
+		Prompt: req.Prompt,
+		N:      req.N,
+		Size:   req.Size,
+		Format: req.ResponseFormat,
+	}
+	if len(refs) == 0 {
+		return ir, routes, nil
+	}
+	filtered := filterReferenceCapableImageRoutes(routes)
+	if len(filtered) == 0 {
+		return nil, nil, errNoReferenceCapableImageRoute
+	}
+	referenceURLs, err := h.uploadReferenceImagesForChannel(ctx, refs)
+	if err != nil {
+		return nil, nil, err
+	}
+	ir.References = referenceURLs
+	return ir, filtered, nil
+}
+
+func filterReferenceCapableImageRoutes(routes []*channel.Route) []*channel.Route {
+	filtered := make([]*channel.Route, 0, len(routes))
+	for _, rt := range routes {
+		if rt == nil || rt.Adapter == nil {
+			continue
+		}
+		capable, ok := rt.Adapter.(adapter.ImageReferenceCapable)
+		if ok && capable.SupportsImageReferences() {
+			filtered = append(filtered, rt)
+		}
+	}
+	return filtered
+}
+
+func (h *ImagesHandler) uploadReferenceImagesForChannel(ctx context.Context, refs []image.ReferenceImage) ([]adapter.ImageReference, error) {
+	uploader, err := h.channelReferenceUploader()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]adapter.ImageReference, 0, len(refs))
+	for i, ref := range refs {
+		url, err := uploader.UploadToChannel(ctx, imagestore.SourceImage{
+			Index: i,
+			Data:  ref.Data,
+		}, "")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, adapter.ImageReference{URL: url})
+	}
+	return out, nil
+}
+
+func (h *ImagesHandler) channelReferenceUploader() (referenceImageUploader, error) {
+	if h.referenceUploader != nil {
+		return h.referenceUploader, nil
+	}
+	if h.Settings == nil {
+		return nil, errors.New("storage.cloud_config 未配置")
+	}
+	snapshot := map[string]string{
+		settings.StorageImageMode:   "cloud",
+		settings.StorageCloudConfig: h.Settings.CloudConfig(),
+	}
+	if err := settings.ValidateStorageSnapshot(snapshot); err != nil {
+		return nil, err
+	}
+	cfg, err := settings.ParseSanyueImgHubConfig(h.Settings.CloudConfig())
+	if err != nil {
+		return nil, err
+	}
+	return imagestore.NewSanyueImgHubUploader(imagestore.SanyueImgHubUploaderOptions{
+		UploadURL:      cfg.UploadURL,
+		AuthCode:       cfg.AuthCode,
+		ServerCompress: cfg.ServerCompress,
+		ReturnFormat:   cfg.ReturnFormat,
+		UploadChannel:  cfg.UploadChannel,
+	}), nil
 }

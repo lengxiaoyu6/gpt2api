@@ -196,6 +196,10 @@ CREATE TABLE IF NOT EXISTS `models` (
     `output_price_per_1m`     BIGINT          NOT NULL DEFAULT 0,
     `cache_read_price_per_1m` BIGINT          NOT NULL DEFAULT 0,
     `image_price_per_call`    BIGINT          NOT NULL DEFAULT 0 COMMENT '每次生图积分价(厘)',
+    `image_price_per_call_2k` BIGINT          NOT NULL DEFAULT 0 COMMENT '2K 生图积分价(厘),0 表示沿用 1K',
+    `image_price_per_call_4k` BIGINT          NOT NULL DEFAULT 0 COMMENT '4K 生图积分价(厘),0 表示沿用 1K',
+    `supports_multi_image`    TINYINT(1)      NOT NULL DEFAULT 1 COMMENT '是否支持单请求多张生图',
+    `supports_output_size`    TINYINT(1)      NOT NULL DEFAULT 1 COMMENT '是否支持输出尺寸参数',
     `description`             VARCHAR(255)    NOT NULL DEFAULT '',
     `enabled`                 TINYINT(1)      NOT NULL DEFAULT 1,
     `created_at`              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -206,11 +210,11 @@ CREATE TABLE IF NOT EXISTS `models` (
     KEY `idx_type` (`type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型配置';
 
-INSERT INTO `models` (`slug`, `type`, `upstream_model_slug`, `input_price_per_1m`, `output_price_per_1m`, `image_price_per_call`, `description`) VALUES
-    ('gpt-5',            'chat',  'gpt-5',            25000,  75000, 0, 'GPT-5 主力模型'),
-    ('gpt-5-mini',       'chat',  'gpt-5-mini',        5000,  15000, 0, 'GPT-5 轻量'),
-    ('gpt-5-codex-max',  'chat',  'gpt-5-codex-max',  50000, 150000, 0, '代码专用'),
-    ('gpt-image-1',      'image', 'auto',                 0,      0, 500000, '生图(每张 50 积分=5角)')
+INSERT INTO `models` (`slug`, `type`, `upstream_model_slug`, `input_price_per_1m`, `output_price_per_1m`, `image_price_per_call`, `image_price_per_call_2k`, `image_price_per_call_4k`, `description`) VALUES
+    ('gpt-5',            'chat',  'gpt-5',            25000,  75000,      0,      0,      0, 'GPT-5 主力模型'),
+    ('gpt-5-mini',       'chat',  'gpt-5-mini',        5000,  15000,      0,      0,      0, 'GPT-5 轻量'),
+    ('gpt-5-codex-max',  'chat',  'gpt-5-codex-max',  50000, 150000,      0,      0,      0, '代码专用'),
+    ('gpt-image-1',      'image', 'auto',                 0,      0, 500000, 500000, 500000, '生图(每张 50 积分=5角)')
 ON DUPLICATE KEY UPDATE `slug` = VALUES(`slug`);
 
 -- ============================================================

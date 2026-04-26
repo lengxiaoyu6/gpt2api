@@ -17,13 +17,15 @@ UPDATE `models`
 
 -- 新增 gpt-image-2(核心图像模型)
 INSERT INTO `models`
-    (`slug`, `type`, `upstream_model_slug`, `input_price_per_1m`, `output_price_per_1m`, `image_price_per_call`, `description`)
+    (`slug`, `type`, `upstream_model_slug`, `input_price_per_1m`, `output_price_per_1m`, `image_price_per_call`, `image_price_per_call_2k`, `image_price_per_call_4k`, `description`)
 VALUES
-    ('gpt-image-2', 'image', 'gpt-5-3', 0, 0, 500000, 'GPT-Image-2 高清生图(picture_v2 灰度)')
+    ('gpt-image-2', 'image', 'gpt-5-3', 0, 0, 500000, 500000, 500000, 'GPT-Image-2 高清生图(picture_v2 灰度)')
 ON DUPLICATE KEY UPDATE
     `type`                 = VALUES(`type`),
     `upstream_model_slug`  = VALUES(`upstream_model_slug`),
     `image_price_per_call` = VALUES(`image_price_per_call`),
+    `image_price_per_call_2k` = VALUES(`image_price_per_call_2k`),
+    `image_price_per_call_4k` = VALUES(`image_price_per_call_4k`),
     `description`          = VALUES(`description`),
     `enabled`              = 1;
 

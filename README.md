@@ -1,6 +1,6 @@
 # gpt2api
 
-> 基于逆向 **chatgpt.com** 的 OpenAI 兼容 SaaS 网关 —— 多账号池 / 代理池 / **IMG2 终稿直出** / **批量出图** / **本地 2K/4K 高清放大** / **高并发调度** / 积分计费 / 管理后台一体化。
+> 基于逆向 **chatgpt.com** 的 OpenAI 兼容 SaaS 网关 —— 多账号池 / 代理池 / **IMG2 终稿直出** / **批量出图** / **2K/4K 尺寸传递上游** / **高并发调度** / 积分计费 / 管理后台一体化。
 
 <p align="center">
   <a href="https://github.com/432539/gpt2api/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/432539/gpt2api?style=flat-square"></a>
@@ -27,7 +27,7 @@
 - [七、API 使用示例](#七api-使用示例)
 - [八、重点能力详解](#八重点能力详解)
   - [8.1 IMG2 出图](#81-img2-出图)
-  - [8.2 4K / 2K 高清输出(本地 Catmull-Rom 放大)](#82-4k--2k-高清输出本地-catmull-rom-放大)
+  - [8.2 4K / 2K 高清输出(size 传递上游)](#82-4k--2k-高清输出size-传递上游)
   - [8.3 批量出图 / 多张聚合](#83-批量出图--多张聚合)
   - [8.4 高性能高并发调度](#84-高性能高并发调度)
 - [九、管理后台功能概览](#九管理后台功能概览)
@@ -51,7 +51,7 @@
 - 想给公司 / 团队内部开通 OpenAI 风格的代理网关,把所有调用统计、计费、审计集中管理;
 - 想低成本搭一个带积分 / 套餐 / 易支付的 AI API 中台,面向 C 端或 B 端开发者售卖。
 
-> 本项目当前版本**聚焦图片模型**(详见 [8.1 IMG2 出图](#81-img2-出图)、[8.2 4K/2K 高清输出](#82-4k--2k-高清输出本地-catmull-rom-放大) 与 [8.3 批量出图](#83-批量出图--多张聚合))。文字通路(`/v1/chat/completions`)代码层完整保留,但因 `chatgpt.com` 新 sentinel 协议存在短期不稳定因素,UI 入口已在当前版本关闭,恢复只需改一行 feature flag,详见 [十一、二次开发](#十一二次开发--定制)。
+> 本项目当前版本**聚焦图片模型**(详见 [8.1 IMG2 出图](#81-img2-出图)、[8.2 4K/2K 高清输出](#82-4k--2k-高清输出size-传递上游) 与 [8.3 批量出图](#83-批量出图--多张聚合))。文字通路(`/v1/chat/completions`)代码层完整保留,但因 `chatgpt.com` 新 sentinel 协议存在短期不稳定因素,UI 入口已在当前版本关闭,恢复只需改一行 feature flag,详见 [十一、二次开发](#十一二次开发--定制)。
 
 ---
 
@@ -85,7 +85,7 @@
 | 分类 | 能力 |
 |------|------|
 | **上游协议** | 完整逆向 `chatgpt.com` `f/conversation` 两步 sentinel(`/prepare` + `/finalize`)、PoW、`conduit_token`、全套 `oai-*` / `Sec-Ch-Ua-*` 指纹头 |
-| **图片生成** | 文生图、**图生图 / 多图参考**、**IMG2 正式版直出**(速度优先,SSE 够数即返回,最长 300s 补齐轮询兜底)、**本地 2K/4K PNG 高清放大**(Catmull-Rom 插值,按需触发 + 进程内 LRU)、轮询 + SSE 直出双通道 |
+| **图片生成** | 文生图、**图生图 / 多图参考**、**IMG2 正式版直出**(速度优先,SSE 够数即返回,最长 300s 补齐轮询兜底)、**2K/4K 输出尺寸**(`size` 传递给支持的上游)、轮询 + SSE 直出双通道 |
 | **账号池** | JSON / AT / RT / ST 四种方式批量导入,**自动刷新**、**额度探测**、**风控熔断**、按账号稳定绑定 `oai-device-id` / `oai-session-id` |
 | **代理池** | 支持 HTTP / SOCKS5,健康分自动探测,按账号强绑定代理,避免 IP 指纹混用 |
 | **调度器** | 串行 lease + Redis 分布式锁,`min_interval_sec` 单号最小间隔、`daily_usage_ratio` 日熔断、`cooldown_429_sec` 限速退避 |
@@ -399,7 +399,7 @@ curl https://your-domain.com/v1/images/generations \
 }
 ```
 
-**可选:本地 2K / 4K 高清放大** —— 在 body 里加 `"upscale": "2k"` 或 `"upscale": "4k"`,后端会在图片代理 URL 首次被请求时对原图做 Catmull-Rom 插值放大并以 PNG 返回(长边 2560 / 3840 等比缩)。算法本地执行,不调用任何外部服务;首次 ~0.5~1.5s,之后进程内 LRU 毫秒级命中。**请注意这是传统插值算法,不是 AI 超分**,不会补出新纹理。详见 [8.2 4K / 2K 高清输出](#82-4k--2k-高清输出本地-catmull-rom-放大)。
+**2K / 4K 输出尺寸** —— 在 body 里设置 `"size": "2560x1440"` 或 `"size": "3840x2160"`。画面比例通过 prompt 体现,例如 `"Make the aspect ratio 16:9 , a futuristic city at dusk"`。图片代理返回上游结果或本地保存字节,服务端没有额外插值放大步骤。详见 [8.2 4K / 2K 高清输出](#82-4k--2k-高清输出size-传递上游)。
 
 ### 7.2 图生图 / 多图参考(项目扩展字段)
 
@@ -496,38 +496,22 @@ GROUP BY account_id
 ORDER BY success_rate_pct DESC;
 ```
 
-### 8.2 4K / 2K 高清输出(本地 Catmull-Rom 放大)
+### 8.2 4K / 2K 高清输出(size 传递上游)
 
-`chatgpt.com` 原生只提供 `1024×1024` / `1792×1024` / `1024×1792` 三档原图。面板 / API 都支持一个扩展字段 `upscale`,在**拿到原图后**由网关在本地把画面放大到 2K / 4K 后以 PNG 返回。
+高清输出由请求体 `size` 字段表达。网关会保存该尺寸,并在外置 OpenAI 兼容图像渠道调用中传递给上游。画面比例由 prompt 前缀表达,例如 `Make the aspect ratio 16:9 , ...`。
 
-#### 档位与尺寸
+图片代理 `/p/img/:task_id/:idx` 只负责鉴权、读取本地文件或上游结果、设置缓存头并返回图片字节。服务端没有本地插值放大、PNG 重编码、放大缓存或额外放大响应头。
 
-| `upscale` | 长边 | 举例(原 1024×1024) | 举例(原 1792×1024) |
-|-----------|------|---------------------|---------------------|
-| `""`(默认) | 原图 | 1024×1024 | 1792×1024 |
-| `"2k"` | 2560 | 2560×2560 | 2560×1463 |
-| `"4k"` | 3840 | 3840×3840 | 3840×2194 |
+#### 尺寸示例
 
-短边按原比例等比缩,不做裁切;**若原图长边已经 ≥ 目标,直接透传原字节**(避免重复有损编码)。
+| 场景 | `size` | prompt 比例前缀示例 |
+|------|--------|----------------------|
+| 原图 | `1024x1024` | `Make the aspect ratio 1:1 , ...` |
+| 横版 2K | `2560x1440` | `Make the aspect ratio 16:9 , ...` |
+| 横版 4K | `3840x2160` | `Make the aspect ratio 16:9 , ...` |
+| 竖版 4K | `2160x3840` | `Make the aspect ratio 9:16 , ...` |
 
-#### 工作原理
-
-1. 生图时 `upscale` 只写进 `image_tasks.upscale`,**不改变**与上游 `chatgpt.com` 的交互,也不影响生图速度;
-2. 图片代理 URL `/p/img/:task_id/:idx` 被请求时,后端按 `task.upscale` 决定是否放大:
-   - 查进程内 **LRU 缓存**(默认 512MB,约 50 张 4K PNG);
-   - 未命中 → 拉原图 → `image.Decode` → `golang.org/x/image/draw.CatmullRom` → `png.Encode`(BestSpeed) → 写入 LRU;
-   - 命中 → 毫秒级直接返回字节。
-3. 放大计算有**并发信号量**限制(默认 `NumCPU`),避免 4K 请求风暴把 CPU 打满影响主生图链路;
-4. 放大失败自动**回落到原图**,不给用户白屏。
-
-响应头 `X-Upscale` 便于排障:
-
-```text
-X-Upscale: 4k;cache=miss   # 首次放大
-X-Upscale: 4k;cache=hit    # 命中缓存
-X-Upscale: 4k;noop         # 原图长边已足够大,未重新编码
-X-Upscale: 4k;err          # 放大失败,已回落到原图
-```
+前端在线体验中的比例控件只改写 prompt 前缀。输出尺寸控件只设置请求中的 `size` 字段。两者互相独立,避免比例选择覆盖用户选择的真实输出尺寸。
 
 #### API 调用
 
@@ -537,25 +521,28 @@ curl https://your-domain.com/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-image-2",
-    "prompt": "a futuristic city at dusk, cinematic light",
+    "prompt": "Make the aspect ratio 16:9 , a futuristic city at dusk, cinematic light",
     "n": 1,
-    "size": "1792x1024",
-    "upscale": "4k"
+    "size": "3840x2160"
   }'
 ```
 
-`/v1/images/edits`(multipart/form-data)同样支持 `upscale` 字段。
+`/v1/images/edits` 使用 `multipart/form-data` 时同样通过 `size` 字段传递输出尺寸。
+
+```bash
+curl https://your-domain.com/v1/images/edits \
+  -H "Authorization: Bearer sk-xxx" \
+  -F "model=gpt-image-2" \
+  -F "prompt=Make the aspect ratio 9:16 , relight this portrait with cinematic neon" \
+  -F "size=2160x3840" \
+  -F "image=@portrait.png"
+```
 
 #### 面板操作
 
-**个人中心 → 在线体验 → 文生图 / 图生图**,左侧表单新增「**输出尺寸**」单选:原图 / 2K 高清 / 4K 高清,默认原图。切换后重新生成的图代理 URL 会自动走对应放大档位。
+**个人中心 → 在线体验 → 文生图 / 图生图** 中的「输出尺寸」单选提供原图、2K 高清、4K 高清三档。提交时请求体携带所选 `size`;「画面比例」单选用于生成 prompt 前缀。
 
-#### 取舍与注意事项
-
-- **不是 AI 超分**:Catmull-Rom 是传统双三次插值,只会把画面变"更大、更平滑",不会补出新的毛发、纹理、细节。对"原图本身细节不足"的画面,4K 的视觉收益有限;
-- **4K 文件较大**:单张 4K PNG 通常 5~15MB。首屏仅加载 1~2 张没问题,大批量下载请考虑改调 `"2k"` 或直接用原图;
-- **原图 1792 → 4K 仅 2.14x**;而方形 1024 → 4K 是 3.75x,**方形档位的视觉"放大感"最强**,效果差异也最明显;
-- 若需要真正的"补细节"效果,请接入 Real-ESRGAN / SwinIR 等 AI 超分模型,那是另一个工程量级(需要模型权重 + GPU / ONNX Runtime),不在当前项目范围。
+真实像素取决于上游模型或渠道对该尺寸的支持情况。外置 OpenAI 兼容渠道需要填写完整接口地址:图片渠道可使用 `/v1/images/generations`,文本渠道可使用 `/v1/chat/completions`;如果上游采用 Responses API,文本或图片渠道都可填写 `/v1/responses`,例如 `https://upstream.example.com/v1/responses`。系统会原样请求该地址。相关代码位于 `internal/upstream/adapter/openai.go`。
 
 ### 8.3 批量出图 / 多张聚合
 
@@ -838,15 +825,11 @@ bcrypt 同明文每次生成的 hash 不同都能互相校验,上面的 hash 字
 </details>
 
 <details>
-<summary><b>Q9. 4K 出图看着像"糊了放大",没有更多细节?</b></summary>
+<summary><b>Q9. 4K 出图如何获得真实 4K 尺寸?</b></summary>
 
-这是预期行为。`gpt2api` 的 4K / 2K 是**本地 Catmull-Rom 插值放大**,属于传统算法:只会让图像尺寸变大、边缘更平滑,**不会像 AI 超分那样补出新的纹理 / 毛发 / 发丝细节**。适合的场景:
+当前版本通过 `size` 字段请求上游生成目标尺寸。横版 4K 使用 `3840x2160`,竖版 4K 使用 `2160x3840`;画面比例写入 prompt,例如 `Make the aspect ratio 9:16 , ...`。
 
-- 打印 / 海报 / 大屏展示,需要物理像素够大;
-- 原图已经细节充分(例如 `1792×1024` 的复杂场景),仅仅是想铺满 4K 显示器;
-- 不想引入额外的 GPU / 超分模型推理成本。
-
-如果你确实需要"补细节",请自行接入 Real-ESRGAN / SwinIR / GFPGAN 等 AI 超分模型(通常需要 GPU 或 ONNX Runtime),或等待后续 Roadmap 里的 M14。详细原理见 [8.2 4K / 2K 高清输出](#82-4k--2k-高清输出本地-catmull-rom-放大)。
+图片代理没有本地插值放大步骤。真实像素与细节表现取决于上游模型或渠道对对应 `size` 的支持情况。需要 AI 超分时,可接入 Real-ESRGAN / SwinIR / GFPGAN 等独立超分后端。详细参数见 [8.2 4K / 2K 高清输出](#82-4k--2k-高清输出size-传递上游)。
 </details>
 
 <details>
@@ -867,12 +850,12 @@ bcrypt 同明文每次生成的 hash 不同都能互相校验,上面的 hash 字
 - [x] M6 管理后台(Vue 3)
 - [x] M7 风控熔断 + 图片签名代理
 - [x] M8 IMG2 终稿直出 + 多图聚合
-- [x] M9 本地 2K/4K 高清放大(Catmull-Rom + LRU 缓存)
+- [x] M9 2K/4K `size` 参数与画面比例 prompt 前缀
 - [ ] M10 Turnstile solver 接入 → 恢复文字通路
 - [ ] M11 图片任务大批量 Worker 池
 - [ ] M12 账号分组(按出图成功率 / 地区分配)
 - [ ] M13 Prometheus 指标 + Grafana 大盘
-- [ ] M14 对接 Real-ESRGAN 等 AI 超分作为 4K 放大的可选后端
+- [ ] M14 对接 Real-ESRGAN 等 AI 超分作为可选后端
 
 ---
 

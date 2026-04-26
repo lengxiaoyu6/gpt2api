@@ -223,7 +223,7 @@ describe('useStore backend integration', () => {
     expect(next.bootstrapStatus).toBe('ready')
   })
 
-  test('generateImage maps 21:9, applies ratio prefix, forwards upscale and refreshes me plus history', async () => {
+  test('generateImage keeps raw prompt when model supports output size, converts selected quality to actual size and refreshes me plus history', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
@@ -231,23 +231,126 @@ describe('useStore backend integration', () => {
 
     await state.generateImage({
       prompt: 'future skyline',
-      aspectRatio: '21:9',
-      upscale: '4k',
+      aspectRatio: '16:9',
+      quality: '4K',
       count: 4,
     })
 
     expect(meApi.playGenerateImage).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'gpt-image-1',
-        prompt: 'Make the aspect ratio 21:9 , future skyline',
-        size: '1792x1024',
-        upscale: '4k',
+        prompt: 'future skyline',
+        size: '3840x2160',
         n: 4,
       }),
       undefined,
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+  })
+
+  test('fetchImageModels prefers image model with upstream channel when current selection is empty', async () => {
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          slug: 'gpt-image-2',
+          type: 'image',
+          description: 'local',
+          image_price_per_call: 5,
+          has_image_channel: false,
+        },
+        {
+          id: 2,
+          slug: 'gpt-image-2-api',
+          type: 'image',
+          description: 'upstream',
+          image_price_per_call: 5,
+          has_image_channel: true,
+        },
+      ],
+      total: 2,
+    })
+
+    const state = useStore.getState() as any
+    const models = await state.fetchImageModels()
+
+    expect(models.map((item: any) => item.slug)).toEqual(['gpt-image-2', 'gpt-image-2-api'])
+    expect(useStore.getState().selectedImageModel).toBe('gpt-image-2-api')
+  })
+
+  test('generateImage lazily prefers image model with upstream channel when no selection exists', async () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          slug: 'gpt-image-2',
+          type: 'image',
+          description: 'local',
+          image_price_per_call: 5,
+          has_image_channel: false,
+        },
+        {
+          id: 2,
+          slug: 'gpt-image-2-api',
+          type: 'image',
+          description: 'upstream',
+          image_price_per_call: 5,
+          has_image_channel: true,
+        },
+      ],
+      total: 2,
+    })
+
+    const state = useStore.getState() as any
+    await state.fetchMe()
+
+    await state.generateImage({
+      prompt: '换个风格',
+      aspectRatio: '1:1',
+      quality: '1K',
+      count: 1,
+    })
+
+    expect(meApi.playGenerateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gpt-image-2-api',
+      }),
+      undefined,
+    )
+  })
+
+  test('generateImage keeps raw prompt and omits size when model disables output size', async () => {
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [{
+        id: 2,
+        slug: 'single-default-size',
+        type: 'image',
+        description: 'single',
+        image_price_per_call: 5,
+        supports_multi_image: false,
+        supports_output_size: false,
+      }],
+      total: 1,
+    })
+    const state = useStore.getState() as any
+    await state.fetchImageModels()
+
+    await state.generateImage({
+      prompt: 'future skyline',
+      aspectRatio: '16:9',
+      quality: '4K',
+      count: 4,
+    })
+
+    const [req] = vi.mocked(meApi.playGenerateImage).mock.calls.at(-1) || []
+    expect(req).toMatchObject({
+      model: 'single-default-size',
+      prompt: 'future skyline',
+      n: 1,
+    })
+    expect(req).not.toHaveProperty('size')
   })
 
   test('generateImage refreshes history after API task failure', async () => {
@@ -292,7 +395,7 @@ describe('useStore backend integration', () => {
     expect((useStore.getState() as any).history[0].status).toBe('failed')
   })
 
-  test('editImage maps 2:3, applies ratio prefix, forwards multiple files, upscale and refreshes me plus history', async () => {
+  test('editImage keeps raw prompt when model supports output size, converts selected quality to actual size with multiple files and refreshes me plus history', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
@@ -305,19 +408,54 @@ describe('useStore backend integration', () => {
     await state.editImage({
       prompt: 'portrait relight',
       aspectRatio: '2:3',
-      upscale: '2k',
+      quality: '2K',
       files,
       count: 3,
     })
 
     expect(meApi.playEditImage).toHaveBeenCalledWith(
       'gpt-image-1',
-      'Make the aspect ratio 2:3 , portrait relight',
+      'portrait relight',
       files,
-      expect.objectContaining({ size: '1024x1792', upscale: '2k', n: 3 }),
+      expect.objectContaining({ size: '1344x2016', n: 3 }),
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+  })
+
+  test('editImage keeps raw prompt and omits size when model disables output size', async () => {
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [{
+        id: 2,
+        slug: 'single-default-size',
+        type: 'image',
+        description: 'single',
+        image_price_per_call: 5,
+        supports_multi_image: false,
+        supports_output_size: false,
+      }],
+      total: 1,
+    })
+    const state = useStore.getState() as any
+    await state.fetchImageModels()
+    const files = [new File(['demo'], 'demo.png', { type: 'image/png' })]
+
+    await state.editImage({
+      prompt: 'portrait relight',
+      aspectRatio: '2:3',
+      quality: '4K',
+      files,
+      count: 3,
+    })
+
+    expect(meApi.playEditImage).toHaveBeenCalledWith(
+      'single-default-size',
+      'portrait relight',
+      files,
+      expect.objectContaining({ n: 1 }),
+    )
+    const opts = vi.mocked(meApi.playEditImage).mock.calls.at(-1)?.[3]
+    expect(opts).not.toHaveProperty('size')
   })
 
   test('editImage refreshes history after API task failure', async () => {

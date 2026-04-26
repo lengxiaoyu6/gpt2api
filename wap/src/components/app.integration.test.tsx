@@ -56,6 +56,10 @@ function hasTextContent(text: string, tagName?: string) {
   }
 }
 
+function compactText(text: string | null | undefined) {
+  return text?.replace(/\s+/g, '') ?? ''
+}
+
 describe('wap integration', () => {
   beforeEach(() => {
     resetStore()
@@ -121,7 +125,7 @@ describe('wap integration', () => {
   test('home footer uses site name from site info', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': '',
+        'site.name': '星河图像',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -132,16 +136,16 @@ describe('wap integration', () => {
 
     render(<App />)
 
-    expect(screen.getAllByText('')).toHaveLength(2)
-    expect(screen.getByText('© ')).toBeInTheDocument()
-    expect(screen.queryByText('Creative Studio')).toBeNull()
+    expect(screen.getAllByText('星河图像')).toHaveLength(2)
+    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
+    expect(screen.queryByText('GPT2API • Creative Studio')).toBeNull()
   })
 
   test('profile footer uses site name from site info', () => {
     useStore.setState({
       activeTab: 'profile',
       siteInfo: {
-        'site.name': '',
+        'site.name': '星河图像',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -173,8 +177,8 @@ describe('wap integration', () => {
 
     render(<App />)
 
-    expect(screen.getAllByText('').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('© ')).toBeInTheDocument()
+    expect(screen.getAllByText('星河图像')).toHaveLength(2)
+    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
     expect(screen.queryByText('Creative Intelligent Systems')).toBeNull()
   })
 
@@ -182,7 +186,7 @@ describe('wap integration', () => {
     useStore.setState({
       activeTab: 'profile',
       siteInfo: {
-        'site.name': '',
+        'site.name': '星河图像',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -408,7 +412,9 @@ describe('wap integration', () => {
 
     fireEvent.click(screen.getByText('生成视频'))
 
-    expect(await screen.findByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toHaveLength(2)
+    })
   })
 
   test('home capability card triggers generation when clicking card content', () => {
@@ -457,12 +463,13 @@ describe('wap integration', () => {
     render(<GenerateView />)
 
     expect(screen.queryByText('极致优化')).toBeNull()
-    expect(screen.getByText('单张基准价格：0.15 积分 / 张')).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('当前质量价格：0.15 积分 / 张', 'p'))).toBeInTheDocument()
     expect(screen.getByText('多张生成会按张数累计扣费')).toBeInTheDocument()
-    expect(screen.getByText('当前 1 张，预计消耗 0.15 积分')).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('当前 1 张，预计消耗 0.15 积分', 'p'))).toBeInTheDocument()
 
-    const modelTrigger = screen.getByRole('button', { name: /图片模型.*标准模型/ })
+    const modelTrigger = screen.getByRole('button', { name: /图片模型.*gpt-image-1/ })
     expect(modelTrigger).toBeInTheDocument()
+    expect(compactText(modelTrigger.textContent)).toBe('gpt-image-1标准模型')
     expect(screen.queryByRole('listbox', { name: '图片模型列表' })).toBeNull()
 
     fireEvent.click(modelTrigger)
@@ -479,13 +486,17 @@ describe('wap integration', () => {
     expect(modelPickerPanel?.className).toContain('bg-popover')
     expect(modelPickerPanel?.className).toContain('shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]')
 
-    fireEvent.click(screen.getByRole('button', { name: /高质量模型/ }))
+    const highQualityOption = screen.getByRole('button', { name: /gpt-image-2.*高质量模型/ })
+    expect(compactText(highQualityOption.textContent)).toBe('gpt-image-2高质量模型')
+
+    fireEvent.click(highQualityOption)
 
     await waitFor(() => {
       expect(screen.queryByRole('listbox', { name: '图片模型列表' })).toBeNull()
     })
 
-    expect(screen.getByText('单张基准价格：0.30 积分 / 张')).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('当前质量价格：0.30 积分 / 张', 'p'))).toBeInTheDocument()
+    expect(compactText(modelTrigger.textContent)).toBe('gpt-image-2高质量模型')
 
     const createButton = screen.getByRole('button', { name: '开始创作' })
     expect(createButton).toBeInTheDocument()
@@ -493,24 +504,21 @@ describe('wap integration', () => {
 
     const ratioDesc = screen.getByText('社交媒体')
     expect(ratioDesc.className).not.toContain('text-white')
-    expect(screen.getByRole('button', { name: '21:9 超宽屏' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '16:9 宽屏' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '2:3 竖版' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '2K 高清' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '4K 高清' })).toBeInTheDocument()
-    expect(screen.getByText(hasTextContent('上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地', 'p'))).toBeInTheDocument()
-    expect(screen.getByText('Catmull-Rom 插值')).toBeInTheDocument()
-    expect(screen.getByText(hasTextContent('注意:这是传统算法放大,不是 AI 超分,', 'p'))).toBeInTheDocument()
-    expect(screen.getByText(hasTextContent('4K 首次加载约 +0.5~1.5s,之后命中缓存。', 'p'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1K' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2K' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '4K' })).toBeInTheDocument()
+    expect(screen.queryByText('Catmull-Rom 插值')).toBeNull()
 
     fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
-    expect(screen.getByText(hasTextContent('上游原生出图为 1024 或 1792 px;选择 2K/4K 会在图片加载时用本地', 'p'))).toBeInTheDocument()
-    expect(screen.getByText('Catmull-Rom 插值')).toBeInTheDocument()
+    expect(screen.queryByText('Catmull-Rom 插值')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: '文生图' }))
 
-    fireEvent.click(screen.getByRole('button', { name: '21:9 超宽屏' }))
-    fireEvent.click(screen.getByRole('button', { name: '4K 高清' }))
+    fireEvent.click(screen.getByRole('button', { name: '16:9 宽屏' }))
+    fireEvent.click(screen.getByRole('button', { name: '4K' }))
     fireEvent.click(screen.getByRole('button', { name: '4 张' }))
-    expect(screen.getByText('当前 4 张，预计消耗 1.20 积分')).toBeInTheDocument()
+    expect(screen.getByText(hasTextContent('当前 4 张，预计消耗 1.20 积分', 'p'))).toBeInTheDocument()
 
     fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
       target: { value: '未来城市夜景' },
@@ -520,8 +528,8 @@ describe('wap integration', () => {
     await waitFor(() => {
       expect(generateImage).toHaveBeenCalledWith({
         prompt: '未来城市夜景',
-        aspectRatio: '21:9',
-        upscale: '4k',
+        aspectRatio: '16:9',
+        quality: '4K',
         count: 4,
       })
     })

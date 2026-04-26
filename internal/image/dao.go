@@ -29,7 +29,7 @@ INSERT INTO image_tasks
    created_at)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
 		t.TaskID, t.UserID, t.KeyID, t.ModelID, t.AccountID,
-		t.Prompt, t.N, t.Size, ValidateUpscale(t.Upscale), NormalizeStorageMode(t.StorageMode),
+		t.Prompt, t.N, t.Size, "", NormalizeStorageMode(t.StorageMode),
 		nullEmpty(t.Status, StatusQueued),
 		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs),
 		t.Error, t.EstimatedCredit, t.CreditCost,

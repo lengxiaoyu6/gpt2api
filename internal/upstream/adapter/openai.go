@@ -9,15 +9,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 )
 
-// openaiAdapter 兼容 OpenAI /v1/chat/completions、/v1/images/generations。
+// openaiAdapter 兼容 OpenAI /v1/chat/completions、/v1/images/generations、/v1/responses。
 //
 // 许多第三方中转/聚合站(one-api、new-api、deepseek 官方、moonshot 官方、
-// kimi 兼容端点等)都遵循 OpenAI 接口规范,差别只在 BaseURL 和 APIKey。
-// 因此这个适配器同时适用:BaseURL 允许带或不带 /v1 后缀,我们做一次规整。
+// kimi 兼容端点等)都遵循 OpenAI 接口规范,差别只在完整 endpoint URL 和 APIKey。
 type openaiAdapter struct {
 	baseURL string
 	apiKey  string
@@ -26,16 +28,12 @@ type openaiAdapter struct {
 
 // NewOpenAI 构造一个 OpenAI 兼容适配器。
 func NewOpenAI(p Params) *openaiAdapter {
-	base := strings.TrimRight(p.BaseURL, "/")
-	// 自动去尾部的 /v1,底下拼接时再补;用户填 https://api.openai.com 和
-	// https://api.openai.com/v1 都要能用。
-	base = strings.TrimSuffix(base, "/v1")
 	timeout := time.Duration(p.TimeoutS) * time.Second
 	if timeout <= 0 {
 		timeout = 120 * time.Second
 	}
 	return &openaiAdapter{
-		baseURL: base,
+		baseURL: p.BaseURL,
 		apiKey:  p.APIKey,
 		client:  &http.Client{Timeout: timeout},
 	}
@@ -43,12 +41,82 @@ func NewOpenAI(p Params) *openaiAdapter {
 
 func (a *openaiAdapter) Type() string { return "openai" }
 
-func (a *openaiAdapter) endpoint(path string) string {
-	return a.baseURL + "/v1" + path
+func (a *openaiAdapter) SupportsImageReferences() bool {
+	return a.endpointKind() == openAIEndpointResponses
 }
 
-// Chat 发起 OpenAI /v1/chat/completions。流式和非流式都转成统一的 ChatStream。
+type openAIEndpointKind int
+
+const (
+	openAIEndpointUnknown openAIEndpointKind = iota
+	openAIEndpointChatCompletions
+	openAIEndpointImageGenerations
+	openAIEndpointResponses
+)
+
+type openAIResponsesContent struct {
+	Type    string `json:"type"`
+	Text    string `json:"text"`
+	Refusal string `json:"refusal"`
+}
+
+type openAIResponsesOutputItem struct {
+	Type    string                   `json:"type"`
+	Role    string                   `json:"role"`
+	Content []openAIResponsesContent `json:"content"`
+	Result  string                   `json:"result"`
+	B64JSON string                   `json:"b64_json"`
+}
+
+type openAIResponsesUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+type openAIResponsesIncomplete struct {
+	Reason string `json:"reason"`
+}
+
+type openAIResponsesObject struct {
+	Status            string                      `json:"status"`
+	OutputText        string                      `json:"output_text"`
+	Output            []openAIResponsesOutputItem `json:"output"`
+	Usage             openAIResponsesUsage        `json:"usage"`
+	IncompleteDetails openAIResponsesIncomplete   `json:"incomplete_details"`
+}
+
+func (a *openaiAdapter) endpointKind() openAIEndpointKind {
+	path := a.endpointPath()
+	switch {
+	case strings.HasSuffix(path, "/responses"):
+		return openAIEndpointResponses
+	case strings.HasSuffix(path, "/chat/completions"):
+		return openAIEndpointChatCompletions
+	case strings.HasSuffix(path, "/images/generations"), strings.HasSuffix(path, "/images/edits"):
+		return openAIEndpointImageGenerations
+	default:
+		return openAIEndpointUnknown
+	}
+}
+
+func (a *openaiAdapter) endpointPath() string {
+	u, err := url.Parse(a.baseURL)
+	if err == nil && u.Path != "" {
+		return strings.ToLower(strings.TrimRight(u.Path, "/"))
+	}
+	return strings.ToLower(strings.TrimRight(a.baseURL, "/"))
+}
+
+// Chat 发起 OpenAI /v1/chat/completions 或 /v1/responses。流式和非流式都转成统一的 ChatStream。
 func (a *openaiAdapter) Chat(ctx context.Context, upstreamModel string, req *ChatRequest) (ChatStream, error) {
+	if a.endpointKind() == openAIEndpointResponses {
+		return a.chatViaResponses(ctx, upstreamModel, req)
+	}
+	return a.chatViaChatCompletions(ctx, upstreamModel, req)
+}
+
+func (a *openaiAdapter) chatViaChatCompletions(ctx context.Context, upstreamModel string, req *ChatRequest) (ChatStream, error) {
 	payload := map[string]any{
 		"model":    upstreamModel,
 		"messages": req.Messages,
@@ -63,16 +131,9 @@ func (a *openaiAdapter) Chat(ctx context.Context, upstreamModel string, req *Cha
 	if req.MaxTokens > 0 {
 		payload["max_tokens"] = req.MaxTokens
 	}
-	body, _ := json.Marshal(payload)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.endpoint("/chat/completions"), bytes.NewReader(body))
+	httpReq, err := a.newJSONRequest(ctx, a.baseURL, payload, req.Stream)
 	if err != nil {
 		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
-	if req.Stream {
-		httpReq.Header.Set("Accept", "text/event-stream")
 	}
 
 	resp, err := a.client.Do(httpReq)
@@ -92,13 +153,49 @@ func (a *openaiAdapter) Chat(ctx context.Context, upstreamModel string, req *Cha
 	return ch, nil
 }
 
+func (a *openaiAdapter) chatViaResponses(ctx context.Context, upstreamModel string, req *ChatRequest) (ChatStream, error) {
+	payload := map[string]any{
+		"model":  upstreamModel,
+		"input":  openAIResponsesInputFromMessages(req.Messages),
+		"stream": req.Stream,
+	}
+	if req.Temperature > 0 {
+		payload["temperature"] = req.Temperature
+	}
+	if req.TopP > 0 {
+		payload["top_p"] = req.TopP
+	}
+	if req.MaxTokens > 0 {
+		payload["max_output_tokens"] = req.MaxTokens
+	}
+	httpReq, err := a.newJSONRequest(ctx, a.baseURL, payload, req.Stream)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("openai: request: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, upstreamErr(resp)
+	}
+
+	ch := make(chan ChatChunk, 16)
+	if req.Stream {
+		go parseOpenAIResponsesTextSSE(resp.Body, ch)
+	} else {
+		go parseOpenAIResponsesNonStream(resp.Body, ch)
+	}
+	return ch, nil
+}
+
 // parseOpenAISSE 解析 text/event-stream 响应,每行 data: {...}。
 func parseOpenAISSE(body io.ReadCloser, ch chan<- ChatChunk) {
 	defer body.Close()
 	defer close(ch)
 
 	sc := bufio.NewScanner(body)
-	// SSE 单行可能很长,扩大 buffer。
 	buf := make([]byte, 0, 64*1024)
 	sc.Buffer(buf, 4*1024*1024)
 
@@ -156,6 +253,51 @@ func parseOpenAISSE(body io.ReadCloser, ch chan<- ChatChunk) {
 	}
 }
 
+func parseOpenAIResponsesTextSSE(body io.ReadCloser, ch chan<- ChatChunk) {
+	defer close(ch)
+
+	finish := "stop"
+	var usage *ChatUsage
+	sawText := false
+
+	err := scanSSE(body, func(event string, data []byte) bool {
+		if strings.TrimSpace(string(data)) == "[DONE]" {
+			return false
+		}
+		switch event {
+		case "response.output_text.delta", "response.refusal.delta":
+			var obj struct {
+				Delta string `json:"delta"`
+			}
+			if err := json.Unmarshal(data, &obj); err == nil && obj.Delta != "" {
+				sawText = true
+				ch <- ChatChunk{Delta: obj.Delta}
+			}
+		case "response.completed":
+			var obj struct {
+				Response openAIResponsesObject `json:"response"`
+			}
+			if err := json.Unmarshal(data, &obj); err != nil {
+				return true
+			}
+			if !sawText {
+				if text := collectResponsesText(obj.Response); text != "" {
+					sawText = true
+					ch <- ChatChunk{Delta: text}
+				}
+			}
+			usage = chatUsageFromResponses(obj.Response.Usage)
+			finish = responsesFinishReason(obj.Response.Status, obj.Response.IncompleteDetails.Reason)
+		}
+		return true
+	})
+	if err != nil && !errors.Is(err, io.EOF) {
+		ch <- ChatChunk{Err: err}
+		return
+	}
+	ch <- ChatChunk{FinishReason: finish, Usage: usage}
+}
+
 // parseOpenAINonStream 读整个 JSON 响应,一次吐成 delta + finish_reason。
 func parseOpenAINonStream(body io.ReadCloser, ch chan<- ChatChunk) {
 	defer body.Close()
@@ -191,30 +333,53 @@ func parseOpenAINonStream(body io.ReadCloser, ch chan<- ChatChunk) {
 	}}
 }
 
-// ImageGenerate 调用 /v1/images/generations(DALL·E 3 / gpt-image-1 等)。
+func parseOpenAIResponsesNonStream(body io.ReadCloser, ch chan<- ChatChunk) {
+	defer body.Close()
+	defer close(ch)
+
+	var obj openAIResponsesObject
+	if err := json.NewDecoder(body).Decode(&obj); err != nil {
+		ch <- ChatChunk{Err: fmt.Errorf("openai: decode responses non-stream: %w", err)}
+		return
+	}
+	text := collectResponsesText(obj)
+	finish := responsesFinishReason(obj.Status, obj.IncompleteDetails.Reason)
+	if text != "" || finish != "" {
+		ch <- ChatChunk{Delta: text, FinishReason: finish}
+	}
+	if usage := chatUsageFromResponses(obj.Usage); usage != nil {
+		ch <- ChatChunk{Usage: usage}
+	}
+}
+
+// ImageGenerate 调用 /v1/images/generations 或 /v1/responses(image_generation tool)。
 func (a *openaiAdapter) ImageGenerate(ctx context.Context, upstreamModel string, req *ImageRequest) (*ImageResult, error) {
+	if a.endpointKind() == openAIEndpointResponses {
+		return a.imageGenerateViaResponses(ctx, upstreamModel, req)
+	}
+	if len(req.References) > 0 {
+		return nil, ErrImageReferencesUnsupported
+	}
+	return a.imageGenerateViaImagesEndpoint(ctx, upstreamModel, req)
+}
+
+func (a *openaiAdapter) imageGenerateViaImagesEndpoint(ctx context.Context, upstreamModel string, req *ImageRequest) (*ImageResult, error) {
 	n := req.N
 	if n <= 0 {
 		n = 1
-	}
-	size := req.Size
-	if size == "" {
-		size = "1024x1024"
 	}
 	payload := map[string]any{
 		"model":  upstreamModel,
 		"prompt": req.Prompt,
 		"n":      n,
-		"size":   size,
 	}
-	body, _ := json.Marshal(payload)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.endpoint("/images/generations"), bytes.NewReader(body))
+	if req.Size != "" {
+		payload["size"] = req.Size
+	}
+	httpReq, err := a.newJSONRequest(ctx, a.baseURL, payload, false)
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
@@ -226,8 +391,8 @@ func (a *openaiAdapter) ImageGenerate(ctx context.Context, upstreamModel string,
 	}
 	var obj struct {
 		Data []struct {
-			URL    string `json:"url"`
-			B64    string `json:"b64_json"`
+			URL string `json:"url"`
+			B64 string `json:"b64_json"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&obj); err != nil {
@@ -248,10 +413,111 @@ func (a *openaiAdapter) ImageGenerate(ctx context.Context, upstreamModel string,
 	return r, nil
 }
 
-// Ping 发一次 /v1/models 探活。大部分兼容站都实现了这个端点。
+func (a *openaiAdapter) imageGenerateViaResponses(ctx context.Context, upstreamModel string, req *ImageRequest) (*ImageResult, error) {
+	n := req.N
+	if n <= 0 {
+		n = 1
+	}
+	out := &ImageResult{}
+	for i := 0; i < n; i++ {
+		one, err := a.imageGenerateViaResponsesOnce(ctx, upstreamModel, req)
+		if err != nil {
+			return nil, err
+		}
+		out.URLs = append(out.URLs, one.URLs...)
+		out.B64s = append(out.B64s, one.B64s...)
+	}
+	if len(out.URLs) == 0 && len(out.B64s) == 0 {
+		return nil, errors.New("openai: empty image response")
+	}
+	return out, nil
+}
+
+func (a *openaiAdapter) imageGenerateViaResponsesOnce(ctx context.Context, upstreamModel string, req *ImageRequest) (*ImageResult, error) {
+	tool := map[string]any{
+		"type":    "image_generation",
+		"quality": "high",
+	}
+	if req.Size != "" {
+		tool["size"] = req.Size
+	}
+	payload := map[string]any{
+		"model":       upstreamModel,
+		"stream":      true,
+		"input":       openAIResponsesInputFromImageRequest(req),
+		"tools":       []map[string]any{tool},
+		"tool_choice": map[string]any{"type": "image_generation"},
+	}
+	httpReq, err := a.newJSONRequest(ctx, a.baseURL, payload, true)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("openai: responses image request: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, upstreamErr(resp)
+	}
+	result, err := parseOpenAIResponsesImageSSE(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func parseOpenAIResponsesImageSSE(body io.ReadCloser) (*ImageResult, error) {
+	var bestB64 string
+	err := scanSSE(body, func(event string, data []byte) bool {
+		if strings.TrimSpace(string(data)) == "[DONE]" {
+			return false
+		}
+		switch event {
+		case "response.image_generation_call.partial_image":
+			var obj struct {
+				PartialImageB64 string `json:"partial_image_b64"`
+			}
+			if err := json.Unmarshal(data, &obj); err == nil && obj.PartialImageB64 != "" {
+				bestB64 = obj.PartialImageB64
+			}
+		case "response.output_item.done":
+			var obj struct {
+				Item openAIResponsesOutputItem `json:"item"`
+			}
+			if err := json.Unmarshal(data, &obj); err == nil {
+				if b64 := imageB64FromOutputItem(obj.Item); b64 != "" {
+					bestB64 = b64
+				}
+			}
+		case "response.completed":
+			var obj struct {
+				Response openAIResponsesObject `json:"response"`
+			}
+			if err := json.Unmarshal(data, &obj); err == nil {
+				if b64 := firstResponsesImage(obj.Response.Output); b64 != "" {
+					bestB64 = b64
+				}
+			}
+		}
+		return true
+	})
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if bestB64 == "" {
+		return nil, errors.New("openai: empty image response")
+	}
+	return &ImageResult{B64s: []string{bestB64}}, nil
+}
+
+// Ping 对已配置的完整 endpoint 发一次轻量探活请求。
+// /v1/responses 兼容站普遍要求 POST,其余 endpoint 继续走 HEAD。
 func (a *openaiAdapter) Ping(ctx context.Context) error {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		a.endpoint("/models"), nil)
+	if a.endpointKind() == openAIEndpointResponses {
+		return a.pingResponses(ctx)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodHead, a.baseURL, nil)
 	if err != nil {
 		return err
 	}
@@ -261,10 +527,222 @@ func (a *openaiAdapter) Ping(ctx context.Context) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusMethodNotAllowed {
+		return nil
+	}
 	if resp.StatusCode >= 400 {
 		return upstreamErr(resp)
 	}
 	return nil
+}
+
+func (a *openaiAdapter) pingResponses(ctx context.Context) error {
+	payload := map[string]any{
+		"model":             "gpt-5.4",
+		"input":             "ping",
+		"max_output_tokens": 1,
+	}
+	httpReq, err := a.newJSONRequest(ctx, a.baseURL, payload, false)
+	if err != nil {
+		return err
+	}
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent,
+		http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return nil
+	}
+	if resp.StatusCode >= 400 {
+		return upstreamErr(resp)
+	}
+	return nil
+}
+
+func (a *openaiAdapter) newJSONRequest(ctx context.Context, targetURL string, payload any, acceptSSE bool) (*http.Request, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+	if acceptSSE {
+		httpReq.Header.Set("Accept", "text/event-stream")
+	}
+	return httpReq, nil
+}
+
+func openAIResponsesInputFromPrompt(prompt string) []map[string]any {
+	return openAIResponsesInputFromImageRequest(&ImageRequest{Prompt: prompt})
+}
+
+func openAIResponsesInputFromImageRequest(req *ImageRequest) []map[string]any {
+	content := []map[string]any{{
+		"type": "input_text",
+		"text": req.Prompt,
+	}}
+	for _, ref := range req.References {
+		u := strings.TrimSpace(ref.URL)
+		if u == "" {
+			continue
+		}
+		content = append(content, map[string]any{
+			"type":      "input_image",
+			"image_url": u,
+		})
+	}
+	return []map[string]any{{
+		"role":    "user",
+		"content": content,
+	}}
+}
+
+func openAIResponsesInputFromMessages(messages []chatgpt.ChatMessage) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	for _, msg := range messages {
+		out = append(out, map[string]any{
+			"role": normalizeResponsesRole(msg.Role),
+			"content": []map[string]any{{
+				"type": "input_text",
+				"text": msg.Content,
+			}},
+		})
+	}
+	return out
+}
+
+func normalizeResponsesRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "assistant", "system", "developer", "tool", "user":
+		return strings.ToLower(strings.TrimSpace(role))
+	default:
+		return "user"
+	}
+}
+
+func scanSSE(body io.ReadCloser, handle func(event string, data []byte) bool) error {
+	defer body.Close()
+
+	rd := bufio.NewReaderSize(body, 32*1024)
+	var event string
+	var dataBuf strings.Builder
+
+	flush := func() bool {
+		if dataBuf.Len() == 0 {
+			event = ""
+			return true
+		}
+		data := strings.TrimRight(dataBuf.String(), "\n")
+		dataBuf.Reset()
+		keepGoing := handle(event, []byte(data))
+		event = ""
+		return keepGoing
+	}
+
+	for {
+		line, err := rd.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				flush()
+				return nil
+			}
+			return err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			if !flush() {
+				return nil
+			}
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			part := strings.TrimPrefix(line, "data:")
+			if len(part) > 0 && part[0] == ' ' {
+				part = part[1:]
+			}
+			if dataBuf.Len() > 0 {
+				dataBuf.WriteByte('\n')
+			}
+			dataBuf.WriteString(part)
+		}
+	}
+}
+
+func collectResponsesText(obj openAIResponsesObject) string {
+	if obj.OutputText != "" {
+		return obj.OutputText
+	}
+	var b strings.Builder
+	for _, item := range obj.Output {
+		if item.Type != "message" {
+			continue
+		}
+		for _, content := range item.Content {
+			switch content.Type {
+			case "output_text":
+				b.WriteString(content.Text)
+			case "refusal":
+				b.WriteString(content.Refusal)
+			}
+		}
+	}
+	return b.String()
+}
+
+func chatUsageFromResponses(usage openAIResponsesUsage) *ChatUsage {
+	if usage.InputTokens == 0 && usage.OutputTokens == 0 && usage.TotalTokens == 0 {
+		return nil
+	}
+	return &ChatUsage{
+		PromptTokens:     usage.InputTokens,
+		CompletionTokens: usage.OutputTokens,
+		TotalTokens:      usage.TotalTokens,
+	}
+}
+
+func responsesFinishReason(status string, incompleteReason string) string {
+	reason := strings.ToLower(strings.TrimSpace(incompleteReason))
+	switch reason {
+	case "max_output_tokens", "max_tokens":
+		return "length"
+	}
+	if strings.ToLower(strings.TrimSpace(status)) == "incomplete" && reason == "content_filter" {
+		return "content_filter"
+	}
+	return "stop"
+}
+
+func imageB64FromOutputItem(item openAIResponsesOutputItem) string {
+	if item.Type != "image_generation_call" {
+		return ""
+	}
+	if item.Result != "" {
+		return item.Result
+	}
+	return item.B64JSON
+}
+
+func firstResponsesImage(items []openAIResponsesOutputItem) string {
+	for _, item := range items {
+		if b64 := imageB64FromOutputItem(item); b64 != "" {
+			return b64
+		}
+	}
+	return ""
 }
 
 // upstreamErr 读取响应 body 做简要错误归纳。

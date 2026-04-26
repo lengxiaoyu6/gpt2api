@@ -33,14 +33,17 @@ func TestBuildAPIImageDataUsesProxyURLsForCloudTasks(t *testing.T) {
 }
 
 func TestImageResponseAccountingUsesActualDataCount(t *testing.T) {
-	m := &modelpkg.Model{ImagePricePerCall: 1000}
+	m := &modelpkg.Model{
+		ImagePricePerCall:   1000,
+		ImagePricePerCall4K: 3000,
+	}
 	data := []ImageGenData{{URL: "https://example.com/only-one.png"}}
 
-	actualN, cost := imageResponseAccounting(m, data, 1.5)
+	actualN, cost := imageResponseAccounting(m, data, 1.5, "3840x2160")
 	if actualN != 1 {
 		t.Fatalf("actualN = %d", actualN)
 	}
-	if cost != 1500 {
+	if cost != 4500 {
 		t.Fatalf("cost = %d", cost)
 	}
 }

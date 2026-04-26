@@ -51,7 +51,8 @@ type ImagesHandler struct {
 	ImageAccResolver ImageAccountResolver
 	LocalImageStore  localProxyImageStore
 
-	imageProxyCache *imageProxyCache
+	imageProxyCache   *imageProxyCache
+	referenceUploader referenceImageUploader
 }
 
 // ImageGenRequest OpenAI 兼容入参。
@@ -72,11 +73,7 @@ type ImageGenRequest struct {
 	ResponseFormat  string   `json:"response_format,omitempty"` // url | b64_json(暂仅支持 url)
 	User            string   `json:"user,omitempty"`
 	ReferenceImages []string `json:"reference_images,omitempty"` // 非标准扩展,见注释
-	// Upscale 非标准扩展:控制"本服务对原图做本地高清放大"的目标档位。
-	// 可选值:""(原图直出,默认)/ "2k"(长边 2560) / "4k"(长边 3840)。
-	// 算法:golang.org/x/image/draw.CatmullRom(传统插值,不是 AI 超分)。
-	// 生效时机:图片代理 URL 首次请求时做一次 decode+放大+PNG 编码,之后进程内
-	// LRU 缓存命中毫秒级返回。仅影响 /v1/images/proxy/... 的出口字节,不改原图。
+	// Upscale 历史兼容字段。新请求按 size 传递目标尺寸,服务端忽略该字段。
 	Upscale string `json:"upscale,omitempty"`
 }
 
@@ -122,12 +119,31 @@ func buildAPIImageData(taskID, storageMode string, urls, fileIDs []string) []Ima
 	return data
 }
 
-func imageResponseAccounting(m *modelpkg.Model, data []ImageGenData, ratio float64) (int, int64) {
+func imageResponseAccounting(m *modelpkg.Model, data []ImageGenData, ratio float64, size string) (int, int64) {
 	actualN := len(data)
 	if actualN <= 0 {
 		return 0, 0
 	}
-	return actualN, billing.ComputeImageCost(m, actualN, ratio)
+	return actualN, billing.ComputeImageCost(m, actualN, ratio, size)
+}
+
+func normalizeImageRequestByModel(m *modelpkg.Model, n int, size string) (int, string) {
+	if n <= 0 {
+		n = 1
+	}
+	if n > 4 {
+		n = 4
+	}
+	if m != nil && !m.SupportsMultiImage {
+		n = 1
+	}
+	if m != nil && !m.SupportsOutputSize {
+		return n, ""
+	}
+	if size == "" {
+		size = "1024x1024"
+	}
+	return n, size
 }
 
 func (h *ImagesHandler) currentStorageMode() string {
@@ -158,16 +174,6 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	if req.Model == "" {
 		req.Model = "gpt-image-2"
 	}
-	if req.N <= 0 {
-		req.N = 1
-	}
-	if req.N > 4 {
-		req.N = 4 // 目前 IMG2 终稿单轮稳定产出 1-4 张,保守上限
-	}
-	if req.Size == "" {
-		req.Size = "1024x1024"
-	}
-	req.Upscale = image.ValidateUpscale(req.Upscale)
 
 	refID := uuid.NewString()
 	rec := &usage.Log{
@@ -210,6 +216,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		return
 	}
 	rec.ModelID = m.ID
+	req.N, req.Size = normalizeImageRequestByModel(m, req.N, req.Size)
 
 	// 2) 分组倍率 + RPM 限流(图像不走 TPM)
 	ratio := 1.0
@@ -231,16 +238,23 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		}
 	}
 
+	// 3) 先解析参考图,便于同一份输入优先尝试外置渠道,失败后再回退本地 Runner。
+	refs, err := decodeReferenceInputs(c.Request.Context(), req.ReferenceImages)
+	if err != nil {
+		fail("invalid_request_error")
+		openAIError(c, http.StatusBadRequest, "invalid_reference_image", "参考图解析失败:"+err.Error())
+		return
+	}
+
 	// 若本地模型配置了外置渠道(OpenAI DALL·E / Gemini imagen 等),优先走渠道。
-	// 参考图场景(reference_images)仍走原 ChatGPT 账号池 Runner。
 	if h.Channels != nil {
-		if handled := h.dispatchImageToChannel(c, ak, m, &req, rec, ratio); handled {
+		if handled := h.dispatchImageToChannel(c, ak, m, &req, refs, rec, ratio); handled {
 			return
 		}
 	}
 
-	// 3) 预扣(图像按定价,est = actual)
-	cost := billing.ComputeImageCost(m, req.N, ratio)
+	// 4) 预扣(图像按定价,est = actual)
+	cost := billing.ComputeImageCost(m, req.N, ratio, req.Size)
 	if cost > 0 {
 		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "image prepay"); err != nil {
 			if errors.Is(err, billing.ErrInsufficient) {
@@ -264,7 +278,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		_ = h.Billing.Refund(context.Background(), ak.UserID, ak.ID, cost, refID, "image refund")
 	}
 
-	// 4) 落任务
+	// 5) 落任务
 	taskID := image.GenerateTaskID()
 	task := &image.Task{
 		TaskID:          taskID,
@@ -274,7 +288,6 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		Prompt:          req.Prompt,
 		N:               req.N,
 		Size:            req.Size,
-		Upscale:         req.Upscale,
 		StorageMode:     h.currentStorageMode(),
 		Status:          image.StatusDispatched,
 		EstimatedCredit: cost,
@@ -287,15 +300,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		}
 	}
 
-	// 4.5) 解析 reference_images(图生图 / 图像编辑入口都走到这里)
-	refs, err := decodeReferenceInputs(c.Request.Context(), req.ReferenceImages)
-	if err != nil {
-		refund("invalid_request_error")
-		openAIError(c, http.StatusBadRequest, "invalid_reference_image", "参考图解析失败:"+err.Error())
-		return
-	}
-
-	// 5) 执行(同步阻塞)
+	// 6) 执行(同步阻塞)
 	//
 	// 单请求硬上限 7 分钟:Runner 默认 per-attempt 6 分钟
 	// (SSE ~60s + PollMaxWait 300s + 缓冲),外层再留 1 分钟
@@ -337,7 +342,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	}
 
 	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
-	actualN, actualCost := imageResponseAccounting(m, data, ratio)
+	actualN, actualCost := imageResponseAccounting(m, data, ratio, req.Size)
 	if actualN == 0 {
 		refund("upstream_error")
 		if h.DAO != nil {
@@ -347,7 +352,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		return
 	}
 
-	// 6) 结算
+	// 7) 结算
 	if cost > 0 {
 		if err := h.Billing.Settle(context.Background(), ak.UserID, ak.ID, cost, actualCost, refID, "image settle"); err != nil {
 			logger.L().Error("billing settle image", zap.Error(err), zap.String("ref", refID))
@@ -355,17 +360,17 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	}
 	_ = h.Keys.DAO().TouchUsage(context.Background(), ak.ID, c.ClientIP(), actualCost)
 
-	// 7) usage
+	// 8) usage
 	rec.Status = usage.StatusSuccess
 	rec.ImageCount = actualN
 	rec.CreditCost = actualCost
 
-	// 8) DAO 回写 credit_cost(Runner 已经 MarkSuccess,这里只补 credit_cost)
+	// 9) DAO 回写 credit_cost(Runner 已经 MarkSuccess,这里只补 credit_cost)
 	if h.DAO != nil {
 		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, actualCost)
 	}
 
-	// 9) 响应:URL 统一走自家代理,防止 chatgpt.com estuary/content 防盗链
+	// 10) 响应:URL 统一走自家代理,防止 chatgpt.com estuary/content 防盗链
 	out := ImageGenResponse{
 		Created: time.Now().Unix(),
 		TaskID:  taskID,
@@ -465,7 +470,8 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 	}
 
 	// 预扣
-	cost := billing.ComputeImageCost(m, 1, ratio)
+	size := "1024x1024"
+	cost := billing.ComputeImageCost(m, 1, ratio, size)
 	if cost > 0 {
 		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "chat->image prepay"); err != nil {
 			rec.Status = usage.StatusFailed
@@ -500,7 +506,7 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 			ModelID:         m.ID,
 			Prompt:          prompt,
 			N:               1,
-			Size:            "1024x1024",
+			Size:            size,
 			StorageMode:     h.currentStorageMode(),
 			Status:          image.StatusDispatched,
 			EstimatedCredit: cost,
@@ -681,10 +687,6 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		}
 	}
 	size := c.Request.FormValue("size")
-	if size == "" {
-		size = "1024x1024"
-	}
-	upscale := image.ValidateUpscale(c.Request.FormValue("upscale"))
 
 	// 主图 + 可能的多张
 	files, err := collectEditFiles(c.Request.MultipartForm)
@@ -763,6 +765,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		return
 	}
 	rec.ModelID = m.ID
+	n, size = normalizeImageRequestByModel(m, n, size)
 
 	ratio := 1.0
 	rpmCap := ak.RPM
@@ -783,7 +786,20 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		}
 	}
 
-	cost := billing.ComputeImageCost(m, n, ratio)
+	if h.Channels != nil {
+		req := &ImageGenRequest{
+			Model:          model,
+			Prompt:         prompt,
+			N:              n,
+			Size:           size,
+			ResponseFormat: "url",
+		}
+		if handled := h.dispatchImageToChannel(c, ak, m, req, refs, rec, ratio); handled {
+			return
+		}
+	}
+
+	cost := billing.ComputeImageCost(m, n, ratio, size)
 	if cost > 0 {
 		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "image-edit prepay"); err != nil {
 			if errors.Is(err, billing.ErrInsufficient) {
@@ -817,7 +833,6 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 			Prompt:          prompt,
 			N:               n,
 			Size:            size,
-			Upscale:         upscale,
 			StorageMode:     h.currentStorageMode(),
 			Status:          image.StatusDispatched,
 			EstimatedCredit: cost,
@@ -852,7 +867,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	}
 
 	data := buildAPIImageData(taskID, res.StorageMode, res.SignedURLs, res.FileIDs)
-	actualN, actualCost := imageResponseAccounting(m, data, ratio)
+	actualN, actualCost := imageResponseAccounting(m, data, ratio, size)
 	if actualN == 0 {
 		refund("upstream_error")
 		if h.DAO != nil {

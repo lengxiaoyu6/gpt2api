@@ -31,6 +31,28 @@ func (d *DAO) ListEnabled(ctx context.Context) ([]*Model, error) {
 	return rows, err
 }
 
+func (d *DAO) ListEnabledForMe(ctx context.Context) ([]*Model, error) {
+	rows := make([]*Model, 0, 16)
+	err := d.db.SelectContext(ctx, &rows, `
+SELECT
+	m.*,
+	EXISTS(
+		SELECT 1
+		  FROM channel_model_mappings cm
+		  JOIN upstream_channels uc ON uc.id = cm.channel_id
+		 WHERE cm.local_model = m.slug
+		   AND cm.modality = 'image'
+		   AND cm.enabled = 1
+		   AND uc.enabled = 1
+		   AND uc.deleted_at IS NULL
+	) AS has_image_channel
+FROM models m
+WHERE m.enabled = 1
+  AND m.deleted_at IS NULL
+ORDER BY m.id ASC`)
+	return rows, err
+}
+
 func (d *DAO) List(ctx context.Context) ([]*Model, error) {
 	rows := make([]*Model, 0, 16)
 	err := d.db.SelectContext(ctx, &rows,
@@ -54,11 +76,14 @@ func (d *DAO) Create(ctx context.Context, m *Model) error {
 	res, err := d.db.ExecContext(ctx, `
 INSERT INTO models
   (slug, type, upstream_model_slug, input_price_per_1m, output_price_per_1m,
-   cache_read_price_per_1m, image_price_per_call, description, enabled)
-VALUES (?,?,?,?,?,?,?,?,?)`,
+   cache_read_price_per_1m, image_price_per_call, image_price_per_call_2k,
+   image_price_per_call_4k, supports_multi_image, supports_output_size,
+   description, enabled)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.Slug, m.Type, m.UpstreamModelSlug,
 		m.InputPricePer1M, m.OutputPricePer1M, m.CacheReadPricePer1M,
-		m.ImagePricePerCall, m.Description, m.Enabled,
+		m.ImagePricePerCall, m.ImagePricePerCall2K, m.ImagePricePerCall4K,
+		m.SupportsMultiImage, m.SupportsOutputSize, m.Description, m.Enabled,
 	)
 	if err != nil {
 		return err
@@ -75,11 +100,14 @@ UPDATE models SET
   type = ?, upstream_model_slug = ?,
   input_price_per_1m = ?, output_price_per_1m = ?,
   cache_read_price_per_1m = ?, image_price_per_call = ?,
+  image_price_per_call_2k = ?, image_price_per_call_4k = ?,
+  supports_multi_image = ?, supports_output_size = ?,
   description = ?, enabled = ?
 WHERE id = ? AND deleted_at IS NULL`,
 		m.Type, m.UpstreamModelSlug,
 		m.InputPricePer1M, m.OutputPricePer1M, m.CacheReadPricePer1M,
-		m.ImagePricePerCall, m.Description, m.Enabled,
+		m.ImagePricePerCall, m.ImagePricePerCall2K, m.ImagePricePerCall4K,
+		m.SupportsMultiImage, m.SupportsOutputSize, m.Description, m.Enabled,
 		m.ID,
 	)
 	if err != nil {

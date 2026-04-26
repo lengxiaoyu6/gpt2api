@@ -16,6 +16,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/432539/gpt2api/internal/upstream/chatgpt"
@@ -49,13 +50,20 @@ type ChatUsage struct {
 // ChatStream 适配器返回的统一 chunk 通道。调用方需 Drain 直到通道关闭。
 type ChatStream = <-chan ChatChunk
 
+var ErrImageReferencesUnsupported = errors.New("adapter: image references unsupported")
+
 // ImageRequest 统一的图片生成请求。
 type ImageRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	N      int    `json:"n,omitempty"`
-	Size   string `json:"size,omitempty"`   // 1024x1024 / 512x512 / auto
-	Format string `json:"format,omitempty"` // url / b64_json
+	Model      string           `json:"model"`
+	Prompt     string           `json:"prompt"`
+	N          int              `json:"n,omitempty"`
+	Size       string           `json:"size,omitempty"`   // 1024x1024 / 512x512 / auto
+	Format     string           `json:"format,omitempty"` // url / b64_json
+	References []ImageReference `json:"references,omitempty"`
+}
+
+type ImageReference struct {
+	URL string `json:"url"`
 }
 
 type ImageResult struct {
@@ -78,6 +86,10 @@ type Adapter interface {
 	ImageGenerate(ctx context.Context, upstreamModel string, req *ImageRequest) (*ImageResult, error)
 	// Ping 发一次轻量校验请求,用于"测试连接"。
 	Ping(ctx context.Context) error
+}
+
+type ImageReferenceCapable interface {
+	SupportsImageReferences() bool
 }
 
 // VideoCapable 可选接口:后续 Gemini Veo / OpenAI Sora 接入时实现它。

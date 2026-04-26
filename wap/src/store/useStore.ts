@@ -5,11 +5,11 @@ import * as authApi from '../api/auth'
 import { REFRESH_KEY, setUnauthorizedHandler, TOKEN_KEY } from '../api/http'
 import * as meApi from '../api/me'
 import * as siteApi from '../api/site'
-import { ASPECT_RATIO_TO_SIZE, applyRatioPrefix, type AspectRatio, type UpscaleLevel } from '../features/image/options'
+import { resolveOutputSize, type AspectRatio, type OutputQualityValue } from '../features/image/options'
 
 export type TabKey = 'home' | 'generate' | 'history' | 'profile'
 export type BootstrapStatus = 'idle' | 'loading' | 'ready' | 'error'
-export type { AspectRatio, UpscaleLevel } from '../features/image/options'
+export type { AspectRatio, OutputQualityValue } from '../features/image/options'
 
 export interface HistoryRecord extends meApi.ImageTask {}
 
@@ -54,6 +54,13 @@ function normalizeImageCount(count?: number) {
   return Math.min(Math.max(count ?? 1, 1), 4)
 }
 
+function pickPreferredImageModel(models: meApi.ImageModel[], current?: string | null) {
+  if (current && models.some((item) => item.slug === current)) {
+    return current
+  }
+  return models.find((item) => item.has_image_channel)?.slug ?? models[0]?.slug ?? null
+}
+
 interface AppState {
   siteInfo: Record<string, string>
   bootstrapStatus: BootstrapStatus
@@ -83,13 +90,20 @@ interface AppState {
   fetchHistory: (force?: boolean) => Promise<HistoryRecord[]>
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
-  generateImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
-  editImage: (input: { prompt: string; aspectRatio: AspectRatio; upscale?: UpscaleLevel; files: File[]; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  generateImage: (input: { prompt: string; aspectRatio: AspectRatio; quality?: OutputQualityValue; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  editImage: (input: { prompt: string; aspectRatio: AspectRatio; quality?: OutputQualityValue; files: File[]; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
   openAuthForTab: (tab: TabKey) => void
   closeAuth: () => void
   setActiveTab: (tab: TabKey) => void
   toggleTheme: () => void
   handleUnauthorized: () => void
+}
+
+async function resolveImageModelConfig(get: () => AppState) {
+  const models = get().imageModels.length ? get().imageModels : await get().fetchImageModels()
+  const modelSlug = pickPreferredImageModel(models, get().selectedImageModel)
+  const modelConfig = models.find((item) => item.slug === modelSlug)
+  return { modelSlug, modelConfig }
 }
 
 async function applyLoginSession(get: () => AppState, set: (partial: Partial<AppState>) => void, session: authApi.LoginResp) {
@@ -230,10 +244,7 @@ export const useStore = create<AppState>()(
       async fetchImageModels() {
         const data = await meApi.listMyModels()
         const available = (data.items || []).filter((item) => item.type === 'image')
-        const current = get().selectedImageModel
-        const selectedImageModel = available.some((item) => item.slug === current)
-          ? current
-          : available[0]?.slug ?? null
+        const selectedImageModel = pickPreferredImageModel(available, get().selectedImageModel)
         set({ imageModels: available, selectedImageModel })
         return available
       },
@@ -265,19 +276,23 @@ export const useStore = create<AppState>()(
       },
 
       async generateImage(input) {
-        const model = get().selectedImageModel || (await get().fetchImageModels())[0]?.slug
-        if (!model) {
+        const { modelSlug, modelConfig } = await resolveImageModelConfig(get)
+        if (!modelSlug) {
           throw new Error('当前暂无可用图像模型')
+        }
+        const supportsMultiImage = modelConfig?.supports_multi_image ?? true
+        const supportsOutputSize = modelConfig?.supports_output_size ?? true
+        const req: meApi.PlayImageRequest = {
+          model: modelSlug,
+          prompt: input.prompt,
+          n: supportsMultiImage ? normalizeImageCount(input.count) : 1,
+        }
+        if (supportsOutputSize) {
+          req.size = resolveOutputSize(input.aspectRatio, input.quality || '1K')
         }
         try {
           return await meApi.playGenerateImage(
-            {
-              model,
-              prompt: applyRatioPrefix(input.prompt, input.aspectRatio),
-              size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
-              upscale: input.upscale || undefined,
-              n: normalizeImageCount(input.count),
-            },
+            req,
             input.signal,
           )
         } finally {
@@ -286,21 +301,25 @@ export const useStore = create<AppState>()(
       },
 
       async editImage(input) {
-        const model = get().selectedImageModel || (await get().fetchImageModels())[0]?.slug
-        if (!model) {
+        const { modelSlug, modelConfig } = await resolveImageModelConfig(get)
+        if (!modelSlug) {
           throw new Error('当前暂无可用图像模型')
+        }
+        const supportsMultiImage = modelConfig?.supports_multi_image ?? true
+        const supportsOutputSize = modelConfig?.supports_output_size ?? true
+        const opts: { n?: number; size?: string; signal?: AbortSignal } = {
+          n: supportsMultiImage ? normalizeImageCount(input.count) : 1,
+          signal: input.signal,
+        }
+        if (supportsOutputSize) {
+          opts.size = resolveOutputSize(input.aspectRatio, input.quality || '1K')
         }
         try {
           return await meApi.playEditImage(
-            model,
-            applyRatioPrefix(input.prompt, input.aspectRatio),
+            modelSlug,
+            input.prompt,
             input.files,
-            {
-              size: ASPECT_RATIO_TO_SIZE[input.aspectRatio],
-              upscale: input.upscale || undefined,
-              n: normalizeImageCount(input.count),
-              signal: input.signal,
-            },
+            opts,
           )
         } finally {
           await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])

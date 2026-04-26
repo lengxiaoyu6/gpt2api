@@ -65,3 +65,15 @@ test('在线体验页已清除冲突标记并保留比例与预览提示', () =>
   assert.match(playVue, /title="本次未使用 IMG2 灰度生成"/)
   assert.match(playVue, /description="上游没有把本账号放入 IMG2 终稿通道,返回的是 IMG1 预览图。"/)
 })
+
+test('比例选择不会改写 Prompt 输入框,提交时始终保持原始 prompt', () => {
+  const playVue = read('web/src/views/personal/OnlinePlay.vue')
+
+  assert.doesNotMatch(playVue, /watch\(t2iRatio,[\s\S]*?t2iPrompt\.value\s*=\s*applyRatioPrefix/)
+  assert.doesNotMatch(playVue, /watch\(i2iRatio,[\s\S]*?i2iPrompt\.value\s*=\s*applyRatioPrefix/)
+  assert.doesNotMatch(playVue, /applyRatioPrefix/)
+  assert.doesNotMatch(playVue, /Make the aspect ratio/)
+  assert.match(playVue, /function useT2iExample\(p: string\) \{\s*t2iPrompt\.value = p\s*\}/)
+  assert.match(playVue, /const rawPrompt = t2iPrompt\.value\.trim\(\)[\s\S]*?if \(!rawPrompt\)[\s\S]*?const prompt = rawPrompt/)
+  assert.match(playVue, /const rawPrompt = i2iPrompt\.value\.trim\(\)[\s\S]*?if \(!rawPrompt\)[\s\S]*?const prompt = rawPrompt/)
+})
