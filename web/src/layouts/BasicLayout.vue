@@ -8,6 +8,7 @@ import { useSiteStore } from '@/stores/site'
 import { brandParts } from '@/utils/brand'
 import { APP_VERSION } from '@/version'
 import type { MenuItem } from '@/api/auth'
+import AnnouncementCenter from '@/components/AnnouncementCenter.vue'
 
 const store = useUserStore()
 const ui = useUIStore()
@@ -167,6 +168,8 @@ watch(() => store.isLoggedIn, (v) => {
         </div>
 
         <div class="right">
+          <AnnouncementCenter :active="route.path.startsWith('/personal')" />
+
           <el-tooltip :content="ui.isDark ? '切换到亮色' : '切换到暗色'" placement="bottom">
             <el-button link class="theme-btn" @click="ui.toggleDark()">
               <el-icon :size="18">

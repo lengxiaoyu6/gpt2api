@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/432539/gpt2api/internal/account"
+	"github.com/432539/gpt2api/internal/announcement"
 	"github.com/432539/gpt2api/internal/apikey"
 	"github.com/432539/gpt2api/internal/audit"
 	"github.com/432539/gpt2api/internal/auth"
@@ -244,6 +245,9 @@ func main() {
 	redeemSvc := redeem.NewService(redeemDAO)
 	redeemH := redeem.NewHandler(redeemSvc)
 	adminRedeemH := redeem.NewAdminHandler(redeemSvc)
+	announcementDAO := announcement.NewDAO(sqldb)
+	announcementSvc := announcement.NewService(announcementDAO)
+	announcementH := announcement.NewHandler(announcementSvc)
 
 	// 代理池健康探测器:由 settings 提供热更参数,注入到 Handler
 	proxyH := proxy.NewHandler(proxySvc)
@@ -315,8 +319,9 @@ func main() {
 		RedeemH:        redeemH,
 		AdminRedeemH:   adminRedeemH,
 
-		SettingsH:   settingsH,
-		SettingsSvc: settingsSvc,
+		AnnouncementH: announcementH,
+		SettingsH:     settingsH,
+		SettingsSvc:   settingsSvc,
 	}
 
 	r := server.New(deps)
