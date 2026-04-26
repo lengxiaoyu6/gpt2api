@@ -10,7 +10,7 @@ export interface SettingOption {
 export interface SettingItem {
   key: string
   value: string
-  type: 'string' | 'bool' | 'int' | 'float' | 'email' | 'url' | 'select' | 'sanyue_img_hub' | string
+  type: 'string' | 'bool' | 'int' | 'float' | 'email' | 'url' | 'password' | 'select' | 'sanyue_img_hub' | string
   category: 'site' | 'auth' | 'defaults' | 'gateway' | 'billing' | 'mail' | 'storage' | string
   label: string
   desc: string

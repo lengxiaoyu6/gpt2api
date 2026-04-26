@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/432539/gpt2api/pkg/mailer"
 )
 
 // Service 带内存缓存的只读/可写访问层。
@@ -383,6 +385,26 @@ func (s *Service) RechargeOrderExpireMin() int {
 		return 30
 	}
 	return n
+}
+
+// -- mail --
+func (s *Service) MailerConfig() mailer.Config {
+	if !s.GetBool(MailSMTPEnabled) {
+		return mailer.Config{}
+	}
+	port := int(s.GetInt(MailSMTPPort))
+	if port <= 0 {
+		port = 465
+	}
+	return mailer.Config{
+		Host:     strings.TrimSpace(s.GetString(MailSMTPHost)),
+		Port:     port,
+		Username: strings.TrimSpace(s.GetString(MailSMTPUsername)),
+		Password: strings.TrimSpace(s.GetString(MailSMTPPassword)),
+		From:     strings.TrimSpace(s.GetString(MailSMTPFrom)),
+		FromName: firstNonEmpty(s.GetString(MailSMTPFromName), "GPT2API"),
+		UseTLS:   s.GetBool(MailSMTPUseTLS),
+	}
 }
 
 func firstNonEmpty(vs ...string) string {

@@ -27,12 +27,12 @@ func NewHandler(svc *Service, mail *mailer.Mailer, adao *audit.DAO) *Handler {
 
 // itemView 给前端使用的完整条目(带 schema,便于统一渲染)。
 type itemView struct {
-	Key      string `json:"key"`
-	Value    string `json:"value"`
-	Type     string `json:"type"`
-	Category string `json:"category"`
-	Label    string `json:"label"`
-	Desc     string `json:"desc"`
+	Key      string      `json:"key"`
+	Value    string      `json:"value"`
+	Type     string      `json:"type"`
+	Category string      `json:"category"`
+	Label    string      `json:"label"`
+	Desc     string      `json:"desc"`
 	Options  []OptionDef `json:"options,omitempty"`
 }
 
@@ -146,7 +146,7 @@ func (h *Handler) TestMail(c *gin.Context) {
 		return
 	}
 	if h.mail == nil || h.mail.Disabled() {
-		resp.Fail(c, resp.CodeBadRequest, "SMTP not configured: fill host/user/pass in config and restart")
+		resp.Fail(c, resp.CodeBadRequest, "SMTP not configured: enable SMTP and fill mail settings in admin console")
 		return
 	}
 	subject := "[" + h.svc.SiteName() + "] SMTP test email"

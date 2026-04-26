@@ -70,11 +70,4 @@ epay:
     sign_type: 'MD5'
     expires_min: 30
 
-smtp:
-    host: ''
-    port: 465
-    username: ''
-    password: ''
-    from: ''
-    from_name: 'GPT2API'
-    use_tls: true
+# SMTP 邮件配置已迁移到后台「系统设置 → 邮件设置」并存入数据库 system_settings。

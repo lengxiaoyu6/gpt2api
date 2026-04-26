@@ -13,12 +13,16 @@ const filter = reactive<{ status?: string; keyword?: string }>({ status: '', key
 const rows = ref<accountApi.Account[]>([])
 const total = ref(0)
 const pager = reactive({ page: 1, page_size: 10 })
+const activeTableRef = ref()
+const activeSelection = ref<accountApi.Account[]>([])
 
 const deletedLoading = ref(false)
 const deletedFilter = reactive<{ status?: string; keyword?: string }>({ status: '', keyword: '' })
 const deletedRows = ref<accountApi.Account[]>([])
 const deletedTotal = ref(0)
 const deletedPager = reactive({ page: 1, page_size: 10 })
+const deletedTableRef = ref()
+const deletedSelection = ref<accountApi.Account[]>([])
 
 const proxies = ref<proxyApi.Proxy[]>([])
 const quotaSummary = ref<accountApi.QuotaSummary>({
@@ -38,6 +42,7 @@ async function fetchList() {
     })
     rows.value = data.list || []
     total.value = data.total || 0
+    activeSelection.value = []
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -56,6 +61,7 @@ async function fetchDeletedList() {
     })
     deletedRows.value = data.list || []
     deletedTotal.value = data.total || 0
+    deletedSelection.value = []
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -174,6 +180,214 @@ async function onBulkDelete(scope: accountApi.BulkDeleteScope) {
     await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败')
+  }
+}
+
+// ========== 勾选操作 ==========
+type SelectedBatchAction = 'none' | 'refresh' | 'probe' | 'delete' | 'restore' | 'purge'
+const selectedBatchRunning = ref<SelectedBatchAction>('none')
+const activeSelectedCount = computed(() => activeSelection.value.length)
+const deletedSelectedCount = computed(() => deletedSelection.value.length)
+
+function onActiveSelectionChange(selection: accountApi.Account[]) {
+  activeSelection.value = selection
+}
+
+function onDeletedSelectionChange(selection: accountApi.Account[]) {
+  deletedSelection.value = selection
+}
+
+function clearActiveSelection() {
+  activeTableRef.value?.clearSelection?.()
+  activeSelection.value = []
+}
+
+function clearDeletedSelection() {
+  deletedTableRef.value?.clearSelection?.()
+  deletedSelection.value = []
+}
+
+function moveActivePagerBackIfNeeded(removeCount = 1) {
+  if (rows.value.length <= removeCount && pager.page > 1) {
+    pager.page -= 1
+  }
+}
+
+async function runSelectedBatch(
+  selected: accountApi.Account[],
+  worker: (row: accountApi.Account) => Promise<boolean>,
+  concurrency = 4,
+) {
+  let index = 0
+  let success = 0
+  let failed = 0
+  const workers = Array.from({ length: Math.min(concurrency, selected.length) }, async () => {
+    while (index < selected.length) {
+      const row = selected[index++]
+      try {
+        const ok = await worker(row)
+        if (ok) success += 1
+        else failed += 1
+      } catch {
+        failed += 1
+      }
+    }
+  })
+  await Promise.all(workers)
+  return { total: selected.length, success, failed }
+}
+
+function notifySelectedBatch(title: string, r: { total: number; success: number; failed: number }) {
+  const payload = {
+    title,
+    message: `成功 ${r.success} · 失败 ${r.failed} · 合计 ${r.total}`,
+    duration: 4000,
+  }
+  if (r.failed > 0) ElNotification.warning(payload)
+  else ElNotification.success(payload)
+}
+
+async function onRefreshSelected() {
+  const selected = [...activeSelection.value]
+  if (selected.length === 0) { ElMessage.info('请先勾选账号'); return }
+  try {
+    await ElMessageBox.confirm(`将刷新已勾选的 ${selected.length} 个账号,可能耗时较久,是否继续?`, '刷新已勾选账号', {
+      confirmButtonText: '开始',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch { return }
+
+  selectedBatchRunning.value = 'refresh'
+  const ids = selected.map((row) => row.id)
+  refreshingIds.value = new Set([...refreshingIds.value, ...ids])
+  try {
+    const r = await runSelectedBatch(selected, async (row) => {
+      const result = await accountApi.refreshAccount(row.id)
+      return !!result.ok
+    })
+    notifySelectedBatch('已勾选账号刷新完成', r)
+    await refreshAllAccountLists()
+    clearActiveSelection()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '刷新失败')
+  } finally {
+    refreshingIds.value = new Set([...refreshingIds.value].filter((id) => !ids.includes(id)))
+    selectedBatchRunning.value = 'none'
+  }
+}
+
+async function onProbeSelected() {
+  const selected = [...activeSelection.value]
+  if (selected.length === 0) { ElMessage.info('请先勾选账号'); return }
+  try {
+    await ElMessageBox.confirm(`将探测已勾选的 ${selected.length} 个账号图片额度,是否继续?`, '探测已勾选账号', {
+      confirmButtonText: '开始',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch { return }
+
+  selectedBatchRunning.value = 'probe'
+  const ids = selected.map((row) => row.id)
+  probingIds.value = new Set([...probingIds.value, ...ids])
+  try {
+    const r = await runSelectedBatch(selected, async (row) => {
+      const result = await accountApi.probeAccountQuota(row.id)
+      return !!result.ok
+    })
+    notifySelectedBatch('已勾选账号探测完成', r)
+    await refreshAllAccountLists()
+    clearActiveSelection()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '探测失败')
+  } finally {
+    probingIds.value = new Set([...probingIds.value].filter((id) => !ids.includes(id)))
+    selectedBatchRunning.value = 'none'
+  }
+}
+
+async function onDeleteSelected() {
+  const selected = [...activeSelection.value]
+  if (selected.length === 0) { ElMessage.info('请先勾选账号'); return }
+  try {
+    await ElMessageBox.confirm(
+      `确定删除已勾选的 ${selected.length} 个账号?该操作会移入已删除列表，之后仍可恢复。`,
+      '删除已勾选账号',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
+
+  selectedBatchRunning.value = 'delete'
+  try {
+    moveActivePagerBackIfNeeded(selected.length)
+    const r = await runSelectedBatch(selected, async (row) => {
+      await accountApi.deleteAccount(row.id)
+      return true
+    })
+    notifySelectedBatch('已勾选账号删除完成', r)
+    await refreshAllAccountLists()
+    clearActiveSelection()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
+  } finally {
+    selectedBatchRunning.value = 'none'
+  }
+}
+
+async function onRestoreSelected() {
+  const selected = [...deletedSelection.value]
+  if (selected.length === 0) { ElMessage.info('请先勾选账号'); return }
+  try {
+    await ElMessageBox.confirm(`确定恢复已勾选的 ${selected.length} 个账号?`, '恢复已勾选账号', {
+      confirmButtonText: '恢复',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch { return }
+
+  selectedBatchRunning.value = 'restore'
+  try {
+    moveDeletedPagerBackIfNeeded(selected.length)
+    const r = await runSelectedBatch(selected, async (row) => {
+      await accountApi.restoreAccount(row.id)
+      return true
+    })
+    notifySelectedBatch('已勾选账号恢复完成', r)
+    await refreshAllAccountLists()
+    clearDeletedSelection()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '恢复失败')
+  } finally {
+    selectedBatchRunning.value = 'none'
+  }
+}
+
+async function onPurgeSelected() {
+  const selected = [...deletedSelection.value]
+  if (selected.length === 0) { ElMessage.info('请先勾选账号'); return }
+  try {
+    await ElMessageBox.confirm(
+      `确定彻底删除已勾选的 ${selected.length} 个账号?该操作会清理 cookies、代理绑定和额度快照，且无法恢复。`,
+      '彻底删除已勾选账号',
+      { confirmButtonText: '彻底删除', cancelButtonText: '取消', type: 'error' },
+    )
+  } catch { return }
+
+  selectedBatchRunning.value = 'purge'
+  try {
+    moveDeletedPagerBackIfNeeded(selected.length)
+    const r = await runSelectedBatch(selected, async (row) => {
+      await accountApi.purgeAccount(row.id)
+      return true
+    })
+    notifySelectedBatch('已勾选账号彻底删除完成', r)
+    await refreshAllAccountLists()
+    clearDeletedSelection()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '彻底删除失败')
+  } finally {
+    selectedBatchRunning.value = 'none'
   }
 }
 
@@ -355,8 +569,8 @@ async function onDelete(row: accountApi.Account) {
   }
 }
 
-function moveDeletedPagerBackIfNeeded() {
-  if (deletedRows.value.length === 1 && deletedPager.page > 1) {
+function moveDeletedPagerBackIfNeeded(removeCount = 1) {
+  if (deletedRows.value.length <= removeCount && deletedPager.page > 1) {
     deletedPager.page -= 1
   }
 }
@@ -895,10 +1109,43 @@ onMounted(async () => {
 
       <!-- 表格 -->
       <div class="card-block">
+        <div v-if="activeSelectedCount > 0" class="selection-toolbar">
+          <span class="selection-summary">当前页已勾选 {{ activeSelectedCount }} 个账号</span>
+          <div class="selection-actions">
+            <el-button
+              size="small"
+              :loading="selectedBatchRunning === 'refresh'"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="onRefreshSelected"
+            >刷新已勾选</el-button>
+            <el-button
+              size="small"
+              :loading="selectedBatchRunning === 'probe'"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="onProbeSelected"
+            >探测已勾选</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              :loading="selectedBatchRunning === 'delete'"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="onDeleteSelected"
+            >删除已勾选</el-button>
+            <el-button
+              size="small"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="clearActiveSelection"
+            >取消勾选</el-button>
+          </div>
+        </div>
         <el-table
+          ref="activeTableRef"
           v-loading="loading" :data="rows" stripe size="default" row-key="id"
           table-layout="auto" style="width: 100%"
+          @selection-change="onActiveSelectionChange"
         >
+          <el-table-column type="selection" width="46" fixed="left" />
           <el-table-column label="邮箱" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tooltip
@@ -1085,10 +1332,37 @@ onMounted(async () => {
       </div>
 
       <div class="card-block">
+        <div v-if="deletedSelectedCount > 0" class="selection-toolbar">
+          <span class="selection-summary">当前页已勾选 {{ deletedSelectedCount }} 个账号</span>
+          <div class="selection-actions">
+            <el-button
+              size="small"
+              :loading="selectedBatchRunning === 'restore'"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="onRestoreSelected"
+            >恢复已勾选</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              :loading="selectedBatchRunning === 'purge'"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="onPurgeSelected"
+            >彻底删除已勾选</el-button>
+            <el-button
+              size="small"
+              :disabled="selectedBatchRunning !== 'none'"
+              @click="clearDeletedSelection"
+            >取消勾选</el-button>
+          </div>
+        </div>
         <el-table
+          ref="deletedTableRef"
           v-loading="deletedLoading" :data="deletedRows" stripe size="default" row-key="id"
           table-layout="auto" style="width: 100%"
+          @selection-change="onDeletedSelectionChange"
         >
+          <el-table-column type="selection" width="46" fixed="left" />
           <el-table-column label="邮箱" min-width="220" show-overflow-tooltip>
             <template #default="{ row }">
               <span class="email">{{ row.email }}</span>
@@ -1503,6 +1777,27 @@ onMounted(async () => {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   margin-left: 4px;
+}
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+}
+.selection-summary {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+.selection-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .email {

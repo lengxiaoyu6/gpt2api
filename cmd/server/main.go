@@ -196,30 +196,23 @@ func main() {
 	meImageH := image.NewMeHandler(imageDAO, imageFiles)
 	imageFilesH := imagestore.NewHandler(imageFiles)
 
-	mailSvc := mailer.New(mailer.Config{
-		Host:     cfg.SMTP.Host,
-		Port:     cfg.SMTP.Port,
-		Username: cfg.SMTP.Username,
-		Password: cfg.SMTP.Password,
-		From:     cfg.SMTP.From,
-		FromName: cfg.SMTP.FromName,
-		UseTLS:   cfg.SMTP.UseTLS,
-	}, log)
-	defer mailSvc.Close()
-	if mailSvc.Disabled() {
-		log.Info("mail channel disabled (smtp.host empty)")
-	} else {
-		log.Info("mail channel ready", zap.String("host", cfg.SMTP.Host))
-	}
-	// 把 mailSvc 注入给 authSvc 用于注册欢迎邮件
-	authSvc.SetMailer(mailSvc, cfg.App.BaseURL)
-
 	// 系统设置(KV),启动时从 DB 装载到内存缓存;注入给 auth 用于注册开关/赠送积分。
 	settingsDAO := settings.NewDAO(sqldb)
 	settingsSvc := settings.NewService(settingsDAO)
 	if err := settingsSvc.Reload(context.Background()); err != nil {
 		log.Warn("settings reload failed, using defaults", zap.Error(err))
 	}
+
+	mailSvc := mailer.NewWithProvider(settingsSvc.MailerConfig, log)
+	defer mailSvc.Close()
+	if mailSvc.Disabled() {
+		log.Info("mail channel disabled (mail.smtp_host empty or mail.smtp_enabled false)")
+	} else {
+		log.Info("mail channel ready", zap.String("host", settingsSvc.MailerConfig().Host))
+	}
+	// 把 mailSvc 注入给 authSvc 用于注册欢迎邮件
+	authSvc.SetMailer(mailSvc, cfg.App.BaseURL)
+
 	imageRunner.SetSettings(settingsSvc)
 	settingsH := settings.NewHandler(settingsSvc, mailSvc, auditDAO)
 	authSvc.SetSettings(settingsSvc)

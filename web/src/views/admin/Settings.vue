@@ -102,6 +102,7 @@ function isTextarea(it: SettingItem) { return it.key === 'site.image_notice' || 
 function inputType(it: SettingItem) {
   if (it.type === 'email') return 'email'
   if (it.type === 'url') return 'url'
+  if (it.type === 'password') return 'password'
   return 'text'
 }
 
@@ -323,6 +324,7 @@ onMounted(load)
                     :placeholder="it.desc || it.label"
                     :type="isTextarea(it) ? 'textarea' : inputType(it)"
                     :rows="isTextarea(it) ? 3 : undefined"
+                    :show-password="it.type === 'password'"
                     clearable
                     style="max-width: 520px"
                   />
@@ -342,7 +344,7 @@ onMounted(load)
           <el-input v-model="mailTo" placeholder="your@mail.com" type="email" clearable />
         </el-form-item>
         <div style="font-size:12px;color:var(--el-text-color-secondary)">
-          使用 <code>configs/config.yaml</code> 的 SMTP 配置发送;未配置时会直接失败。
+          使用当前数据库中的邮件设置发送；未启用或配置缺失时会失败。
         </div>
       </el-form>
       <template #footer>

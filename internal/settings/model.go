@@ -213,6 +213,14 @@ const (
 
 	// 邮件
 	MailEnabledDisplay = "mail.enabled_display"
+	MailSMTPEnabled    = "mail.smtp_enabled"
+	MailSMTPHost       = "mail.smtp_host"
+	MailSMTPPort       = "mail.smtp_port"
+	MailSMTPUsername   = "mail.smtp_username"
+	MailSMTPPassword   = "mail.smtp_password"
+	MailSMTPFrom       = "mail.smtp_from"
+	MailSMTPFromName   = "mail.smtp_from_name"
+	MailSMTPUseTLS     = "mail.smtp_use_tls"
 
 	// 存储
 	StorageImageMode   = "storage.image_storage_mode"
@@ -289,6 +297,14 @@ var Defs = []KeyDef{
 	{Key: RechargeOrderExpireMinutes, Type: "int", Category: "billing", Default: "30", Label: "订单有效期(分钟)", Desc: "到期未支付自动取消"},
 
 	// ---------- 邮件 ----------
+	{Key: MailSMTPEnabled, Type: "bool", Category: "mail", Default: "false", Label: "启用 SMTP", Desc: "开启后使用下方数据库配置发送系统邮件"},
+	{Key: MailSMTPHost, Type: "string", Category: "mail", Default: "", Label: "SMTP 主机", Desc: "例如 smtp.example.com;留空时邮件通道关闭"},
+	{Key: MailSMTPPort, Type: "int", Category: "mail", Default: "465", Label: "SMTP 端口", Desc: "常用 465 或 587"},
+	{Key: MailSMTPUsername, Type: "string", Category: "mail", Default: "", Label: "SMTP 用户名", Desc: "用于 SMTP 认证的用户名"},
+	{Key: MailSMTPPassword, Type: "password", Category: "mail", Default: "", Label: "SMTP 密码", Desc: "用于 SMTP 认证的密码或授权码"},
+	{Key: MailSMTPFrom, Type: "email", Category: "mail", Default: "", Label: "发件邮箱", Desc: "邮件 From 地址"},
+	{Key: MailSMTPFromName, Type: "string", Category: "mail", Default: "GPT2API", Label: "发件人名称", Desc: "邮件 From 显示名称"},
+	{Key: MailSMTPUseTLS, Type: "bool", Category: "mail", Default: "true", Label: "使用 TLS", Desc: "开启用于 465 隐式 TLS;关闭时走普通 SMTP 发送"},
 	{Key: MailEnabledDisplay, Type: "string", Category: "mail", Default: "auto", Label: "邮件开关展示", Desc: "auto/true/false;实际是否发邮件由 SMTP 配置决定"},
 
 	// ---------- 存储 ----------

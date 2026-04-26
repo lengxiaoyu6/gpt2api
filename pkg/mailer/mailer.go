@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/smtp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,32 +42,73 @@ type Message struct {
 }
 
 // Mailer 可被多个业务复用。
+type ConfigProvider func() Config
+
 type Mailer struct {
-	cfg    Config
-	ch     chan Message
-	log    *zap.Logger
-	wg     sync.WaitGroup
-	closed chan struct{}
-	once   sync.Once
+	cfg      Config
+	provider ConfigProvider
+	ch       chan Message
+	log      *zap.Logger
+	wg       sync.WaitGroup
+	closed   chan struct{}
+	once     sync.Once
+	started  bool
 }
 
 // Disabled 表示当前 mailer 未配置。
-func (m *Mailer) Disabled() bool { return m == nil || m.cfg.Host == "" }
+func (m *Mailer) Disabled() bool {
+	return m == nil || disabledConfig(m.config())
+}
+
+func disabledConfig(cfg Config) bool {
+	return strings.TrimSpace(cfg.Host) == ""
+}
+
+func (m *Mailer) config() Config {
+	if m.provider != nil {
+		return m.provider()
+	}
+	return m.cfg
+}
 
 // New 构造 Mailer 并启动后台协程。
 // host 为空时返回一个 disabled 的实例(Send 成 no-op)。
 func New(cfg Config, log *zap.Logger) *Mailer {
-	m := &Mailer{
-		cfg:    cfg,
-		ch:     make(chan Message, 100),
-		log:    log.With(zap.String("mod", "mailer")),
-		closed: make(chan struct{}),
-	}
-	if !m.Disabled() {
-		m.wg.Add(1)
-		go m.loop()
+	m := newMailer(cfg, nil, log)
+	if !disabledConfig(cfg) {
+		m.start()
 	}
 	return m
+}
+
+// NewWithProvider 构造运行时读取配置的 Mailer。
+// provider 每次发送前都会被调用,因此系统设置更新后无需重启服务。
+func NewWithProvider(provider ConfigProvider, log *zap.Logger) *Mailer {
+	m := newMailer(Config{}, provider, log)
+	m.start()
+	return m
+}
+
+func newMailer(cfg Config, provider ConfigProvider, log *zap.Logger) *Mailer {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &Mailer{
+		cfg:      cfg,
+		provider: provider,
+		ch:       make(chan Message, 100),
+		log:      log.With(zap.String("mod", "mailer")),
+		closed:   make(chan struct{}),
+	}
+}
+
+func (m *Mailer) start() {
+	if m.started {
+		return
+	}
+	m.started = true
+	m.wg.Add(1)
+	go m.loop()
 }
 
 func (m *Mailer) loop() {
@@ -85,10 +127,11 @@ func (m *Mailer) loop() {
 // SendSync 同步发送,直接把错误抛给调用方。
 // 专供"测试发送"等需要立即反馈结果的场景;业务路径请继续用 Send。
 func (m *Mailer) SendSync(msg Message) error {
-	if m.Disabled() {
+	cfg := m.config()
+	if disabledConfig(cfg) {
 		return errors.New("mailer disabled: SMTP not configured")
 	}
-	return m.send(msg)
+	return m.sendWithConfig(cfg, msg)
 }
 
 // Send 非阻塞投递。
@@ -106,7 +149,7 @@ func (m *Mailer) Send(msg Message) {
 }
 
 func (m *Mailer) Close() {
-	if m.Disabled() {
+	if m == nil || !m.started {
 		return
 	}
 	m.once.Do(func() {
@@ -121,14 +164,22 @@ func (m *Mailer) Close() {
 }
 
 func (m *Mailer) send(msg Message) error {
+	cfg := m.config()
+	if disabledConfig(cfg) {
+		return errors.New("mailer disabled: SMTP not configured")
+	}
+	return m.sendWithConfig(cfg, msg)
+}
+
+func (m *Mailer) sendWithConfig(cfg Config, msg Message) error {
 	if msg.To == "" || msg.Subject == "" {
 		return errors.New("mailer: to/subject empty")
 	}
-	addr := net.JoinHostPort(m.cfg.Host, strconv.Itoa(m.cfg.Port))
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 
-	fromHeader := m.cfg.From
-	if m.cfg.FromName != "" {
-		fromHeader = fmt.Sprintf("%s <%s>", m.cfg.FromName, m.cfg.From)
+	fromHeader := cfg.From
+	if cfg.FromName != "" {
+		fromHeader = fmt.Sprintf("%s <%s>", cfg.FromName, cfg.From)
 	}
 
 	headers := map[string]string{
@@ -145,14 +196,14 @@ func (m *Mailer) send(msg Message) error {
 	buf = append(buf, []byte("\r\n")...)
 	buf = append(buf, []byte(msg.HTML)...)
 
-	auth := smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)
+	auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
 
-	if m.cfg.UseTLS {
+	if cfg.UseTLS {
 		// 465:隐式 TLS —— 先 TLS 再 SMTP 握手
-		return sendTLS(addr, m.cfg.Host, auth, m.cfg.From, msg.To, buf)
+		return sendTLS(addr, cfg.Host, auth, cfg.From, msg.To, buf)
 	}
 	// 587:明文起 STARTTLS
-	return smtp.SendMail(addr, auth, m.cfg.From, []string{msg.To}, buf)
+	return smtp.SendMail(addr, auth, cfg.From, []string{msg.To}, buf)
 }
 
 // sendTLS 实现 SMTPS(465) 隐式 TLS。
