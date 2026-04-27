@@ -96,6 +96,7 @@ func New(d *Deps) *gin.Engine {
 		authGrp := api.Group("/auth")
 		{
 			authGrp.POST("/register", d.AuthH.Register)
+			authGrp.POST("/email-code/send", d.AuthH.SendRegisterEmailCode)
 			authGrp.POST("/login", d.AuthH.Login)
 			authGrp.POST("/refresh", d.AuthH.Refresh)
 		}

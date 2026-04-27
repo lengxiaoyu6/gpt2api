@@ -218,6 +218,7 @@ func main() {
 	settingsH := settings.NewHandler(settingsSvc, mailSvc, auditDAO)
 	authSvc.SetSettings(settingsSvc)
 	authSvc.SetBilling(billEngine)
+	authSvc.SetRedis(rdb)
 	checkinDAO := checkin.NewDAO(sqldb, billEngine)
 	checkinSvc := checkin.NewService(checkinDAO, settingsSvc)
 	checkinH := checkin.NewHandler(checkinSvc)

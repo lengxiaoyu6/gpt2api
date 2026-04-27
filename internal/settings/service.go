@@ -146,7 +146,8 @@ func (s *Service) ImageStorageMode() string {
 func (s *Service) CloudConfig() string { return strings.TrimSpace(s.GetString(StorageCloudConfig)) }
 
 // -- auth --
-func (s *Service) AllowRegister() bool { return s.GetBool(AuthAllowRegister) }
+func (s *Service) AllowRegister() bool      { return s.GetBool(AuthAllowRegister) }
+func (s *Service) RequireEmailVerify() bool { return s.GetBool(AuthRequireEmailVerify) }
 func (s *Service) DefaultGroupID() uint64 {
 	n := s.GetInt(AuthDefaultGroupID)
 	if n <= 0 {

@@ -34,7 +34,7 @@ func RenderWelcome(nickname, email, baseURL string) (subject, html string) {
 	html = fmt.Sprintf(`<!doctype html><html><head><meta charset="utf-8">%s</head><body>
 <div class="card">
   <h1>欢迎,%s</h1>
-  <div class="hi">你的 GPT2API 账号已开通,账号 <b>%s</b>。</div>
+  <div class="hi">你的账号已开通,账号 <b>%s</b>。</div>
   <div class="box">
     <b>新手指引</b><br/>
     · 到 <b>个人中心 → API Key</b> 创建一把 sk- 开头的 key<br/>
@@ -44,6 +44,32 @@ func RenderWelcome(nickname, email, baseURL string) (subject, html string) {
   <div class="muted">如果这不是你本人的操作,请直接忽略本邮件。</div>
 </div>
 </body></html>`, baseCSS, htmlEscape(nickname), htmlEscape(email), htmlEscape(baseURL))
+	return
+}
+
+// RenderRegisterEmailCode 注册邮箱验证码邮件。
+func RenderRegisterEmailCode(siteName, email, code string, expire time.Duration) (subject, html string) {
+	siteName = strings.TrimSpace(siteName)
+	if siteName == "" {
+		siteName = "GPT2API"
+	}
+	subject = siteName + " 注册验证码"
+	minutes := int(expire / time.Minute)
+	if minutes <= 0 {
+		minutes = 10
+	}
+	html = fmt.Sprintf(`<!doctype html><html><head><meta charset="utf-8">%s</head><body>
+<div class="card">
+  <h1>邮箱验证码</h1>
+  <div class="hi">正在为账号 <b>%s</b> 完成注册验证。</div>
+  <div class="box">
+    <div style="font-size:13px;color:#666;margin-bottom:8px">验证码</div>
+    <div style="font-size:32px;letter-spacing:6px;font-weight:700;color:#222">%s</div>
+    <div style="margin-top:10px;color:#666">有效期 %d 分钟，请在注册页填写后继续完成注册。</div>
+  </div>
+  <div class="muted">如果这不是本人的操作，请直接忽略本邮件。</div>
+</div>
+</body></html>`, baseCSS, htmlEscape(email), htmlEscape(code), minutes)
 	return
 }
 

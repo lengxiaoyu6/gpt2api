@@ -20,14 +20,20 @@ const defaultSiteInfo: Record<string, string> = {
   'site.footer': '',
   'site.image_notice': '',
   'auth.allow_register': 'true',
+  'auth.require_email_verify': 'false',
 }
 
 function isProtectedTab(tab: TabKey) {
   return tab === 'generate' || tab === 'history' || tab === 'profile'
 }
 
-function allowRegister(siteInfo: Record<string, string>) {
+export function allowRegister(siteInfo: Record<string, string>) {
   const value = (siteInfo['auth.allow_register'] || '').toLowerCase()
+  return value === 'true' || value === '1' || value === 'yes'
+}
+
+export function requireEmailVerify(siteInfo: Record<string, string>) {
+  const value = (siteInfo['auth.require_email_verify'] || '').toLowerCase()
   return value === 'true' || value === '1' || value === 'yes'
 }
 

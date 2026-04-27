@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Sparkles, User, Mail, Lock } from 'lucide-react';
 import { toast } from 'sonner';
-import { useStore } from '../store/useStore';
+import { sendRegisterEmailCode } from '../api/auth';
+import { ApiError } from '../api/http';
+import { allowRegister, requireEmailVerify, useStore } from '../store/useStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -11,9 +13,22 @@ interface AuthOverlayProps {
   onClose: () => void;
 }
 
-function allowRegister(siteInfo: Record<string, string>) {
-  const value = (siteInfo['auth.allow_register'] || '').toLowerCase();
-  return value === 'true' || value === '1' || value === 'yes';
+const registerEmailCodeStorageKey = 'gpt2api.register.email_code';
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function readRetryAfterSec(error: unknown) {
+  if (error instanceof ApiError) {
+    const data = error.data as { retry_after_sec?: number } | undefined;
+    return Number(data?.retry_after_sec || 0);
+  }
+  if (error && typeof error === 'object' && 'data' in error) {
+    const data = (error as { data?: { retry_after_sec?: number } }).data;
+    return Number(data?.retry_after_sec || 0);
+  }
+  return 0;
 }
 
 export default function AuthOverlay({ onClose }: AuthOverlayProps) {
@@ -22,10 +37,104 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
   const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [sendingEmailCode, setSendingEmailCode] = useState(false);
+  const [countdownSec, setCountdownSec] = useState(0);
+
+  const countdownTimerRef = useRef<number | null>(null);
 
   const canRegister = allowRegister(siteInfo);
+  const needsEmailVerify = requireEmailVerify(siteInfo);
   const siteName = siteInfo['site.name'] || 'GPT2API';
+  const showEmailCodeField = !isLogin && needsEmailVerify;
+  const emailCodeButtonDisabled = sendingEmailCode || countdownSec > 0;
+  const emailCodeButtonText = countdownSec > 0
+    ? `${countdownSec}s 后重发`
+    : sendingEmailCode
+      ? '发送中…'
+      : '发送验证码';
+
+  const stopCountdown = React.useCallback(() => {
+    if (countdownTimerRef.current != null) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }, []);
+
+  const persistEmailCodeCountdown = React.useCallback((expireAt: number, nextEmail: string) => {
+    if (expireAt <= Date.now()) {
+      sessionStorage.removeItem(registerEmailCodeStorageKey);
+      return;
+    }
+    sessionStorage.setItem(registerEmailCodeStorageKey, JSON.stringify({
+      email: normalizeEmail(nextEmail),
+      expire_at: expireAt,
+    }));
+  }, []);
+
+  const syncCountdown = React.useCallback((expireAt: number, nextEmail: string) => {
+    const next = Math.max(0, Math.ceil((expireAt - Date.now()) / 1000));
+    setCountdownSec(next);
+    if (next > 0) {
+      persistEmailCodeCountdown(expireAt, nextEmail);
+      return;
+    }
+    stopCountdown();
+    sessionStorage.removeItem(registerEmailCodeStorageKey);
+  }, [persistEmailCodeCountdown, stopCountdown]);
+
+  const startCountdown = React.useCallback((expireAt: number, nextEmail: string) => {
+    stopCountdown();
+    syncCountdown(expireAt, nextEmail);
+    if (expireAt <= Date.now()) {
+      return;
+    }
+    countdownTimerRef.current = window.setInterval(() => {
+      syncCountdown(expireAt, nextEmail);
+    }, 1000);
+  }, [stopCountdown, syncCountdown]);
+
+  const resetEmailCodeState = React.useCallback(() => {
+    stopCountdown();
+    setCountdownSec(0);
+    setEmailCode('');
+    sessionStorage.removeItem(registerEmailCodeStorageKey);
+  }, [stopCountdown]);
+
+  const restoreEmailCodeState = React.useCallback(() => {
+    const raw = sessionStorage.getItem(registerEmailCodeStorageKey);
+    if (!raw) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { email?: string; expire_at?: number };
+      const savedEmail = normalizeEmail(String(parsed.email || ''));
+      const expireAt = Number(parsed.expire_at || 0);
+      if (!savedEmail || expireAt <= Date.now()) {
+        sessionStorage.removeItem(registerEmailCodeStorageKey);
+        return;
+      }
+      const currentEmail = normalizeEmail(email);
+      if (currentEmail && currentEmail !== savedEmail) {
+        sessionStorage.removeItem(registerEmailCodeStorageKey);
+        return;
+      }
+      if (!currentEmail) {
+        setEmail(savedEmail);
+      }
+      startCountdown(expireAt, savedEmail);
+    } catch {
+      sessionStorage.removeItem(registerEmailCodeStorageKey);
+    }
+  }, [email, startCountdown]);
+
+  const handleEmailChange = (nextValue: string) => {
+    if (normalizeEmail(nextValue) !== normalizeEmail(email)) {
+      resetEmailCodeState();
+    }
+    setEmail(nextValue);
+  };
 
   useEffect(() => {
     if (!canRegister && !isLogin) {
@@ -33,12 +142,57 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
     }
   }, [canRegister, isLogin]);
 
+  useEffect(() => {
+    restoreEmailCodeState();
+    return () => {
+      stopCountdown();
+    };
+  }, [restoreEmailCodeState, stopCountdown]);
+
+  useEffect(() => {
+    if (needsEmailVerify) {
+      return;
+    }
+    resetEmailCodeState();
+  }, [needsEmailVerify, resetEmailCodeState]);
+
+  const sendEmailCode = async () => {
+    if (!showEmailCodeField || emailCodeButtonDisabled) {
+      return;
+    }
+
+    const nextEmail = email.trim();
+    if (!nextEmail) {
+      toast.error('请填写邮箱');
+      return;
+    }
+
+    setSendingEmailCode(true);
+    try {
+      const result = await sendRegisterEmailCode({ email: nextEmail });
+      const retryAfterSec = Number(result.retry_after_sec || 0);
+      if (retryAfterSec > 0) {
+        startCountdown(Date.now() + retryAfterSec * 1000, nextEmail);
+      }
+      toast.success('验证码已发送，请查收邮箱');
+    } catch (error) {
+      const retryAfterSec = readRetryAfterSec(error);
+      if (retryAfterSec > 0) {
+        startCountdown(Date.now() + retryAfterSec * 1000, nextEmail);
+      }
+      toast.error(error instanceof Error ? error.message : '验证码发送失败，请稍后重试');
+    } finally {
+      setSendingEmailCode(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const nextEmail = email.trim();
     const nextPassword = password.trim();
     const nextNickname = nickname.trim();
+    const nextEmailCode = emailCode.trim();
 
     if (!nextEmail || !nextPassword) {
       toast.error('请填写邮箱和密码');
@@ -50,13 +204,24 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
       return;
     }
 
+    if (!isLogin && needsEmailVerify && !nextEmailCode) {
+      toast.error('请填写邮箱验证码');
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isLogin) {
         await login({ email: nextEmail, password: nextPassword });
         toast.success('登录成功');
       } else {
-        await register({ nickname: nextNickname, email: nextEmail, password: nextPassword });
+        await register({
+          nickname: nextNickname,
+          email: nextEmail,
+          password: nextPassword,
+          email_code: nextEmailCode || undefined,
+        });
+        resetEmailCodeState();
         toast.success('注册成功');
       }
       onClose();
@@ -117,10 +282,34 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
                   type="email"
                   placeholder="电子邮箱"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => handleEmailChange(e.target.value)}
                   className="pl-10"
                 />
               </div>
+              {showEmailCodeField && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="邮箱验证码"
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value)}
+                      maxLength={6}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={emailCodeButtonDisabled}
+                      onClick={sendEmailCode}
+                      className="shrink-0 min-w-[112px]"
+                    >
+                      {emailCodeButtonText}
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

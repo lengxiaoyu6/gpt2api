@@ -32,7 +32,18 @@ export interface LoginResp {
 export interface RegisterReq {
   email: string
   password: string
-  nickname: string
+  nickname?: string
+  email_code?: string
+}
+
+export interface SendRegisterEmailCodeReq {
+  email: string
+}
+
+export interface SendRegisterEmailCodeResp {
+  sent: boolean
+  expire_sec: number
+  retry_after_sec: number
 }
 
 export function login(req: LoginReq) {
@@ -41,6 +52,10 @@ export function login(req: LoginReq) {
 
 export function register(req: RegisterReq) {
   return http.post('/api/auth/register', req) as Promise<UserInfo>
+}
+
+export function sendRegisterEmailCode(req: SendRegisterEmailCodeReq) {
+  return http.post('/api/auth/email-code/send', req) as Promise<SendRegisterEmailCodeResp>
 }
 
 export function refresh(refreshToken: string) {

@@ -31,8 +31,8 @@ export const useUserStore = defineStore(
       await fetchMe()
     }
 
-    async function register(email: string, password: string, nickname?: string) {
-      await authApi.register({ email, password, nickname })
+    async function register(email: string, password: string, nickname?: string, emailCode?: string) {
+      await authApi.register({ email, password, nickname, email_code: emailCode || undefined })
     }
 
     async function fetchMe() {

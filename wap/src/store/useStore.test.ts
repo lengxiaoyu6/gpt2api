@@ -7,6 +7,7 @@ vi.mock('../api/site', () => ({
 vi.mock('../api/auth', () => ({
   login: vi.fn(),
   register: vi.fn(),
+  sendRegisterEmailCode: vi.fn(),
 }))
 
 vi.mock('../api/me', () => ({
@@ -35,6 +36,7 @@ function resetStore() {
   const initial = useStore.getInitialState()
   useStore.setState(initial, true)
   localStorage.clear()
+  sessionStorage.clear()
 }
 
 describe('useStore backend integration', () => {
@@ -124,9 +126,14 @@ describe('useStore backend integration', () => {
     await state.bootstrapApp()
 
     expect(useStore.getState().siteInfo['site.name']).toBe('GPT2API')
+    expect(useStore.getState().siteInfo['auth.require_email_verify']).toBe('false')
     expect((useStore.getState() as any).user).toBeNull()
     expect((useStore.getState() as any).bootstrapStatus).toBe('ready')
     expect(meApi.getMe).not.toHaveBeenCalled()
+  })
+
+  test('store default site info exposes auth.require_email_verify for anonymous ui', () => {
+    expect(useStore.getState().siteInfo['auth.require_email_verify']).toBe('false')
   })
 
   test('openAuthForTab records pending protected tab and opens overlay', () => {

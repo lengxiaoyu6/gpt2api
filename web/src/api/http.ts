@@ -16,6 +16,20 @@ export interface ApiEnvelope<T = any> {
   data: T
 }
 
+export class ApiError<T = any> extends Error {
+  status: number
+  code: number
+  data?: T
+
+  constructor(message: string, options: { status?: number; code?: number; data?: T } = {}) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = options.status ?? 0
+    this.code = options.code ?? 0
+    this.data = options.data
+  }
+}
+
 const baseURL = import.meta.env.VITE_API_BASE || ''
 
 export const http: AxiosInstance = axios.create({
@@ -142,13 +156,19 @@ http.interceptors.response.use(
       }
       const msg = payload.message || `请求失败 (code=${payload.code})`
       ElMessage.error(msg)
-      return Promise.reject(new Error(msg))
+      return Promise.reject(new ApiError(msg, { status: response.status, code: payload.code, data: payload.data }))
     }
     return response.data
   },
   (error: AxiosError<ApiEnvelope>) => {
     const status = error.response?.status
-    const msg = error.response?.data?.message || error.message || '网络错误'
+    const payload = error.response?.data
+    const msg = payload?.message || error.message || '网络错误'
+    const apiError = new ApiError(msg, {
+      status,
+      code: payload?.code,
+      data: payload?.data,
+    })
     if (status === 401) {
       // 登录接口 401 = 账号密码错误,不要清 token 也不要跳转,直接给明确提示。
       // 后端返回的是英文 "invalid email or password",这里本地化为中文。
@@ -182,7 +202,7 @@ http.interceptors.response.use(
     } else {
       ElMessage.error(msg)
     }
-    return Promise.reject(error)
+    return Promise.reject(apiError)
   },
 )
 

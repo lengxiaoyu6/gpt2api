@@ -48,3 +48,25 @@ test('登录页与注册页保留现有认证接线', () => {
   assert.match(registerVue, /store\.register\(/)
   assert.match(registerVue, /await store\.login\(/)
 })
+
+test('注册页接入邮箱验证码交互', () => {
+  const registerVue = read('web/src/views/auth/Register.vue')
+  assert.match(registerVue, /email_code/i)
+  assert.match(registerVue, /sendEmailCode/i)
+  assert.match(registerVue, /sessionStorage/)
+  assert.match(registerVue, /retry_after_sec/)
+})
+
+test('认证接口扩展邮箱验证码能力', () => {
+  const authApi = read('web/src/api/auth.ts')
+  const userStore = read('web/src/stores/user.ts')
+  assert.match(authApi, /email_code/i)
+  assert.match(authApi, /email-code\/send/)
+  assert.match(userStore, /emailCode/i)
+})
+
+test('站点公开设置暴露邮箱验证开关', () => {
+  const siteStore = read('web/src/stores/site.ts')
+  assert.match(siteStore, /auth\.require_email_verify/)
+  assert.match(siteStore, /requireEmailVerify/)
+})

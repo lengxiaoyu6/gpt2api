@@ -6,6 +6,20 @@ export interface ApiEnvelope<T = unknown> {
   data: T
 }
 
+export class ApiError<T = unknown> extends Error {
+  status: number
+  code: number
+  data?: T
+
+  constructor(message: string, options: { status?: number; code?: number; data?: T } = {}) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = options.status ?? 0
+    this.code = options.code ?? 0
+    this.data = options.data
+  }
+}
+
 const baseURL = import.meta.env.VITE_API_BASE || ''
 
 export const TOKEN_KEY = 'gpt2api.access'
@@ -120,13 +134,23 @@ http.interceptors.response.use(
       if (payload.code === 0) {
         return payload.data as unknown
       }
-      return Promise.reject(new Error(payload.message || `请求失败 code=${payload.code}`))
+      return Promise.reject(new ApiError(payload.message || `请求失败 code=${payload.code}`, {
+        status: response.status,
+        code: payload.code,
+        data: payload.data,
+      }))
     }
     return response.data
   },
   (error: AxiosError<ApiEnvelope>) => {
     const status = error.response?.status
-    const detail = error.response?.data?.message || error.message || '网络异常'
+    const payload = error.response?.data
+    const detail = payload?.message || error.message || '网络异常'
+    const apiError = new ApiError(detail, {
+      status,
+      code: payload?.code,
+      data: payload?.data,
+    })
     if (status === 401) {
       const originalConfig = error.config as RetryAxiosRequestConfig | undefined
       if (originalConfig && !originalConfig._retry && !originalConfig._skipAuthRefresh && !isAuthEndpoint(originalConfig.url) && readRefreshToken()) {
@@ -140,12 +164,12 @@ http.interceptors.response.use(
           })
           .catch((refreshError) => {
             handleUnauthorized()
-            return Promise.reject(refreshError instanceof Error ? refreshError : new Error(detail))
+            return Promise.reject(refreshError instanceof Error ? refreshError : apiError)
           })
       }
       handleUnauthorized()
     }
-    return Promise.reject(new Error(detail))
+    return Promise.reject(apiError)
   },
 )
 

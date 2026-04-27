@@ -26,7 +26,17 @@ vi.mock('../api/me', async (importOriginal) => {
   }
 })
 
+vi.mock('../api/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/auth')>()
+  return {
+    ...actual,
+    sendRegisterEmailCode: vi.fn(),
+  }
+})
+
 const meApi = await import('../api/me')
+const authApi = await import('../api/auth')
+const httpModule = await import('../api/http')
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
 const { default: AuthOverlay } = await import('./AuthOverlay')
@@ -37,16 +47,25 @@ function resetStore() {
   const initial = useStore.getInitialState()
   useStore.setState(initial, true)
   localStorage.clear()
+  sessionStorage.clear()
+}
+
+async function switchToRegisterMode() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '立即注册' }))
+  })
 }
 
 describe('wap backend bindings', () => {
   beforeEach(() => {
     resetStore()
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   afterEach(() => {
     resetStore()
+    vi.useRealTimers()
   })
 
   test('auth overlay uses email and password login fields and hides register entry when register is disabled', () => {
@@ -66,6 +85,180 @@ describe('wap backend bindings', () => {
     expect(screen.getByPlaceholderText('电子邮箱')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('密码')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '立即注册' })).toBeNull()
+  })
+
+  test('auth overlay shows email code controls when email verification is required', async () => {
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+        'auth.require_email_verify': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    expect(screen.getByPlaceholderText('邮箱验证码')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '发送验证码' })).toBeInTheDocument()
+  })
+
+  test('auth overlay hides email code controls when email verification is disabled', async () => {
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+        'auth.require_email_verify': 'false',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    expect(screen.queryByPlaceholderText('邮箱验证码')).toBeNull()
+    expect(screen.queryByRole('button', { name: '发送验证码' })).toBeNull()
+  })
+
+  test('auth overlay submits email_code during register', async () => {
+    const register = vi.fn().mockResolvedValue(undefined)
+
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+        'auth.require_email_verify': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register,
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    fireEvent.change(screen.getByPlaceholderText('昵称'), { target: { value: 'Demo' } })
+    fireEvent.change(screen.getByPlaceholderText('电子邮箱'), { target: { value: 'demo@example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('密码'), { target: { value: 'secret123' } })
+    fireEvent.change(screen.getByPlaceholderText('邮箱验证码'), { target: { value: '123456' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '立即注册' }))
+    })
+
+    expect(register).toHaveBeenCalledWith({
+      nickname: 'Demo',
+      email: 'demo@example.com',
+      password: 'secret123',
+      email_code: '123456',
+    })
+  })
+
+  test('auth overlay clears email code when email changes', async () => {
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+        'auth.require_email_verify': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    fireEvent.change(screen.getByPlaceholderText('电子邮箱'), { target: { value: 'first@example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('邮箱验证码'), { target: { value: '123456' } })
+    fireEvent.change(screen.getByPlaceholderText('电子邮箱'), { target: { value: 'second@example.com' } })
+
+    expect(screen.getByPlaceholderText('邮箱验证码')).toHaveValue('')
+  })
+
+  test('auth overlay starts and restores email code countdown', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-27T08:00:00.000Z'))
+    vi.mocked(authApi.sendRegisterEmailCode).mockResolvedValue({
+      sent: true,
+      expire_sec: 600,
+      retry_after_sec: 60,
+    })
+
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+        'auth.require_email_verify': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    const { unmount } = render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    fireEvent.change(screen.getByPlaceholderText('电子邮箱'), { target: { value: 'demo@example.com' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+      await Promise.resolve()
+    })
+
+    expect(authApi.sendRegisterEmailCode).toHaveBeenCalledWith({ email: 'demo@example.com' })
+    expect(screen.getByRole('button', { name: '60s 后重发' })).toBeInTheDocument()
+
+    unmount()
+
+    render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    expect(screen.getByPlaceholderText('电子邮箱')).toHaveValue('demo@example.com')
+    expect(screen.getByRole('button', { name: '60s 后重发' })).toBeInTheDocument()
+  })
+
+  test('auth overlay resets countdown from retry_after_sec on rate limit', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-27T08:00:00.000Z'))
+    const ApiErrorCtor = ((httpModule as any).ApiError as typeof Error | undefined) ?? Error
+
+    vi.mocked(authApi.sendRegisterEmailCode).mockRejectedValue(
+      new (ApiErrorCtor as any)('email code requested too frequently', {
+        status: 429,
+        code: 42900,
+        data: { retry_after_sec: 18 },
+      }),
+    )
+
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+        'auth.require_email_verify': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={vi.fn()} />)
+    await switchToRegisterMode()
+
+    fireEvent.change(screen.getByPlaceholderText('电子邮箱'), { target: { value: 'demo@example.com' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+      await Promise.resolve()
+    })
+
+    expect(authApi.sendRegisterEmailCode).toHaveBeenCalledWith({ email: 'demo@example.com' })
+    expect(screen.getByRole('button', { name: '18s 后重发' })).toBeInTheDocument()
   })
 
   test('history view loads server records and renders preview from thumb_urls', async () => {

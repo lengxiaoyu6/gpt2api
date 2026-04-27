@@ -16,6 +16,23 @@ export interface LoginResp {
   token: TokenPair
 }
 
+export interface RegisterReq {
+  email: string
+  password: string
+  nickname?: string
+  email_code?: string
+}
+
+export interface SendRegisterEmailCodeReq {
+  email: string
+}
+
+export interface SendRegisterEmailCodeResp {
+  sent: boolean
+  expire_sec: number
+  retry_after_sec: number
+}
+
 export interface UserInfo {
   id: number
   email: string
@@ -33,8 +50,12 @@ export function login(req: LoginReq): Promise<LoginResp> {
   return http.post('/api/auth/login', req)
 }
 
-export function register(req: { email: string; password: string; nickname?: string }): Promise<UserInfo> {
+export function register(req: RegisterReq): Promise<UserInfo> {
   return http.post('/api/auth/register', req)
+}
+
+export function sendRegisterEmailCode(req: SendRegisterEmailCodeReq): Promise<SendRegisterEmailCodeResp> {
+  return http.post('/api/auth/email-code/send', req)
 }
 
 export function refresh(refreshToken: string): Promise<TokenPair> {

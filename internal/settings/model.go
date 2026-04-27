@@ -244,7 +244,7 @@ var Defs = []KeyDef{
 
 	// ---------- 安全与认证 ----------
 	{Key: AuthAllowRegister, Type: "bool", Category: "auth", Default: "true", Label: "开放注册", Desc: "关闭后仅管理员可创建用户", Public: true},
-	{Key: AuthRequireEmailVerify, Type: "bool", Category: "auth", Default: "false", Label: "邮箱验证", Desc: "注册时必须验证邮箱(预留;尚未实装)"},
+	{Key: AuthRequireEmailVerify, Type: "bool", Category: "auth", Default: "false", Label: "邮箱验证", Desc: "注册时必须验证邮箱", Public: true},
 	{Key: AuthEmailDomainWhitelist, Type: "string", Category: "auth", Default: "", Label: "邮箱域名白名单", Desc: "逗号分隔,如 qq.com,gmail.com;留空=不限"},
 	{Key: AuthPasswordMinLength, Type: "int", Category: "auth", Default: "6", Label: "密码最小长度", Desc: "注册/改密时强制校验(6~64)"},
 	{Key: AuthInviteCodeRequired, Type: "bool", Category: "auth", Default: "false", Label: "邀请码注册", Desc: "必须邀请码才能注册(预留)"},

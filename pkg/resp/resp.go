@@ -16,16 +16,16 @@ type Body struct {
 }
 
 const (
-	CodeOK           = 0
-	CodeBadRequest   = 40000
-	CodeUnauthorized = 40100
-	CodeForbidden    = 40300
-	CodeNotFound     = 40400
-	CodeConflict     = 40900
+	CodeOK              = 0
+	CodeBadRequest      = 40000
+	CodeUnauthorized    = 40100
+	CodeForbidden       = 40300
+	CodeNotFound        = 40400
+	CodeConflict        = 40900
 	CodePaymentRequired = 40200
-	CodeRateLimited  = 42900
-	CodeInternal     = 50000
-	CodeUpstream     = 50200
+	CodeRateLimited     = 42900
+	CodeInternal        = 50000
+	CodeUpstream        = 50200
 )
 
 func OK(c *gin.Context, data interface{}) {
@@ -33,6 +33,26 @@ func OK(c *gin.Context, data interface{}) {
 }
 
 func Fail(c *gin.Context, code int, msg string) {
+	FailWithData(c, code, msg, nil)
+}
+
+func FailWithData(c *gin.Context, code int, msg string, data interface{}) {
+	c.AbortWithStatusJSON(statusFromCode(code), Body{Code: code, Message: msg, Data: data, TraceID: traceID(c)})
+}
+
+func BadRequest(c *gin.Context, msg string)      { Fail(c, CodeBadRequest, msg) }
+func Unauthorized(c *gin.Context, msg string)    { Fail(c, CodeUnauthorized, msg) }
+func Forbidden(c *gin.Context, msg string)       { Fail(c, CodeForbidden, msg) }
+func NotFound(c *gin.Context, msg string)        { Fail(c, CodeNotFound, msg) }
+func Conflict(c *gin.Context, msg string)        { Fail(c, CodeConflict, msg) }
+func Internal(c *gin.Context, msg string)        { Fail(c, CodeInternal, msg) }
+func PaymentRequired(c *gin.Context, msg string) { Fail(c, CodePaymentRequired, msg) }
+func RateLimited(c *gin.Context, msg string)     { Fail(c, CodeRateLimited, msg) }
+func RateLimitedWithData(c *gin.Context, msg string, data interface{}) {
+	FailWithData(c, CodeRateLimited, msg, data)
+}
+
+func statusFromCode(code int) int {
 	httpStatus := http.StatusOK
 	switch code {
 	case CodeUnauthorized:
@@ -48,17 +68,8 @@ func Fail(c *gin.Context, code int, msg string) {
 	case CodeInternal, CodeUpstream:
 		httpStatus = http.StatusInternalServerError
 	}
-	c.AbortWithStatusJSON(httpStatus, Body{Code: code, Message: msg, TraceID: traceID(c)})
+	return httpStatus
 }
-
-func BadRequest(c *gin.Context, msg string) { Fail(c, CodeBadRequest, msg) }
-func Unauthorized(c *gin.Context, msg string) { Fail(c, CodeUnauthorized, msg) }
-func Forbidden(c *gin.Context, msg string) { Fail(c, CodeForbidden, msg) }
-func NotFound(c *gin.Context, msg string) { Fail(c, CodeNotFound, msg) }
-func Conflict(c *gin.Context, msg string) { Fail(c, CodeConflict, msg) }
-func Internal(c *gin.Context, msg string) { Fail(c, CodeInternal, msg) }
-func PaymentRequired(c *gin.Context, msg string) { Fail(c, CodePaymentRequired, msg) }
-func RateLimited(c *gin.Context, msg string) { Fail(c, CodeRateLimited, msg) }
 
 func traceID(c *gin.Context) string {
 	if v, ok := c.Get("request_id"); ok {

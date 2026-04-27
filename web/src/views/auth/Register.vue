@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { sendRegisterEmailCode } from '@/api/auth'
+import { ApiError } from '@/api/http'
 import AuthFormCard from '@/components/auth/AuthFormCard.vue'
 import AuthHeroPanel from '@/components/auth/AuthHeroPanel.vue'
 import AuthShell from '@/components/auth/AuthShell.vue'
 import { useSiteStore } from '@/stores/site'
 import { useUserStore } from '@/stores/user'
+
+const registerEmailCodeStorageKey = 'gpt2api.register.email_code'
 
 const router = useRouter()
 const store = useUserStore()
@@ -20,6 +24,7 @@ const siteDesc = computed(() =>
 const siteLogo = computed(() => site.get('site.logo_url', ''))
 const siteFooter = computed(() => site.get('site.footer', ''))
 const allowRegister = computed(() => site.allowRegister())
+const requireEmailVerify = computed(() => site.requireEmailVerify())
 const noticeTitle = computed(() =>
   allowRegister.value ? '新账号赠送体验额度' : '当前采用邀请开通方式',
 )
@@ -29,16 +34,30 @@ const noticeDesc = computed(() =>
     : '可联系管理员创建账号后登录控制台使用',
 )
 const noticeTone = computed(() => (allowRegister.value ? 'success' : 'warning'))
+const emailCodeButtonText = computed(() => {
+  if (countdownSec.value > 0) return `${countdownSec.value}s 后重发`
+  if (sendingEmailCode.value) return '发送中…'
+  return '发送验证码'
+})
+const emailCodeButtonDisabled = computed(() =>
+  !allowRegister.value || !requireEmailVerify.value || sendingEmailCode.value || countdownSec.value > 0,
+)
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const sendingEmailCode = ref(false)
+const countdownSec = ref(0)
 const submitError = ref('')
 const form = reactive({
   email: '',
   password: '',
   confirm: '',
   nickname: '',
+  email_code: '',
 })
+
+let countdownTimer: number | null = null
+let restoringEmailCodeState = false
 
 const rules = {
   email: [
@@ -59,6 +78,130 @@ const rules = {
       trigger: 'blur',
     },
   ],
+  email_code: [
+    {
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+        if (!requireEmailVerify.value) {
+          callback()
+          return
+        }
+        if (!String(value || '').trim()) {
+          callback(new Error('请输入邮箱验证码'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur',
+    },
+  ],
+}
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function readRetryAfterSec(err: unknown) {
+  if (!(err instanceof ApiError)) return 0
+  const payload = err.data as { retry_after_sec?: number } | undefined
+  return Number(payload?.retry_after_sec || 0)
+}
+
+function persistEmailCodeCountdown(expireAt: number) {
+  if (expireAt <= Date.now()) {
+    sessionStorage.removeItem(registerEmailCodeStorageKey)
+    return
+  }
+  sessionStorage.setItem(
+    registerEmailCodeStorageKey,
+    JSON.stringify({
+      email: normalizeEmail(form.email),
+      expire_at: expireAt,
+    }),
+  )
+}
+
+function stopCountdown() {
+  if (countdownTimer != null) {
+    window.clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+}
+
+function syncCountdown(expireAt: number) {
+  const next = Math.max(0, Math.ceil((expireAt - Date.now()) / 1000))
+  countdownSec.value = next
+  if (next > 0) {
+    persistEmailCodeCountdown(expireAt)
+    return
+  }
+  stopCountdown()
+  sessionStorage.removeItem(registerEmailCodeStorageKey)
+}
+
+function startCountdown(expireAt: number) {
+  stopCountdown()
+  syncCountdown(expireAt)
+  if (countdownSec.value <= 0) return
+  countdownTimer = window.setInterval(() => syncCountdown(expireAt), 1000)
+}
+
+function resetEmailCodeState() {
+  stopCountdown()
+  countdownSec.value = 0
+  form.email_code = ''
+  sessionStorage.removeItem(registerEmailCodeStorageKey)
+  formRef.value?.clearValidate?.(['email_code'])
+}
+
+function restoreEmailCodeState() {
+  const raw = sessionStorage.getItem(registerEmailCodeStorageKey)
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw) as { email?: string; expire_at?: number }
+    const email = normalizeEmail(String(parsed.email || ''))
+    const expireAt = Number(parsed.expire_at || 0)
+    if (!email || expireAt <= Date.now()) {
+      sessionStorage.removeItem(registerEmailCodeStorageKey)
+      return
+    }
+    restoringEmailCodeState = true
+    if (!normalizeEmail(form.email)) {
+      form.email = email
+    }
+    restoringEmailCodeState = false
+    if (normalizeEmail(form.email) !== email) {
+      sessionStorage.removeItem(registerEmailCodeStorageKey)
+      return
+    }
+    startCountdown(expireAt)
+  } catch {
+    sessionStorage.removeItem(registerEmailCodeStorageKey)
+  } finally {
+    restoringEmailCodeState = false
+  }
+}
+
+async function sendEmailCode() {
+  if (emailCodeButtonDisabled.value || !formRef.value) return
+  const valid = await formRef.value.validateField('email').then(() => true).catch(() => false)
+  if (!valid) return
+  submitError.value = ''
+  sendingEmailCode.value = true
+  try {
+    const result = await sendRegisterEmailCode({ email: form.email })
+    const retryAfterSec = Number(result.retry_after_sec || 0)
+    if (retryAfterSec > 0) {
+      startCountdown(Date.now() + retryAfterSec * 1000)
+    }
+    ElMessage.success('验证码已发送，请查收邮箱')
+  } catch (err: unknown) {
+    const retryAfterSec = readRetryAfterSec(err)
+    if (retryAfterSec > 0) {
+      startCountdown(Date.now() + retryAfterSec * 1000)
+    }
+  } finally {
+    sendingEmailCode.value = false
+  }
 }
 
 async function onSubmit() {
@@ -68,7 +211,8 @@ async function onSubmit() {
   submitError.value = ''
   loading.value = true
   try {
-    await store.register(form.email, form.password, form.nickname)
+    await store.register(form.email, form.password, form.nickname, form.email_code)
+    resetEmailCodeState()
     ElMessage.success('注册成功，正在登录…')
     await store.login(form.email, form.password)
     router.replace('/personal/dashboard')
@@ -78,6 +222,25 @@ async function onSubmit() {
     loading.value = false
   }
 }
+
+watch(() => form.email, (value, oldValue) => {
+  if (restoringEmailCodeState) return
+  if (normalizeEmail(value) === normalizeEmail(oldValue || '')) return
+  resetEmailCodeState()
+})
+
+watch(requireEmailVerify, (enabled) => {
+  if (enabled) return
+  resetEmailCodeState()
+})
+
+onMounted(() => {
+  restoreEmailCodeState()
+})
+
+onBeforeUnmount(() => {
+  stopCountdown()
+})
 </script>
 
 <template>
@@ -123,6 +286,28 @@ async function onSubmit() {
 
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" autocomplete="username" />
+        </el-form-item>
+
+        <el-form-item v-if="requireEmailVerify" label="邮箱验证码" prop="email_code">
+          <div class="auth-email-code">
+            <el-input
+              v-model="form.email_code"
+              maxlength="6"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              @keyup.enter="onSubmit"
+            />
+            <el-button
+              class="auth-email-code__button"
+              plain
+              :loading="sendingEmailCode"
+              :disabled="emailCodeButtonDisabled"
+              @click="sendEmailCode"
+            >
+              {{ emailCodeButtonText }}
+            </el-button>
+          </div>
+          <p class="auth-email-code__hint">验证码 10 分钟内有效，发送成功后 60 秒内可再次发送。</p>
         </el-form-item>
 
         <el-form-item label="昵称" prop="nickname">
@@ -200,6 +385,25 @@ async function onSubmit() {
   margin-bottom: 16px;
 }
 
+.auth-email-code {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 12px;
+  width: 100%;
+}
+
+.auth-email-code__button {
+  min-height: 48px;
+  border-radius: 16px;
+}
+
+.auth-email-code__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #94a3b8;
+}
+
 .auth-submit {
   width: 100%;
   margin-top: 6px;
@@ -252,6 +456,10 @@ async function onSubmit() {
 
   .auth-tip {
     text-align: left;
+  }
+
+  .auth-email-code {
+    grid-template-columns: 1fr;
   }
 }
 </style>
