@@ -689,6 +689,59 @@ describe('wap backend bindings', () => {
     }
   })
 
+  test('history view constrains long prompt inside detail panel', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    const longPrompt = 'ultra-detailed-cinematic-neon-city-'.repeat(24)
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 3,
+          task_id: 'task-3',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: longPrompt,
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-3/0'],
+          thumb_urls: ['/p/thumb/task-3/0'],
+          created_at: '2026-04-22T13:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByAltText(longPrompt))
+    })
+
+    expect(await screen.findByText('任务状态')).toBeInTheDocument()
+
+    const promptHeading = screen.getByRole('heading', { name: longPrompt })
+    expect(promptHeading.className).toContain('max-h-32')
+    expect(promptHeading.className).toContain('overflow-y-auto')
+    expect(promptHeading.className).toContain('break-words')
+    expect(promptHeading.className).toContain('whitespace-pre-wrap')
+  })
+
   test('profile view renders scaled credit values and submits checkin', async () => {
     const submitCheckin = vi.fn().mockResolvedValue({
       enabled: true,

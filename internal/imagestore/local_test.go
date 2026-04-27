@@ -83,6 +83,35 @@ func TestLocalStoreSaveFindListDeleteAndStats(t *testing.T) {
 	}
 }
 
+func TestLocalStoreDefaultThumbKeepsOriginalSize(t *testing.T) {
+	store := NewLocal(LocalOptions{RootDir: t.TempDir()})
+
+	_, err := store.SaveTaskImages(context.Background(), "img_task_large", []SourceImage{
+		{Index: 0, Data: mustPNGBytes(t, 1200, 800), ContentType: "image/png"},
+	})
+	if err != nil {
+		t.Fatalf("save task images: %v", err)
+	}
+
+	thumbData, contentType, ok, err := store.ReadThumb("img_task_large", 0)
+	if err != nil {
+		t.Fatalf("read thumb: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected thumb exists")
+	}
+	if contentType != "image/jpeg" {
+		t.Fatalf("content type = %s", contentType)
+	}
+	img, _, err := image.Decode(bytes.NewReader(thumbData))
+	if err != nil {
+		t.Fatalf("decode thumb: %v", err)
+	}
+	if got := img.Bounds(); got.Dx() != 1200 || got.Dy() != 800 {
+		t.Fatalf("thumb size = %dx%d", got.Dx(), got.Dy())
+	}
+}
+
 func mustPNGBytes(t *testing.T, w, h int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))

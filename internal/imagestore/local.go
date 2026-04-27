@@ -1,13 +1,9 @@
 package imagestore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
-	_ "image/png"
 	"io/fs"
 	"net/http"
 	"os"
@@ -17,9 +13,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"golang.org/x/image/draw"
-	_ "golang.org/x/image/webp"
 )
 
 const (
@@ -80,12 +73,12 @@ func NewLocal(opts LocalOptions) *Local {
 		root = "storage/images"
 	}
 	thumbMaxEdge := opts.ThumbMaxEdge
-	if thumbMaxEdge <= 0 {
-		thumbMaxEdge = 480
+	if thumbMaxEdge == 0 {
+		thumbMaxEdge = DefaultThumbMaxEdge
 	}
 	thumbQuality := opts.ThumbQuality
 	if thumbQuality <= 0 {
-		thumbQuality = 82
+		thumbQuality = DefaultThumbQuality
 	}
 	return &Local{
 		rootDir:      root,
@@ -107,7 +100,7 @@ func (l *Local) SaveTaskImages(ctx context.Context, taskID string, images []Sour
 			l.removeFiles(cleanup)
 			return nil, err
 		}
-		ext, ct := normalizeImageType(src.ContentType, src.Data)
+		ext, _ := normalizeImageType(src.ContentType, src.Data)
 		if ext == "" {
 			l.removeFiles(cleanup)
 			return nil, errors.New("unsupported image type")
@@ -121,7 +114,7 @@ func (l *Local) SaveTaskImages(ctx context.Context, taskID string, images []Sour
 		}
 		cleanup = append(cleanup, filepath.Join(l.originalDir, originalName))
 
-		thumbData, err := l.buildThumb(src.Data, ct)
+		thumbData, err := l.buildThumb(src.Data)
 		if err != nil {
 			l.removeFiles(cleanup)
 			return nil, err
@@ -318,26 +311,20 @@ func (l *Local) ensureDirs() error {
 	return os.MkdirAll(l.thumbDir, 0o755)
 }
 
-func (l *Local) buildThumb(data []byte, contentType string) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	bounds := img.Bounds()
-	w, h := bounds.Dx(), bounds.Dy()
-	targetW, targetH := fitWithin(w, h, l.thumbMaxEdge)
-	dst := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: l.thumbQuality}); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+func (l *Local) buildThumb(data []byte) ([]byte, error) {
+	thumbData, _, err := BuildThumbnail(data, ThumbnailOptions{
+		MaxEdge: l.thumbMaxEdge,
+		Quality: l.thumbQuality,
+	})
+	return thumbData, err
 }
 
 func fitWithin(width, height, maxEdge int) (int, int) {
 	if width <= 0 || height <= 0 {
 		return 1, 1
+	}
+	if maxEdge <= 0 {
+		return width, height
 	}
 	longEdge := width
 	if height > longEdge {

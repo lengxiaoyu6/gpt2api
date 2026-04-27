@@ -486,13 +486,29 @@ func (r *Runner) uploadCloudImages(ctx context.Context, taskID string, images []
 		if err != nil {
 			return err
 		}
-		thumb := src
-		thumb.FileName = fmt.Sprintf("tmp_%s_%d", taskID, src.Index)
-		thumbURL, err := r.uploadCloudImage(ctx, uploader, thumb, channels, true)
-		if err != nil {
-			return err
-		}
 		urls = append(urls, uploadedURL)
+
+		thumb, err := r.buildCloudThumbSource(taskID, src)
+		if err != nil {
+			logger.L().Warn("image runner build cloud thumbnail failed",
+				zap.String("task_id", taskID),
+				zap.Int("idx", src.Index),
+				zap.String("content_type", src.ContentType),
+				zap.Int("bytes", len(src.Data)),
+				zap.Error(err))
+			thumbURLs = append(thumbURLs, "")
+			continue
+		}
+		thumbURL, err := r.uploadCloudImage(ctx, uploader, thumb, channels, false)
+		if err != nil {
+			logger.L().Warn("image runner upload cloud thumbnail failed",
+				zap.String("task_id", taskID),
+				zap.Int("idx", src.Index),
+				zap.Int("bytes", len(thumb.Data)),
+				zap.Error(err))
+			thumbURLs = append(thumbURLs, "")
+			continue
+		}
 		thumbURLs = append(thumbURLs, thumbURL)
 	}
 	result.SignedURLs = urls
@@ -517,6 +533,19 @@ func (r *Runner) uploadCloudImage(ctx context.Context, uploader runnerCloudUploa
 		return "", lastErr
 	}
 	return "", errors.New("cloud upload failed")
+}
+
+func (r *Runner) buildCloudThumbSource(taskID string, src imagestore.SourceImage) (imagestore.SourceImage, error) {
+	thumbData, contentType, err := imagestore.BuildThumbnail(src.Data, imagestore.ThumbnailOptions{})
+	if err != nil {
+		return imagestore.SourceImage{}, err
+	}
+	return imagestore.SourceImage{
+		Index:       src.Index,
+		FileName:    fmt.Sprintf("tmp_%s_%d", taskID, src.Index),
+		Data:        thumbData,
+		ContentType: contentType,
+	}, nil
 }
 
 func (r *Runner) downloadArchiveImages(ctx context.Context, result *RunResult) ([]imagestore.SourceImage, error) {

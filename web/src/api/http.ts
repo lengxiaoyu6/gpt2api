@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
+import { localizeApiMessage } from '../utils/api-message'
 
 /**
  * 统一响应结构,后端 `pkg/resp` 约定:
@@ -94,19 +95,20 @@ function isAuthEndpoint(url?: string) {
 }
 
 function redirectToLogin(message: string) {
+  const friendly = message || '登录已失效'
   clearTokens()
   if (!window.location.pathname.startsWith('/login')) {
-    ElMessage.warning('登录已失效,请重新登录')
+    ElMessage.warning(friendly)
     window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`
     return
   }
-  ElMessage.error(message || '登录已失效')
+  ElMessage.error(friendly)
 }
 
 async function refreshAccessToken() {
   const refreshToken = readRefreshToken()
   if (!refreshToken) {
-    throw new Error('missing refresh token')
+    throw new Error(localizeApiMessage('missing refresh token', '/api/auth/refresh'))
   }
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -116,7 +118,7 @@ async function refreshAccessToken() {
       const payload = response.data as ApiEnvelope<{ access_token: string; refresh_token: string }>
       const token = payload?.data
       if (!payload || payload.code !== 0 || !token?.access_token || !token?.refresh_token) {
-        throw new Error(payload?.message || 'refresh failed')
+        throw new Error(localizeApiMessage(payload?.message || 'refresh failed', '/api/auth/refresh'))
       }
       persistTokens(token)
       return token.access_token
@@ -154,7 +156,8 @@ http.interceptors.response.use(
       if (payload.code === 0) {
         return payload.data as any
       }
-      const msg = payload.message || `请求失败 (code=${payload.code})`
+      const reqUrl = (response.config.url || '') as string
+      const msg = localizeApiMessage(payload.message || `请求失败 (code=${payload.code})`, reqUrl)
       ElMessage.error(msg)
       return Promise.reject(new ApiError(msg, { status: response.status, code: payload.code, data: payload.data }))
     }
@@ -163,23 +166,19 @@ http.interceptors.response.use(
   (error: AxiosError<ApiEnvelope>) => {
     const status = error.response?.status
     const payload = error.response?.data
-    const msg = payload?.message || error.message || '网络错误'
+    const originalConfig = error.config as RetryAxiosRequestConfig | undefined
+    const reqUrl = (originalConfig?.url || '') as string
+    const msg = localizeApiMessage(payload?.message || error.message || '网络错误', reqUrl)
     const apiError = new ApiError(msg, {
       status,
       code: payload?.code,
       data: payload?.data,
     })
     if (status === 401) {
-      // 登录接口 401 = 账号密码错误,不要清 token 也不要跳转,直接给明确提示。
-      // 后端返回的是英文 "invalid email or password",这里本地化为中文。
-      const originalConfig = error.config as RetryAxiosRequestConfig | undefined
-      const reqUrl = (originalConfig?.url || '') as string
       const isLoginEndpoint =
         reqUrl.includes('/auth/login') || reqUrl.includes('/auth/register')
       if (isLoginEndpoint) {
-        const friendly =
-          /invalid email or password/i.test(msg) ? '邮箱或密码错误' : msg || '登录失败'
-        ElMessage.error(friendly)
+        ElMessage.error(msg || '登录失败')
       } else {
         if (originalConfig && !originalConfig._retry && !originalConfig._skipAuthRefresh && !isAuthEndpoint(reqUrl) && readRefreshToken()) {
           originalConfig._retry = true
@@ -197,8 +196,6 @@ http.interceptors.response.use(
         }
         redirectToLogin(msg || '登录已失效')
       }
-    } else if (status === 403) {
-      ElMessage.error(`无权限:${msg}`)
     } else {
       ElMessage.error(msg)
     }

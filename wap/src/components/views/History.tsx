@@ -466,12 +466,14 @@ export default function HistoryView() {
                 </Button>
               </div>
               <div className="p-6 space-gap-6 flex flex-col gap-6">
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-widest">
                     <Calendar className="w-3 h-3" />
                     <span>创建于 {new Date(selectedImage.created_at).toLocaleString()}</span>
                   </div>
-                  <h3 className="font-bold text-lg leading-tight">{selectedImage.prompt}</h3>
+                  <h3 className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-lg font-bold leading-tight">
+                    {selectedImage.prompt}
+                  </h3>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">

@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosRequestConfig } from 'axios'
+import { localizeApiMessage } from '../utils/api-message'
 
 export interface ApiEnvelope<T = unknown> {
   code: number
@@ -96,7 +97,7 @@ function handleUnauthorized() {
 async function refreshAccessToken() {
   const refreshToken = readRefreshToken()
   if (!refreshToken) {
-    throw new Error('missing refresh token')
+    throw new Error(localizeApiMessage('missing refresh token', '/api/auth/refresh'))
   }
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -106,7 +107,7 @@ async function refreshAccessToken() {
       const payload = response.data as ApiEnvelope<{ access_token: string; refresh_token: string }>
       const token = payload?.data
       if (!payload || payload.code !== 0 || !token?.access_token || !token?.refresh_token) {
-        throw new Error(payload?.message || 'refresh failed')
+        throw new Error(localizeApiMessage(payload?.message || 'refresh failed', '/api/auth/refresh'))
       }
       persistTokens(token)
       return token.access_token
@@ -134,7 +135,9 @@ http.interceptors.response.use(
       if (payload.code === 0) {
         return payload.data as unknown
       }
-      return Promise.reject(new ApiError(payload.message || `请求失败 code=${payload.code}`, {
+      const reqUrl = (response.config.url || '') as string
+      const detail = localizeApiMessage(payload.message || `请求失败 code=${payload.code}`, reqUrl)
+      return Promise.reject(new ApiError(detail, {
         status: response.status,
         code: payload.code,
         data: payload.data,
@@ -145,14 +148,15 @@ http.interceptors.response.use(
   (error: AxiosError<ApiEnvelope>) => {
     const status = error.response?.status
     const payload = error.response?.data
-    const detail = payload?.message || error.message || '网络异常'
+    const originalConfig = error.config as RetryAxiosRequestConfig | undefined
+    const reqUrl = (originalConfig?.url || '') as string
+    const detail = localizeApiMessage(payload?.message || error.message || '网络异常', reqUrl)
     const apiError = new ApiError(detail, {
       status,
       code: payload?.code,
       data: payload?.data,
     })
     if (status === 401) {
-      const originalConfig = error.config as RetryAxiosRequestConfig | undefined
       if (originalConfig && !originalConfig._retry && !originalConfig._skipAuthRefresh && !isAuthEndpoint(originalConfig.url) && readRefreshToken()) {
         originalConfig._retry = true
         return refreshAccessToken()

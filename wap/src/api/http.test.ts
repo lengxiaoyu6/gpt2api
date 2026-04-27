@@ -64,15 +64,61 @@ describe('http client', () => {
     expect(onUnauthorized).not.toHaveBeenCalled()
   })
 
-  test('401 handler clears tokens and notifies auth reset callback when refresh fails', async () => {
+  test('business error on /api paths uses localized message', async () => {
+    mock.onGet('/api/tasks/1').reply(200, {
+      code: 404,
+      message: 'task not found',
+      data: null,
+    })
+
+    await expect(http.get('/api/tasks/1')).rejects.toMatchObject({
+      message: '任务不存在',
+      status: 200,
+      code: 404,
+    })
+  })
+
+  test('dynamic /api error message uses localized message', async () => {
+    mock.onGet('/api/site/config').reply(400, {
+      code: 400,
+      message: 'site.name must be integer',
+      data: null,
+    })
+
+    await expect(http.get('/api/site/config')).rejects.toMatchObject({
+      message: 'site.name 必须为整数',
+      status: 400,
+      code: 400,
+    })
+  })
+
+  test('/v1 paths keep original message text', async () => {
+    mock.onPost('/v1/chat/completions').reply(400, {
+      code: 400,
+      message: 'unknown key: temperature',
+      data: null,
+    })
+
+    await expect(http.post('/v1/chat/completions', { model: 'demo' })).rejects.toMatchObject({
+      message: 'unknown key: temperature',
+      status: 400,
+      code: 400,
+    })
+  })
+
+  test('401 handler clears tokens and returns localized refresh error when refresh fails', async () => {
     localStorage.setItem(TOKEN_KEY, 'token-1')
     localStorage.setItem(REFRESH_KEY, 'refresh-1')
     const onUnauthorized = vi.fn()
     setUnauthorizedHandler(onUnauthorized)
     mock.onGet('/api/me').reply(401, { message: 'expired' })
-    refreshMock.onPost('/api/auth/refresh').reply(401, { message: 'refresh expired' })
+    refreshMock.onPost('/api/auth/refresh').reply(200, {
+      code: 401,
+      message: 'invalid token: refresh expired',
+      data: null,
+    })
 
-    await expect(http.get('/api/me')).rejects.toThrow(/expired|refresh expired|Request failed/i)
+    await expect(http.get('/api/me')).rejects.toThrow('登录状态已失效：refresh expired')
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(localStorage.getItem(REFRESH_KEY)).toBeNull()
     expect(onUnauthorized).toHaveBeenCalledTimes(1)

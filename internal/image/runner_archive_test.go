@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"testing"
 
 	"github.com/432539/gpt2api/internal/imagestore"
@@ -163,11 +164,23 @@ func TestRunnerRunUploadsCloudImagesAndStoresRemoteURLs(t *testing.T) {
 	if got := uploader.callChannels; len(got) != 4 || got[0] != "telegram" || got[1] != "telegram" || got[2] != "telegram" || got[3] != "telegram" {
 		t.Fatalf("upload channels = %#v", got)
 	}
-	if got := uploader.callCompress; len(got) != 4 || got[0] || !got[1] || got[2] || !got[3] {
+	if got := uploader.callCompress; len(got) != 4 || got[0] || got[1] || got[2] || got[3] {
 		t.Fatalf("upload compress flags = %#v", got)
 	}
 	if got := uploader.callNames; len(got) != 4 || got[0] != "img_cloud_ok_0" || got[1] != "tmp_img_cloud_ok_0" || got[2] != "img_cloud_ok_1" || got[3] != "tmp_img_cloud_ok_1" {
 		t.Fatalf("upload file names = %#v", got)
+	}
+	if bytes.Equal(uploader.callData[0], uploader.callData[1]) {
+		t.Fatal("expected first thumbnail bytes differ from original bytes")
+	}
+	if bytes.Equal(uploader.callData[2], uploader.callData[3]) {
+		t.Fatal("expected second thumbnail bytes differ from original bytes")
+	}
+	if got := http.DetectContentType(uploader.callData[1]); got != "image/jpeg" {
+		t.Fatalf("first thumbnail content type = %s", got)
+	}
+	if got := http.DetectContentType(uploader.callData[3]); got != "image/jpeg" {
+		t.Fatalf("second thumbnail content type = %s", got)
 	}
 	if got := res.SignedURLs; len(got) != 2 || got[0] != "https://cdn.example.com/1.png" || got[1] != "https://cdn.example.com/2.png" {
 		t.Fatalf("signed urls = %#v", got)
@@ -182,6 +195,82 @@ func TestRunnerRunUploadsCloudImagesAndStoresRemoteURLs(t *testing.T) {
 		t.Fatalf("dao result urls = %#v", got)
 	}
 	if got := dao.lastThumbURLs; len(got) != 2 || got[0] != "https://cdn.example.com/1_thumb.jpg" || got[1] != "https://cdn.example.com/2_thumb.jpg" {
+		t.Fatalf("dao thumb urls = %#v", got)
+	}
+}
+
+func TestRunnerRunKeepsSuccessWhenThumbBuildFails(t *testing.T) {
+	dao := &runnerArchiveDAO{}
+	uploader := &runnerCloudUploaderStub{results: []runnerCloudUploadResult{
+		{channel: "telegram", url: "https://cdn.example.com/1.png"},
+	}}
+	r := &Runner{
+		dao:           dao,
+		settings:      runnerStorageSettingsStub{mode: StorageModeCloud},
+		cloudUploader: uploader,
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			result.ConversationID = "conv_cloud_thumb_build_fail"
+			result.FileIDs = []string{"file-1"}
+			result.SignedURLs = []string{"https://origin.example.com/1.png"}
+			result.archiveImages = []imagestore.SourceImage{{Index: 0, Data: []byte("not-an-image"), ContentType: "image/png"}}
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_cloud_thumb_build_fail"})
+	if res.Status != StatusSuccess {
+		t.Fatalf("status = %s", res.Status)
+	}
+	if got := res.SignedURLs; len(got) != 1 || got[0] != "https://cdn.example.com/1.png" {
+		t.Fatalf("signed urls = %#v", got)
+	}
+	if got := res.ThumbURLs; len(got) != 1 || got[0] != "" {
+		t.Fatalf("thumb urls = %#v", got)
+	}
+	if got := dao.lastThumbURLs; len(got) != 1 || got[0] != "" {
+		t.Fatalf("dao thumb urls = %#v", got)
+	}
+	if len(uploader.callData) != 1 {
+		t.Fatalf("upload calls = %d", len(uploader.callData))
+	}
+}
+
+func TestRunnerRunKeepsSuccessWhenThumbUploadFails(t *testing.T) {
+	dao := &runnerArchiveDAO{}
+	uploader := &runnerCloudUploaderStub{results: []runnerCloudUploadResult{
+		{channel: "telegram", url: "https://cdn.example.com/1.png"},
+		{channel: "telegram", err: errors.New("thumb upload failed")},
+		{channel: "huggingface", err: errors.New("thumb upload failed")},
+	}}
+	r := &Runner{
+		dao:           dao,
+		settings:      runnerStorageSettingsStub{mode: StorageModeCloud},
+		cloudUploader: uploader,
+		downloadFn: func(ctx context.Context, signedURL string) ([]byte, string, error) {
+			return mustRunnerPNG(t), "image/png", nil
+		},
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			result.ConversationID = "conv_cloud_thumb_fail"
+			result.FileIDs = []string{"file-1"}
+			result.SignedURLs = []string{"https://origin.example.com/1.png"}
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_cloud_thumb_fail"})
+	if res.Status != StatusSuccess {
+		t.Fatalf("status = %s", res.Status)
+	}
+	if got := res.SignedURLs; len(got) != 1 || got[0] != "https://cdn.example.com/1.png" {
+		t.Fatalf("signed urls = %#v", got)
+	}
+	if got := res.ThumbURLs; len(got) != 1 || got[0] != "" {
+		t.Fatalf("thumb urls = %#v", got)
+	}
+	if got := dao.lastResultURLs; len(got) != 1 || got[0] != "https://cdn.example.com/1.png" {
+		t.Fatalf("dao result urls = %#v", got)
+	}
+	if got := dao.lastThumbURLs; len(got) != 1 || got[0] != "" {
 		t.Fatalf("dao thumb urls = %#v", got)
 	}
 }
@@ -313,7 +402,7 @@ func TestRunnerArchiveExternalImagesUploadsInlineImageToCloud(t *testing.T) {
 	}
 
 	res, err := r.ArchiveExternalImages(context.Background(), "img_external_cloud", nil, []imagestore.SourceImage{
-		{Data: mustRunnerPNG(t), ContentType: "image/png"},
+		{Data: mustRunnerPNGSize(t, 1200, 800), ContentType: "image/png"},
 	})
 	if err != nil {
 		t.Fatalf("ArchiveExternalImages: %v", err)
@@ -327,8 +416,21 @@ func TestRunnerArchiveExternalImagesUploadsInlineImageToCloud(t *testing.T) {
 	if got := uploader.callNames; len(got) != 2 || got[0] != "img_external_cloud_0" || got[1] != "tmp_img_external_cloud_0" {
 		t.Fatalf("upload file names = %#v", got)
 	}
-	if got := uploader.callCompress; len(got) != 2 || got[0] || !got[1] {
+	if got := uploader.callCompress; len(got) != 2 || got[0] || got[1] {
 		t.Fatalf("upload compress flags = %#v", got)
+	}
+	if bytes.Equal(uploader.callData[0], uploader.callData[1]) {
+		t.Fatal("expected thumbnail bytes differ from original bytes")
+	}
+	if got := http.DetectContentType(uploader.callData[1]); got != "image/jpeg" {
+		t.Fatalf("thumbnail content type = %s", got)
+	}
+	thumbImg, _, err := image.Decode(bytes.NewReader(uploader.callData[1]))
+	if err != nil {
+		t.Fatalf("decode thumbnail: %v", err)
+	}
+	if got := thumbImg.Bounds(); got.Dx() != 1200 || got.Dy() != 800 {
+		t.Fatalf("thumbnail size = %dx%d", got.Dx(), got.Dy())
 	}
 	if got := res.SignedURLs; len(got) != 1 || got[0] != "https://cdn.example.com/external.png" {
 		t.Fatalf("signed urls = %#v", got)
@@ -340,9 +442,14 @@ func TestRunnerArchiveExternalImagesUploadsInlineImageToCloud(t *testing.T) {
 
 func mustRunnerPNG(t *testing.T) []byte {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
-	for y := 0; y < 48; y++ {
-		for x := 0; x < 64; x++ {
+	return mustRunnerPNGSize(t, 64, 48)
+}
+
+func mustRunnerPNGSize(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
 			img.Set(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: 180, A: 255})
 		}
 	}
