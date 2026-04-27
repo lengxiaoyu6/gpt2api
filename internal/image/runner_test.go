@@ -160,6 +160,42 @@ func TestRunnerRunRetriesUpstreamErrorThenSucceeds(t *testing.T) {
 	}
 }
 
+func TestRunnerRunRetriesAuthRequiredThenSucceedsWhenMaxAttemptsIsOne(t *testing.T) {
+	attempts := 0
+	r := &Runner{
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			attempts++
+			if attempts == 1 {
+				result.AccountID = 101
+				return false, ErrAuthRequired, errors.New("chatgpt upstream 401: chat-requirements failed")
+			}
+			result.AccountID = 202
+			result.ConversationID = "conv_auth_retry_ok"
+			result.FileIDs = []string{"file:auth_retry_ok"}
+			result.SignedURLs = []string{"https://example.com/auth-retry-ok.png"}
+			result.ContentTypes = []string{"image/png"}
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_auth_retry_then_ok", MaxAttempts: 1})
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+	if res.Status != StatusSuccess {
+		t.Fatalf("expected success status, got %s", res.Status)
+	}
+	if res.Attempts != 2 {
+		t.Fatalf("expected result attempts=2, got %d", res.Attempts)
+	}
+	if res.AccountID != 202 {
+		t.Fatalf("expected account 202, got %d", res.AccountID)
+	}
+	if got := len(res.FileIDs); got != 1 || res.FileIDs[0] != "file:auth_retry_ok" {
+		t.Fatalf("file ids = %v", res.FileIDs)
+	}
+}
+
 func TestRunnerRunStopsAfterSingleNonRetryableFailure(t *testing.T) {
 	attempts := 0
 	r := &Runner{

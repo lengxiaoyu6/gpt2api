@@ -106,3 +106,31 @@ func TestBuildHistoryImageURLsReturnsCloudRemoteURLsWithThumbs(t *testing.T) {
 		t.Fatalf("unexpected thumbs: %#v", thumbs)
 	}
 }
+
+func TestToViewPreservesCloudRemoteURLs(t *testing.T) {
+	SetProxyURLBuilder(func(taskID string, idx int) string {
+		return "/p/img/" + taskID + "/proxy"
+	})
+
+	task := &Task{
+		ID:          1,
+		TaskID:      "img_hist_cloud_view",
+		UserID:      7,
+		ModelID:     9,
+		Prompt:      "cloud image",
+		N:           1,
+		Size:        "1024x1024",
+		Status:      StatusSuccess,
+		StorageMode: StorageModeCloud,
+		ResultURLs:  mustJSON(t, []string{"https://cdn.example.com/original.png"}),
+		ThumbURLs:   mustJSON(t, []string{"https://cdn.example.com/thumb.jpg"}),
+	}
+
+	view := toView(task, stubHistoryImageStore{})
+	if len(view.ImageURLs) != 1 || view.ImageURLs[0] != "https://cdn.example.com/original.png" {
+		t.Fatalf("cloud image urls should stay remote, got %#v", view.ImageURLs)
+	}
+	if len(view.ThumbURLs) != 1 || view.ThumbURLs[0] != "https://cdn.example.com/thumb.jpg" {
+		t.Fatalf("cloud thumb urls should stay remote, got %#v", view.ThumbURLs)
+	}
+}

@@ -28,7 +28,7 @@ import (
 	"github.com/432539/gpt2api/internal/usage"
 	"github.com/432539/gpt2api/pkg/crypto"
 
-	_ "github.com/mattn/go-sqlite3"
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 type imageAdapterStub struct {
@@ -557,6 +557,174 @@ func TestImageGenerationsArchivesChannelBase64ResultLocally(t *testing.T) {
 	}
 }
 
+func TestImageGenerationsRecordsChannelURLResultWhenRunnerMissing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const upstreamURL = "https://cdn.example.com/generated.png"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/images/generations" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"url":"`+upstreamURL+`"}]}`)
+	}))
+	defer srv.Close()
+
+	taskDB := newImageTaskSQLiteDB(t)
+	h, ak := newChannelBackedImageHandlerForTest(
+		t,
+		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/images/generations", "gpt-image-1", "gpt-image-1"),
+		nil,
+	)
+	h.DAO = image.NewDAO(taskDB)
+	h.Runner = nil
+
+	reqBody, err := json.Marshal(ImageGenRequest{
+		Model:  "gpt-image-1",
+		Prompt: "生成图片",
+		N:      1,
+		Size:   "1024x1024",
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/generations", bytes.NewReader(reqBody), "application/json", ak)
+	h.ImageGenerations(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp ImageGenResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.TaskID == "" {
+		t.Fatalf("task_id should be returned for channel url results even when runner is missing")
+	}
+	if len(resp.Data) != 1 || resp.Data[0].URL != upstreamURL {
+		t.Fatalf("response data = %#v", resp.Data)
+	}
+
+	var stored struct {
+		TaskID      string `db:"task_id"`
+		UserID      uint64 `db:"user_id"`
+		KeyID       uint64 `db:"key_id"`
+		Prompt      string `db:"prompt"`
+		Status      string `db:"status"`
+		StorageMode string `db:"storage_mode"`
+		ResultURLs  string `db:"result_urls"`
+	}
+	if err := taskDB.Get(&stored, `SELECT task_id, user_id, key_id, prompt, status, storage_mode, result_urls FROM image_tasks WHERE task_id = ?`, resp.TaskID); err != nil {
+		t.Fatalf("select stored task: %v", err)
+	}
+	if stored.UserID != ak.UserID || stored.KeyID != ak.ID {
+		t.Fatalf("stored owner = user:%d key:%d, want user:%d key:%d", stored.UserID, stored.KeyID, ak.UserID, ak.ID)
+	}
+	if stored.Prompt != "生成图片" {
+		t.Fatalf("stored prompt = %q", stored.Prompt)
+	}
+	if stored.Status != image.StatusSuccess {
+		t.Fatalf("stored status = %q", stored.Status)
+	}
+	if stored.StorageMode != image.StorageModeCloud {
+		t.Fatalf("stored storage_mode = %q, want cloud", stored.StorageMode)
+	}
+	if stored.ResultURLs != `["`+upstreamURL+`"]` {
+		t.Fatalf("stored result_urls = %q", stored.ResultURLs)
+	}
+}
+
+func TestImageGenerationsCreatesChannelTaskBeforeUpstreamReturns(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamStarted := make(chan struct{}, 1)
+	releaseUpstream := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			close(releaseUpstream)
+		})
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case upstreamStarted <- struct{}{}:
+		default:
+		}
+		<-releaseUpstream
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"url":"https://cdn.example.com/generated.png"}]}`)
+	}))
+	defer srv.Close()
+
+	taskDB := newImageTaskSQLiteDB(t)
+	h, ak := newChannelBackedImageHandlerForTest(
+		t,
+		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/images/generations", "gpt-image-1", "gpt-image-1"),
+		nil,
+	)
+	h.DAO = image.NewDAO(taskDB)
+	h.Runner = nil
+
+	reqBody, err := json.Marshal(ImageGenRequest{
+		Model:  "gpt-image-1",
+		Prompt: "生成图片",
+		N:      1,
+		Size:   "1024x1024",
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/generations", bytes.NewReader(reqBody), "application/json", ak)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ImageGenerations(c)
+	}()
+	defer func() {
+		release()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("timed out waiting for handler completion during cleanup")
+		}
+	}()
+
+	select {
+	case <-upstreamStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for upstream request")
+	}
+
+	var pending struct {
+		TaskID string `db:"task_id"`
+		Status string `db:"status"`
+		Prompt string `db:"prompt"`
+	}
+	if err := taskDB.Get(&pending, `SELECT task_id, status, prompt FROM image_tasks ORDER BY id DESC LIMIT 1`); err != nil {
+		t.Fatalf("select pending task: %v", err)
+	}
+	if pending.TaskID == "" {
+		t.Fatalf("pending task_id should not be empty")
+	}
+	if pending.Status != image.StatusDispatched {
+		t.Fatalf("pending status = %q, want %q", pending.Status, image.StatusDispatched)
+	}
+	if pending.Prompt != "生成图片" {
+		t.Fatalf("pending prompt = %q", pending.Prompt)
+	}
+
+	release()
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -902,4 +1070,53 @@ func containsIndex(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+var registerImageTaskSQLiteDriverOnce sync.Once
+
+func newImageTaskSQLiteDB(t *testing.T) *sqlx.DB {
+	t.Helper()
+
+	registerImageTaskSQLiteDriverOnce.Do(func() {
+		sql.Register("sqlite3_image_channel_now", &sqlite3.SQLiteDriver{
+			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+				return conn.RegisterFunc("NOW", func() string {
+					return time.Now().Format("2006-01-02 15:04:05")
+				}, true)
+			},
+		})
+	})
+
+	db := sqlx.MustOpen("sqlite3_image_channel_now", ":memory:")
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.Exec(`CREATE TABLE image_tasks (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id TEXT NOT NULL UNIQUE,
+		user_id INTEGER NOT NULL,
+		key_id INTEGER NOT NULL DEFAULT 0,
+		model_id INTEGER NOT NULL,
+		account_id INTEGER NOT NULL DEFAULT 0,
+		prompt TEXT NOT NULL,
+		n INTEGER NOT NULL DEFAULT 1,
+		size TEXT NOT NULL DEFAULT '1024x1024',
+		upscale TEXT NOT NULL DEFAULT '',
+		storage_mode TEXT NOT NULL DEFAULT 'local',
+		status TEXT NOT NULL DEFAULT 'queued',
+		conversation_id TEXT NOT NULL DEFAULT '',
+		file_ids TEXT NULL,
+		result_urls TEXT NULL,
+		thumb_urls TEXT NULL,
+		error TEXT NOT NULL DEFAULT '',
+		estimated_credit INTEGER NOT NULL DEFAULT 0,
+		credit_cost INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		started_at DATETIME NULL,
+		finished_at DATETIME NULL,
+		deleted_at DATETIME NULL
+	)`); err != nil {
+		t.Fatalf("create image_tasks schema: %v", err)
+	}
+
+	return db
 }

@@ -605,13 +605,19 @@ func maxAttemptWindow(maxAttempts int) int {
 	return maxAttempts
 }
 
-// retryLimit 返回某类错误实际允许的尝试上限。upstream_error 固定补试一次。
+// retryLimit 返回某类错误实际允许的尝试上限。upstream_error 固定补试一次;
+// auth_required / rate_limited / network_transient 即使调用方传 1,也至少换号补试一次。
 func retryLimit(maxAttempts int, code string) int {
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}
-	if code == ErrUpstream {
+	switch code {
+	case ErrUpstream:
 		return 2
+	case ErrAuthRequired, ErrRateLimited, ErrNetworkTransient:
+		if maxAttempts < 2 {
+			return 2
+		}
 	}
 	return maxAttempts
 }
@@ -705,7 +711,9 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// 回退到单步接口)
 	cr, err := cli.ChatRequirementsV2(ctx)
 	if err != nil {
-		return false, r.classifyUpstream(err), err
+		code := r.classifyUpstream(err)
+		r.markAccountFailure(lease.Account.ID, code)
+		return false, code, err
 	}
 	var proofToken string
 	if cr.Proofofwork.Required {
@@ -752,9 +760,10 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 			if err != nil {
 				logger.L().Warn("image runner upload reference failed",
 					zap.Int("idx", idx), zap.Error(err))
-				if ue, ok := err.(*chatgpt.UpstreamError); ok && ue.IsRateLimited() {
-					r.sched.MarkRateLimited(context.Background(), lease.Account.ID)
-					return false, ErrRateLimited, err
+				code := r.classifyUpstream(err)
+				r.markAccountFailure(lease.Account.ID, code)
+				if code == ErrAuthRequired || code == ErrRateLimited || code == ErrNetworkTransient {
+					return false, code, fmt.Errorf("upload reference %d: %w", idx, err)
 				}
 				return false, ErrUpstream, fmt.Errorf("upload reference %d: %w", idx, err)
 			}
@@ -799,18 +808,19 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// Prepare(conduit_token;拿不到也能降级继续)
 	if ct, err := cli.PrepareFConversation(ctx, convOpt); err == nil {
 		convOpt.ConduitToken = ct
-	} else if ue, ok := err.(*chatgpt.UpstreamError); ok && ue.IsRateLimited() {
-		r.sched.MarkRateLimited(context.Background(), lease.Account.ID)
-		return false, ErrRateLimited, err
+	} else {
+		code := r.classifyUpstream(err)
+		if code == ErrAuthRequired || code == ErrRateLimited {
+			r.markAccountFailure(lease.Account.ID, code)
+			return false, code, err
+		}
 	}
 
 	// f/conversation SSE
 	stream, err := cli.StreamFConversation(ctx, convOpt)
 	if err != nil {
 		code := r.classifyUpstream(err)
-		if code == ErrRateLimited {
-			r.sched.MarkRateLimited(context.Background(), lease.Account.ID)
-		}
+		r.markAccountFailure(lease.Account.ID, code)
 		return false, code, err
 	}
 	sseResult := chatgpt.ParseImageSSE(stream)
@@ -921,11 +931,18 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	var signedURLs []string
 	var contentTypes []string
 	var successfulRefs []string
+	var downloadFailureCode string
+	var downloadFailureErr error
 	for _, ref := range fileRefs {
 		url, err := cli.ImageDownloadURL(ctx, convID, ref)
 		if err != nil {
 			logger.L().Warn("image runner download url failed",
 				zap.String("ref", ref), zap.Error(err))
+			code := r.classifyUpstream(err)
+			if downloadFailureCode == "" || code == ErrAuthRequired || code == ErrRateLimited {
+				downloadFailureCode = code
+				downloadFailureErr = err
+			}
 			continue
 		}
 		signedURLs = append(signedURLs, url)
@@ -933,6 +950,13 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 		contentTypes = append(contentTypes, "image/png")
 	}
 	if len(signedURLs) == 0 {
+		if downloadFailureCode == ErrAuthRequired || downloadFailureCode == ErrRateLimited || downloadFailureCode == ErrNetworkTransient {
+			r.markAccountFailure(lease.Account.ID, downloadFailureCode)
+			if downloadFailureErr != nil {
+				return false, downloadFailureCode, downloadFailureErr
+			}
+			return false, downloadFailureCode, errors.New("all download urls failed")
+		}
 		return false, ErrDownload, errors.New("all download urls failed")
 	}
 
@@ -1005,6 +1029,18 @@ func filterOutReferenceFileIDs(fileRefs []string, refSet map[string]struct{}) []
 		out = append(out, ref)
 	}
 	return out
+}
+
+func (r *Runner) markAccountFailure(accountID uint64, code string) {
+	if r == nil || r.sched == nil || accountID == 0 {
+		return
+	}
+	switch code {
+	case ErrRateLimited:
+		r.sched.MarkRateLimited(context.Background(), accountID)
+	case ErrAuthRequired:
+		r.sched.MarkDead(context.Background(), accountID)
+	}
 }
 
 // classifyUpstream 把上游错误转成内部 error code。

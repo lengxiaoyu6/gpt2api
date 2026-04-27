@@ -70,9 +70,9 @@ func toView(t *Task, files historyImageStore) taskView {
 	//   2) 上游 15 分钟签名过期 → 历史图片 404
 	// 代理收到请求后会再走一次 ImageDownloadURL 现取签名,
 	// 所以历史任务的旧 URL 即便已失效也照样能回放。
-	if len(urls) > 0 {
+	if NormalizeStorageMode(t.StorageMode) != StorageModeCloud && len(urls) > 0 {
 		urls = BuildProxyURLs(t.TaskID, urls)
-	} else if len(fids) > 0 {
+	} else if NormalizeStorageMode(t.StorageMode) != StorageModeCloud && len(fids) > 0 {
 		// 极少数老数据 result_urls 为空但 file_ids 完整:
 		// 同样按 idx 走代理,代理端能根据 file_ids 现取签名 URL。
 		urls = make([]string, len(fids))

@@ -159,14 +159,18 @@ async function onDeleteTask(task: ImageTask) {
 
 const statusMap: Record<string, { tag: 'success' | 'warning' | 'danger' | 'info'; label: string }> = {
     queued: { tag: 'warning', label: '排队中' },
-    dispatched: { tag: 'warning', label: '已派发' },
-    running: { tag: 'warning', label: '处理中' },
+    dispatched: { tag: 'warning', label: '生成中' },
+    running: { tag: 'warning', label: '生成中' },
     success: { tag: 'success', label: '成功' },
     failed: { tag: 'danger', label: '失败' },
 };
 
 function statusTag(s: string): 'success' | 'warning' | 'danger' | 'info' {
     return statusMap[s]?.tag || 'info';
+}
+
+function isGeneratingStatus(s: string) {
+    return s === 'dispatched' || s === 'running';
 }
 
 function statusLabel(s: string) {
@@ -197,7 +201,7 @@ onMounted(() => {
                 <el-select v-model="imageFilter.status" placeholder="状态" clearable style="width:130px">
                     <el-option label="成功" value="success" />
                     <el-option label="失败" value="failed" />
-                    <el-option label="运行中" value="running" />
+                    <el-option label="生成中" value="running" />
                     <el-option label="队列中" value="queued" />
                 </el-select>
                 <el-date-picker
@@ -249,7 +253,10 @@ onMounted(() => {
                                 </el-button>
                             </div>
                             <div class="sub">
-                                <el-tag size="small" :type="statusTag(item.task.status)">{{ statusLabel(item.task.status) }}</el-tag>
+                                <span class="status-wrap">
+                                    <el-tag size="small" :type="statusTag(item.task.status)">{{ statusLabel(item.task.status) }}</el-tag>
+                                    <span v-if="isGeneratingStatus(item.task.status)" class="status-loading" aria-hidden="true"></span>
+                                </span>
                                 <span>{{ item.task.size }}</span>
                                 <span class="mute" v-if="item.image_total > 0">第{{ item.image_index + 1 }}张，共{{ item.image_total }}张</span>
                                 <span class="mute" v-else>结果图缺失</span>
@@ -429,6 +436,19 @@ onMounted(() => {
         align-items: center;
         color: var(--el-text-color-regular);
     }
+    .status-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .status-loading {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid var(--el-color-warning-light-5);
+        border-top-color: var(--el-color-warning);
+        animation: spin 0.85s linear infinite;
+    }
     .foot {
         display: flex;
         justify-content: space-between;
@@ -453,6 +473,15 @@ onMounted(() => {
         border-radius: 4px;
         white-space: pre-wrap;
         word-break: break-word;
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
     }
 }
 

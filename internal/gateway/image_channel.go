@@ -100,6 +100,33 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 7*time.Minute)
 	defer cancel()
 
+	taskID := ""
+	if h.Runner != nil || h.DAO != nil {
+		taskID = image.GenerateTaskID()
+	}
+	taskStorageMode := h.currentStorageMode()
+	if h.Runner == nil {
+		taskStorageMode = image.StorageModeCloud
+	}
+	if h.DAO != nil {
+		if err := h.DAO.Create(c.Request.Context(), &image.Task{
+			TaskID:          taskID,
+			UserID:          ak.UserID,
+			KeyID:           ak.ID,
+			ModelID:         m.ID,
+			Prompt:          req.Prompt,
+			N:               req.N,
+			Size:            req.Size,
+			StorageMode:     taskStorageMode,
+			Status:          image.StatusDispatched,
+			EstimatedCredit: cost,
+		}); err != nil {
+			refund("billing_error")
+			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
+			return true
+		}
+	}
+
 	selected, result, failures := pickImageRoute(ctx, routes, ir)
 	var lastErr error
 	for _, failure := range failures {
@@ -113,6 +140,9 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 
 	if selected == nil || result == nil {
 		refund("upstream_error")
+		if h.DAO != nil {
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+		}
 		msg := "所有上游渠道均不可用"
 		if lastErr != nil {
 			msg += ":" + lastErr.Error()
@@ -125,6 +155,9 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	actualN := actualCount(result)
 	if actualN == 0 {
 		refund("upstream_error")
+		if h.DAO != nil {
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+		}
 		openAIError(c, http.StatusBadGateway, "upstream_error", "上游未返回图片结果")
 		return true
 	}
@@ -136,28 +169,8 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	}
 	finalCost := billing.ComputeImageCost(m, actualN, ratio*channelRatio, req.Size)
 
-	taskID := ""
 	data := make([]ImageGenData, 0, actualN)
 	if h.Runner != nil {
-		taskID = image.GenerateTaskID()
-		if h.DAO != nil {
-			if err := h.DAO.Create(c.Request.Context(), &image.Task{
-				TaskID:          taskID,
-				UserID:          ak.UserID,
-				KeyID:           ak.ID,
-				ModelID:         m.ID,
-				Prompt:          req.Prompt,
-				N:               req.N,
-				Size:            req.Size,
-				StorageMode:     h.currentStorageMode(),
-				Status:          image.StatusDispatched,
-				EstimatedCredit: cost,
-			}); err != nil {
-				refund("billing_error")
-				openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
-				return true
-			}
-		}
 		inlineImages, err := decodeChannelInlineImages(result.B64s, len(result.URLs))
 		if err != nil {
 			refund(image.ErrArchive)
@@ -186,13 +199,25 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 		}
 		data = buildAPIImageData(taskID, archived.StorageMode, archived.SignedURLs, archived.ThumbURLs, nil)
 	} else {
+		resultURLs := make([]string, 0, actualN)
 		for _, u := range result.URLs {
-			data = append(data, ImageGenData{URL: u})
+			resultURLs = append(resultURLs, u)
 		}
 		// base64 → data: URL,浏览器直接可渲染。
 		// (若后续需要 b64_json 直返,ImageGenData 补一个 B64 字段即可。)
 		for _, b := range result.B64s {
-			data = append(data, ImageGenData{URL: "data:image/png;base64," + b})
+			resultURLs = append(resultURLs, "data:image/png;base64,"+b)
+		}
+		if h.DAO != nil {
+			if err := h.DAO.MarkSuccess(c.Request.Context(), taskID, "", nil,
+				resultURLs, nil, image.StorageModeCloud, finalCost); err != nil {
+				refund("billing_error")
+				openAIError(c, http.StatusInternalServerError, "internal_error", "更新任务失败:"+err.Error())
+				return true
+			}
+		}
+		for _, u := range resultURLs {
+			data = append(data, ImageGenData{URL: u})
 		}
 	}
 
