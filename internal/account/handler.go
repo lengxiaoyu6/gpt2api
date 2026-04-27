@@ -280,44 +280,16 @@ func boolStr(b bool) string {
 // 保留以便未来直接传 context(当前未用,但留一个显式符号避免删字段)
 var _ = context.Background
 
-// POST /api/admin/accounts/:id/bind-proxy
-func (h *Handler) BindProxy(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
-	var req struct {
-		ProxyID uint64 `json:"proxy_id" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.BadRequest(c, "请求参数错误:"+err.Error())
-		return
-	}
-	if err := h.svc.BindProxy(c.Request.Context(), id, req.ProxyID); err != nil {
-		resp.Internal(c, err.Error())
-		return
-	}
-	resp.OK(c, gin.H{"account_id": id, "proxy_id": req.ProxyID})
-}
-
-// DELETE /api/admin/accounts/:id/bind-proxy
-func (h *Handler) UnbindProxy(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err := h.svc.UnbindProxy(c.Request.Context(), id); err != nil {
-		resp.Internal(c, err.Error())
-		return
-	}
-	resp.OK(c, gin.H{"account_id": id})
-}
-
 // ===================== 批量导入 =====================
 
 // POST /api/admin/accounts/import
-// body: { text: "...", update_existing: true, default_client_id: "", default_proxy_id: 0 }
+// body: { text: "...", update_existing: true, default_client_id: "" }
 // 或 multipart/form-data:files[] + 其他字段
 func (h *Handler) Import(c *gin.Context) {
 	var req struct {
 		Text            string `json:"text"`
 		UpdateExisting  *bool  `json:"update_existing"`
 		DefaultClientID string `json:"default_client_id"`
-		DefaultProxyID  uint64 `json:"default_proxy_id"`
 	}
 	// 支持 JSON body 或 multipart
 	ct := c.ContentType()
@@ -334,11 +306,6 @@ func (h *Handler) Import(c *gin.Context) {
 			req.UpdateExisting = &b
 		}
 		req.DefaultClientID = c.PostForm("default_client_id")
-		if v := c.PostForm("default_proxy_id"); v != "" {
-			if n, err := strconv.ParseUint(v, 10, 64); err == nil {
-				req.DefaultProxyID = n
-			}
-		}
 		// 多文件合并:允许前端一次上传 N 个 json
 		if form, err := c.MultipartForm(); err == nil && form != nil {
 			var sb strings.Builder
@@ -382,7 +349,6 @@ func (h *Handler) Import(c *gin.Context) {
 	opt := ImportOptions{
 		UpdateExisting:  upd,
 		DefaultClientID: req.DefaultClientID,
-		DefaultProxyID:  req.DefaultProxyID,
 		BatchSize:       200,
 	}
 	summary := h.svc.ImportBatch(c.Request.Context(), items, opt)
@@ -407,7 +373,7 @@ func (h *Handler) Import(c *gin.Context) {
 //	  "tokens": "一行一个\n...\n",   // 或字符串数组
 //	  "client_id": "app_xxxx",      // rt 必填,at/st 可选
 //	  "update_existing": true,
-//	  "default_proxy_id": 0         // RT/ST 换 AT 时走此代理,强烈推荐
+//	  "default_proxy_id": 0         // RT/ST 换 AT 时使用的请求代理 id
 //	}
 //
 // 返回同 /import:ImportSummary。
@@ -468,7 +434,6 @@ func (h *Handler) ImportTokens(c *gin.Context) {
 		Mode:            mode,
 		ClientID:        strings.TrimSpace(req.ClientID),
 		ProxyURL:        proxyURL,
-		DefaultProxyID:  req.DefaultProxyID,
 		UpdateExisting:  upd,
 		DefaultClientID: strings.TrimSpace(req.ClientID),
 	})

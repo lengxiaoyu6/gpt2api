@@ -19,6 +19,7 @@ type Proxy struct {
 	ISP          string       `db:"isp" json:"isp"`
 	HealthScore  int          `db:"health_score" json:"health_score"`
 	LastProbeAt  sql.NullTime `db:"last_probe_at" json:"last_probe_at,omitempty"`
+	LastUsedAt   sql.NullTime `db:"last_used_at" json:"last_used_at,omitempty"`
 	LastError    string       `db:"last_error" json:"last_error,omitempty"`
 	Enabled      bool         `db:"enabled" json:"enabled"`
 	Remark       string       `db:"remark" json:"remark"`

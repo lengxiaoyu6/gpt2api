@@ -98,3 +98,48 @@ func (d *DAO) UpdateHealth(ctx context.Context, id uint64, score int, lastErr st
 		score, time.Now(), lastErr, id)
 	return err
 }
+
+// ListRuntimeCandidates 返回运行态临时代理候选。
+func (d *DAO) ListRuntimeCandidates(ctx context.Context, limit int) ([]*Proxy, error) {
+	if limit <= 0 {
+		limit = 64
+	}
+	rows := make([]*Proxy, 0, limit)
+	err := d.db.SelectContext(ctx, &rows, `
+SELECT * FROM proxies
+ WHERE deleted_at IS NULL
+   AND enabled = 1
+   AND health_score > 0
+ ORDER BY
+   health_score DESC,
+   CASE WHEN last_used_at IS NULL THEN 0 ELSE 1 END ASC,
+   last_used_at ASC,
+   id ASC
+ LIMIT ?`, limit)
+	return rows, err
+}
+
+// TouchLastUsed 在运行态成功租用后推进 last_used_at。
+func (d *DAO) TouchLastUsed(ctx context.Context, id uint64) error {
+	_, err := d.db.ExecContext(ctx,
+		`UPDATE proxies SET last_used_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		time.Now(), id)
+	return err
+}
+
+// DeductHealthOnRuntimeFailure 仅用于运行态代理层失败扣分。
+func (d *DAO) DeductHealthOnRuntimeFailure(ctx context.Context, id uint64, deduct int, lastErr string) error {
+	if deduct <= 0 {
+		deduct = 20
+	}
+	_, err := d.db.ExecContext(ctx, `
+UPDATE proxies
+   SET health_score = CASE
+       WHEN health_score > ? THEN health_score - ?
+       ELSE 0
+   END,
+       last_error = ?
+ WHERE id = ? AND deleted_at IS NULL`,
+		deduct, deduct, lastErr, id)
+	return err
+}

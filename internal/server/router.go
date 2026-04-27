@@ -237,8 +237,6 @@ func New(d *Deps) *gin.Engine {
 				ag.DELETE("/:id", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.Delete)
 				ag.POST("/:id/refresh", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.Refresh)
 				ag.POST("/:id/probe-quota", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.ProbeQuota)
-				ag.POST("/:id/bind-proxy", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.BindProxy)
-				ag.DELETE("/:id/bind-proxy", middleware.RequirePerm(rbac.PermAccountWrite), d.AccountH.UnbindProxy)
 			}
 
 			// ---- 用户管理 ----

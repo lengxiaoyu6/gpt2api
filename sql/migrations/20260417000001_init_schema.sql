@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS `proxies` (
     `country`        VARCHAR(8)      NOT NULL DEFAULT '',
     `isp`            VARCHAR(64)     NOT NULL DEFAULT '',
     `health_score`   INT             NOT NULL DEFAULT 100 COMMENT '0-100',
+    `last_used_at`   DATETIME        NULL,
     `last_probe_at`  DATETIME        NULL,
     `last_error`     VARCHAR(255)    NOT NULL DEFAULT '',
     `enabled`        TINYINT(1)      NOT NULL DEFAULT 1,

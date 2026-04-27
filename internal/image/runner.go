@@ -734,6 +734,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 		Cookies:   "", // 目前不从 oai_account_cookies 加载,后续 M3+ 再做
 	})
 	if err != nil {
+		_ = markProxyFailureIfNeeded(ctx, lease, err)
 		return false, ErrUnknown, fmt.Errorf("chatgpt client: %w", err)
 	}
 
@@ -741,6 +742,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// 回退到单步接口)
 	cr, err := cli.ChatRequirementsV2(ctx)
 	if err != nil {
+		_ = markProxyFailureIfNeeded(ctx, lease, err)
 		code := r.classifyUpstream(err)
 		r.markAccountFailure(lease.Account.ID, code)
 		return false, code, err
@@ -790,6 +792,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 			if err != nil {
 				logger.L().Warn("image runner upload reference failed",
 					zap.Int("idx", idx), zap.Error(err))
+				_ = markProxyFailureIfNeeded(ctx, lease, err)
 				code := r.classifyUpstream(err)
 				r.markAccountFailure(lease.Account.ID, code)
 				if code == ErrAuthRequired || code == ErrRateLimited || code == ErrNetworkTransient {
@@ -840,6 +843,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	if ct, err := cli.PrepareFConversation(ctx, convOpt); err == nil {
 		convOpt.ConduitToken = ct
 	} else {
+		_ = markProxyFailureIfNeeded(ctx, lease, err)
 		code := r.classifyUpstream(err)
 		if code == ErrAuthRequired || code == ErrRateLimited {
 			r.markAccountFailure(lease.Account.ID, code)
@@ -850,6 +854,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// f/conversation SSE
 	stream, err := cli.StreamFConversation(ctx, convOpt)
 	if err != nil {
+		_ = markProxyFailureIfNeeded(ctx, lease, err)
 		code := r.classifyUpstream(err)
 		r.markAccountFailure(lease.Account.ID, code)
 		return false, code, err
@@ -969,6 +974,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 		if err != nil {
 			logger.L().Warn("image runner download url failed",
 				zap.String("ref", ref), zap.Error(err))
+			_ = markProxyFailureIfNeeded(ctx, lease, err)
 			code := r.classifyUpstream(err)
 			if downloadFailureCode == "" || code == ErrAuthRequired || code == ErrRateLimited {
 				downloadFailureCode = code
@@ -996,6 +1002,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 		for idx, signedURL := range signedURLs {
 			body, contentType, err := cli.FetchImage(ctx, signedURL, 16*1024*1024)
 			if err != nil {
+				_ = markProxyFailureIfNeeded(ctx, lease, err)
 				return false, ErrArchive, err
 			}
 			if contentType == "" && idx < len(contentTypes) {
@@ -1072,6 +1079,54 @@ func (r *Runner) markAccountFailure(accountID uint64, code string) {
 	case ErrAuthRequired:
 		r.sched.MarkDead(context.Background(), accountID)
 	}
+}
+
+func markProxyFailureIfNeeded(ctx context.Context, lease *scheduler.Lease, err error) error {
+	if lease == nil || lease.ProxyID == 0 || err == nil {
+		return nil
+	}
+	if !isProxyTransportError(err) {
+		return nil
+	}
+	return lease.MarkProxyFailure(ctx, proxyFailureSummary(err))
+}
+
+func isProxyTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ue *chatgpt.UpstreamError
+	if errors.As(err, &ue) {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "" {
+		return false
+	}
+	for _, needle := range []string{
+		"invalid proxy url",
+		"unsupported proxy scheme",
+		"dial proxy",
+		"tls handshake to https proxy",
+		"proxyconnect",
+		"proxy connect",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func proxyFailureSummary(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(err.Error())
+	if len(msg) <= 255 {
+		return msg
+	}
+	return msg[:255]
 }
 
 // classifyUpstream 把上游错误转成内部 error code。

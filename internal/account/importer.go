@@ -51,8 +51,6 @@ type ImportOptions struct {
 	UpdateExisting bool
 	// DefaultClientID 当记录里没有 client_id 时填充的值。
 	DefaultClientID string
-	// DefaultProxyID 新建账号时默认绑定的代理 id(0 = 不绑)。
-	DefaultProxyID uint64
 	// BatchSize 分批 commit 的大小(仅用于让出 CPU,每批做一次 context check)。默认 200。
 	BatchSize int
 }
@@ -442,9 +440,6 @@ func (s *Service) importOne(ctx context.Context, idx int, it ImportSource, opt I
 			out.Status = "failed"
 			out.Reason = "入库失败:" + err.Error()
 			return out
-		}
-		if opt.DefaultProxyID > 0 {
-			_ = s.dao.SetBinding(ctx, id, opt.DefaultProxyID)
 		}
 		out.Status = "created"
 		out.ID = id

@@ -1,12 +1,12 @@
 // Package gateway 实现 OpenAI 兼容的 /v1/* 入口。
 //
 // 职责:
-//   1. 鉴权(API Key,IP/模型白名单)
-//   2. 查模型 → 预扣积分
-//   3. 通过调度器拿账号 Lease
-//   4. 转译请求体 → 调用 chatgpt.com 上游
-//   5. 转译响应(流式 or 聚合) → OpenAI 协议
-//   6. 结算(真实 tokens) / 失败退款 / 释放账号锁 / 更新风控状态
+//  1. 鉴权(API Key,IP/模型白名单)
+//  2. 查模型 → 预扣积分
+//  3. 通过调度器拿账号 Lease
+//  4. 转译请求体 → 调用 chatgpt.com 上游
+//  5. 转译响应(流式 or 聚合) → OpenAI 协议
+//  6. 结算(真实 tokens) / 失败退款 / 释放账号锁 / 更新风控状态
 package gateway
 
 import (
@@ -264,6 +264,7 @@ func (h *Handler) ChatCompletions(c *gin.Context) {
 		Timeout:   h.upstreamTimeout(),
 	})
 	if err != nil {
+		_ = markProxyFailureIfNeeded(c.Request.Context(), lease, err)
 		refund("upstream_init_error")
 		openAIError(c, http.StatusInternalServerError, "upstream_init_error", "上游客户端初始化失败:"+err.Error())
 		return
@@ -364,6 +365,7 @@ func (h *Handler) ChatCompletions(c *gin.Context) {
 	conduit, err := cli.PrepareFChat(prepCtx, chatOpt)
 	cancelPrep()
 	if err != nil {
+		_ = markProxyFailureIfNeeded(c.Request.Context(), lease, err)
 		logger.L().Warn("f/conversation/prepare failed, continue without conduit",
 			zap.Uint64("account_id", lease.Account.ID),
 			zap.String("upstream_model", upstreamModel),
@@ -565,6 +567,7 @@ func (h *Handler) lastCompletionTokens(c *gin.Context) int {
 
 // handleUpstreamErr 根据上游错误降级账号并回传 OpenAI 错误。
 func (h *Handler) handleUpstreamErr(c *gin.Context, lease *scheduler.Lease, err error, refund func()) {
+	_ = markProxyFailureIfNeeded(c.Request.Context(), lease, err)
 	var ue *chatgpt.UpstreamError
 	if errors.As(err, &ue) {
 		switch {
@@ -584,6 +587,50 @@ func (h *Handler) handleUpstreamErr(c *gin.Context, lease *scheduler.Lease, err 
 	}
 	refund()
 	openAIError(c, http.StatusBadGateway, "upstream_error", "上游请求失败:"+err.Error())
+}
+
+func markProxyFailureIfNeeded(ctx context.Context, lease *scheduler.Lease, err error) error {
+	if lease == nil || lease.ProxyID == 0 || err == nil {
+		return nil
+	}
+	if !isProxyTransportError(err) {
+		return nil
+	}
+	return lease.MarkProxyFailure(ctx, proxyFailureSummary(err))
+}
+
+func isProxyTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ue *chatgpt.UpstreamError
+	if errors.As(err, &ue) {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "" {
+		return false
+	}
+	for _, needle := range []string{
+		"invalid proxy url",
+		"unsupported proxy scheme",
+		"dial proxy",
+		"tls handshake to https proxy",
+		"proxyconnect",
+		"proxy connect",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func proxyFailureSummary(err error) string {
+	if err == nil {
+		return ""
+	}
+	return truncate(strings.TrimSpace(err.Error()), 255)
 }
 
 func truncate(s string, n int) string {

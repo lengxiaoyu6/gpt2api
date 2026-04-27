@@ -37,7 +37,6 @@ type CreateInput struct {
 	DailyImageQuota  int       `json:"daily_image_quota"`
 	Notes            string    `json:"notes"`
 	Cookies          string    `json:"cookies"`
-	ProxyID          uint64    `json:"proxy_id"` // 可选:立即绑定
 }
 
 // UpdateInput 更新入参。AuthToken/RefreshToken/SessionToken/Cookies 为空串表示不改。
@@ -123,11 +122,6 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Account, error) 
 			return nil, err
 		}
 		if err := s.dao.UpsertCookies(ctx, id, enc); err != nil {
-			return nil, err
-		}
-	}
-	if in.ProxyID > 0 {
-		if err := s.dao.SetBinding(ctx, id, in.ProxyID); err != nil {
 			return nil, err
 		}
 	}
@@ -243,16 +237,6 @@ func (s *Service) List(ctx context.Context, status, keyword string, offset, limi
 
 func (s *Service) ListDeleted(ctx context.Context, status, keyword string, offset, limit int) ([]*Account, int64, error) {
 	return s.dao.ListDeleted(ctx, status, keyword, offset, limit)
-}
-
-// BindProxy 绑定代理(一号一代理)。
-func (s *Service) BindProxy(ctx context.Context, accountID, proxyID uint64) error {
-	return s.dao.SetBinding(ctx, accountID, proxyID)
-}
-
-// UnbindProxy 解除绑定。
-func (s *Service) UnbindProxy(ctx context.Context, accountID uint64) error {
-	return s.dao.RemoveBinding(ctx, accountID)
 }
 
 // DecryptAuthToken 解密 AT。

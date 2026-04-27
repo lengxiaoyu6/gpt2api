@@ -36,6 +36,7 @@ type Lease struct {
 	ProxyID     uint64
 	DeviceID    string
 	SessionID   string // oai_session_id(按账号稳定)
+	proxyLease  *proxy.Lease
 	lockKey     string
 	lockToken   string
 	releaseFunc func(context.Context) error
@@ -47,6 +48,14 @@ func (l *Lease) Release(ctx context.Context) error {
 		return l.releaseFunc(ctx)
 	}
 	return nil
+}
+
+// MarkProxyFailure 仅在运行态代理层失败时调用。
+func (l *Lease) MarkProxyFailure(ctx context.Context, summary string) error {
+	if l == nil || l.proxyLease == nil {
+		return nil
+	}
+	return l.proxyLease.MarkFailure(ctx, summary)
 }
 
 // RuntimeParams 调度器运行期可热更的参数。
@@ -226,7 +235,7 @@ func (s *Scheduler) tryDispatchOnce(ctx context.Context, modelType string) (*Lea
 				continue
 			}
 		}
-		lease, err := s.tryLock(ctx, acc)
+		lease, err := s.tryLock(ctx, acc, modelType)
 		if err == nil {
 			return lease, nil
 		}
@@ -240,7 +249,7 @@ func (s *Scheduler) tryDispatchOnce(ctx context.Context, modelType string) (*Lea
 	return nil, ErrNoAvailable
 }
 
-func (s *Scheduler) tryLock(ctx context.Context, acc *account.Account) (*Lease, error) {
+func (s *Scheduler) tryLock(ctx context.Context, acc *account.Account, modelType string) (*Lease, error) {
 	key := fmt.Sprintf("acct:lock:%d", acc.ID)
 	token := uuid.NewString()
 	ttl := time.Duration(s.cfg.LockTTLSec) * time.Second
@@ -282,9 +291,24 @@ func (s *Scheduler) tryLock(ctx context.Context, acc *account.Account) (*Lease, 
 		}
 	}
 
-	var proxyURL string
-	var proxyID uint64
-	if b, _ := s.accSvc.GetBinding(ctx, acc.ID); b != nil {
+	var (
+		proxyURL   string
+		proxyID    uint64
+		proxyLease *proxy.Lease
+	)
+	if isRuntimeProxyModel(modelType) {
+		alloc := proxy.NewAllocator(s.proxySvc.DAO(), s.proxySvc, s.lock, ttl)
+		pl, err := alloc.Lease(ctx)
+		if err != nil {
+			_ = s.lock.Release(ctx, key, token)
+			return nil, fmt.Errorf("lease runtime proxy: %w", err)
+		}
+		if pl != nil {
+			proxyURL = pl.ProxyURL
+			proxyID = pl.ProxyID
+			proxyLease = pl
+		}
+	} else if b, _ := s.accSvc.GetBinding(ctx, acc.ID); b != nil {
 		p, err := s.proxySvc.Get(ctx, b.ProxyID)
 		if err == nil && p != nil && p.Enabled {
 			if u, err := s.proxySvc.BuildURL(p); err == nil {
@@ -302,13 +326,25 @@ func (s *Scheduler) tryLock(ctx context.Context, acc *account.Account) (*Lease, 
 		ProxyID:   proxyID,
 		DeviceID:  deviceID,
 		SessionID: sessionID,
+		proxyLease: proxyLease,
 		lockKey:   key,
 		lockToken: token,
 	}
 	lease.releaseFunc = func(c context.Context) error {
 		today := truncateDay(time.Now())
-		_ = s.accSvc.DAO().MarkUsed(c, accCopy.ID, today)
-		return s.lock.Release(c, key, token)
+		var errs []error
+		if err := s.accSvc.DAO().MarkUsed(c, accCopy.ID, today); err != nil {
+			errs = append(errs, err)
+		}
+		if proxyLease != nil {
+			if err := proxyLease.Release(c); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if err := s.lock.Release(c, key, token); err != nil {
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
 	}
 	return lease, nil
 }
@@ -344,4 +380,8 @@ func truncateDay(t time.Time) time.Time {
 
 func sameDay(a, b time.Time) bool {
 	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
+}
+
+func isRuntimeProxyModel(modelType string) bool {
+	return modelType == "chat" || modelType == "image"
 }

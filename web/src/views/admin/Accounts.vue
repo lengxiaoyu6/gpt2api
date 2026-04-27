@@ -455,7 +455,6 @@ const formDefault = {
   daily_image_quota: 100,
   notes: '',
   cookies: '',
-  proxy_id: 0,
   status: 'healthy',
 }
 const form = reactive({ ...formDefault })
@@ -486,7 +485,6 @@ async function openEdit(row: accountApi.Account) {
     daily_image_quota: row.daily_image_quota || 100,
     notes: row.notes || '',
     cookies: '',
-    proxy_id: 0,
     status: row.status || 'healthy',
   })
   dlg.value = true
@@ -610,31 +608,6 @@ async function onPurge(row: accountApi.Account) {
     await refreshAllAccountLists()
   } catch (e: any) {
     ElMessage.error(e?.message || '彻底删除失败')
-  }
-}
-
-// ========== 绑定代理 ==========
-const bindDlg = ref(false)
-const bindForm = reactive({ id: 0, email: '', proxy_id: 0 })
-function openBind(row: accountApi.Account) {
-  bindForm.id = row.id
-  bindForm.email = row.email
-  bindForm.proxy_id = 0
-  bindDlg.value = true
-}
-async function submitBind() {
-  try {
-    if (bindForm.proxy_id > 0) {
-      await accountApi.bindProxy(bindForm.id, bindForm.proxy_id)
-      ElMessage.success('已绑定代理')
-    } else {
-      await accountApi.unbindProxy(bindForm.id)
-      ElMessage.success('已解绑')
-    }
-    bindDlg.value = false
-    await refreshAllAccountLists()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
   }
 }
 
@@ -908,7 +881,6 @@ async function doImport() {
         text: importForm.text,
         update_existing: importForm.update_existing,
         default_client_id: importForm.default_client_id || undefined,
-        default_proxy_id: importForm.default_proxy_id || undefined,
       })
       mergeSummary(r)
       importResult.value = cloneAgg()
@@ -956,7 +928,6 @@ async function doImport() {
         const r = await accountApi.importAccountsFiles(b, {
           update_existing: importForm.update_existing,
           default_client_id: importForm.default_client_id || undefined,
-          default_proxy_id: importForm.default_proxy_id || undefined,
         })
         mergeSummary(r)
         for (const it of r.results) {
@@ -1280,7 +1251,6 @@ onMounted(async () => {
                 :loading="probingIds.has(row.id)"
                 @click="onProbeOne(row)"
               >探测</el-button>
-              <el-button link type="primary" size="small" @click="openBind(row)">代理</el-button>
               <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
               <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
             </template>
@@ -1517,41 +1487,10 @@ onMounted(async () => {
         <el-form-item label="备注">
           <el-input v-model="form.notes" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item v-if="!isEdit" label="绑定代理">
-          <el-select v-model="form.proxy_id" clearable placeholder="不绑定" style="width: 100%">
-            <el-option :value="0" label="不绑定" />
-            <el-option
-              v-for="p in proxies"
-              :key="p.id"
-              :label="`#${p.id} ${p.remark || p.host}:${p.port}`"
-              :value="p.id"
-            />
-          </el-select>
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submitForm">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 绑定代理弹窗 -->
-    <el-dialog v-model="bindDlg" title="绑定代理" width="420px">
-      <div style="margin-bottom: 10px; color: var(--el-text-color-secondary)">
-        账号:<b>{{ bindForm.email }}</b>
-      </div>
-      <el-select v-model="bindForm.proxy_id" clearable placeholder="选择代理(留空=解绑)" style="width: 100%">
-        <el-option :value="0" label="不绑定 / 解绑" />
-        <el-option
-          v-for="p in proxies"
-          :key="p.id"
-          :label="`#${p.id} ${p.remark || p.host}:${p.port}`"
-          :value="p.id"
-        />
-      </el-select>
-      <template #footer>
-        <el-button @click="bindDlg = false">取消</el-button>
-        <el-button type="primary" @click="submitBind">确定</el-button>
       </template>
     </el-dialog>
 
@@ -1673,12 +1612,12 @@ onMounted(async () => {
             :placeholder="importMode === 'rt' ? 'app_xxxxxxxxxxxxxxxxxxxxxxxx(必填)' : '可选,默认 ChatGPT iOS'"
           />
         </div>
-        <div>
+        <div v-if="importMode === 'rt' || importMode === 'st'">
           <span class="muted" style="margin-right: 6px">
-            {{ importMode === 'st' || importMode === 'rt' ? '代理(强烈推荐)' : '默认代理' }}
+            请求代理
           </span>
           <el-select v-model="importForm.default_proxy_id" clearable size="small" style="width: 220px">
-            <el-option :value="0" label="不绑定" />
+            <el-option :value="0" label="直连" />
             <el-option v-for="p in proxies" :key="p.id" :label="`#${p.id} ${p.remark || p.host}:${p.port}`" :value="p.id" />
           </el-select>
         </div>

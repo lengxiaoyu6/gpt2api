@@ -36,7 +36,6 @@ type ImportTokensOptions struct {
 	ProxyURL string
 
 	// 下面几个直接透传给底层 ImportBatch。
-	DefaultProxyID  uint64
 	UpdateExisting  bool
 	DefaultClientID string
 	BatchSize       int
@@ -132,7 +131,6 @@ func (s *Service) ImportTokensBatch(ctx context.Context, tokens []string, opts I
 	batch := s.ImportBatch(ctx, items, ImportOptions{
 		UpdateExisting:  opts.UpdateExisting,
 		DefaultClientID: clientID,
-		DefaultProxyID:  opts.DefaultProxyID,
 		BatchSize:       opts.BatchSize,
 	})
 	sum.Total += batch.Total
@@ -414,7 +412,7 @@ func friendlyImportErr(err error) string {
 	case strings.Contains(low, "timeout"), strings.Contains(low, "deadline exceeded"):
 		return "请求超时,建议配代理"
 	case strings.Contains(low, "no such host"), strings.Contains(low, "dial tcp"):
-		return "无法连接 openai(建议选默认代理)"
+		return "无法连接 openai(建议选择请求代理)"
 	case strings.Contains(low, "tls"), strings.Contains(low, "x509"):
 		return "TLS 握手失败"
 	}

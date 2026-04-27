@@ -324,3 +324,6 @@ func (s *Service) BuildURL(p *Proxy) (string, error) {
 	}
 	return p.URLWithPassword(pw), nil
 }
+
+// DAO 暴露底层 DAO,供调度器与运行态分配器使用。
+func (s *Service) DAO() *DAO { return s.dao }

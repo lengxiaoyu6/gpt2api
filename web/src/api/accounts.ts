@@ -69,7 +69,6 @@ export interface AccountCreate {
   daily_image_quota?: number
   notes?: string
   cookies?: string
-  proxy_id?: number
 }
 export interface AccountUpdate extends Partial<AccountCreate> {
   status?: string
@@ -89,12 +88,6 @@ export function restoreAccount(id: number) {
 }
 export function purgeAccount(id: number) {
   return http.delete<any, { deleted: number; purged: boolean }>(`/api/admin/accounts/${id}/purge`)
-}
-export function bindProxy(id: number, proxyID: number) {
-  return http.post(`/api/admin/accounts/${id}/bind-proxy`, { proxy_id: proxyID })
-}
-export function unbindProxy(id: number) {
-  return http.delete(`/api/admin/accounts/${id}/bind-proxy`)
 }
 
 // ---------- 批量导入 ----------
@@ -127,7 +120,6 @@ export function importAccountsJSON(body: {
   text: string
   update_existing?: boolean
   default_client_id?: string
-  default_proxy_id?: number
 }) {
   return http.post<any, ImportSummary>('/api/admin/accounts/import', body)
 }
@@ -140,7 +132,7 @@ export interface ImportTokensBody {
   /** RT 模式必填;AT/ST 模式可选,传了也会记到账号上 */
   client_id?: string
   update_existing?: boolean
-  /** RT/ST 换 AT 时走的代理(chatgpt.com / auth.openai.com),强烈推荐 */
+  /** RT/ST 换 AT 时使用的请求代理 id */
   default_proxy_id?: number
 }
 
@@ -150,13 +142,12 @@ export function importAccountsTokens(body: ImportTokensBody) {
 
 export function importAccountsFiles(
   files: File[],
-  opt: { update_existing?: boolean; default_client_id?: string; default_proxy_id?: number } = {}
+  opt: { update_existing?: boolean; default_client_id?: string } = {}
 ) {
   const fd = new FormData()
   for (const f of files) fd.append('files', f, f.name)
   if (opt.update_existing !== undefined) fd.append('update_existing', String(opt.update_existing))
   if (opt.default_client_id) fd.append('default_client_id', opt.default_client_id)
-  if (opt.default_proxy_id) fd.append('default_proxy_id', String(opt.default_proxy_id))
   return http.post<any, ImportSummary>('/api/admin/accounts/import', fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
