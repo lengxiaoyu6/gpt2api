@@ -112,6 +112,7 @@ type RunOptions struct {
 	ModelID           uint64
 	UpstreamModel     string // 默认 "auto"(由上游根据 system_hints 挑选图像模型)
 	Prompt            string
+	Size              string           // 目标输出尺寸,例如 1024x1024 / 3840x2160
 	N                 int              // 期望返回的图片张数;够数 Poll 就立即返回(速度优先)
 	MaxAttempts       int              // 跨账号重试次数,仅用于无账号/限流等硬错误,默认 1
 	PerAttemptTimeout time.Duration    // 单次尝试总超时,默认 6min(覆盖 SSE + PollMaxWait + 缓冲)
@@ -825,6 +826,7 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	// IMG2 已正式上线,不再区分"终稿 / 预览",拿到就用,追求速度。
 	convOpt := chatgpt.ImageConvOpts{
 		Prompt:        opt.Prompt,
+		Size:          opt.Size,
 		UpstreamModel: upstreamModel,
 		ConvID:        convID,
 		ParentMsgID:   parentID,

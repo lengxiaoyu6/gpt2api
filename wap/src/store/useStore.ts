@@ -60,6 +60,19 @@ function normalizeImageCount(count?: number) {
   return Math.min(Math.max(count ?? 1, 1), 4)
 }
 
+function isLocalImagePool(model?: meApi.ImageModel) {
+  return model?.has_image_channel !== true
+}
+
+function shouldSendOutputSize(model?: meApi.ImageModel) {
+  const supportsOutputSize = model?.supports_output_size ?? true
+  return supportsOutputSize || isLocalImagePool(model)
+}
+
+function effectiveOutputQuality(supportsOutputSize: boolean, quality?: OutputQualityValue): OutputQualityValue {
+  return supportsOutputSize ? quality || '1K' : '1K'
+}
+
 function pickPreferredImageModel(models: meApi.ImageModel[], current?: string | null) {
   if (current && models.some((item) => item.slug === current)) {
     return current
@@ -288,13 +301,14 @@ export const useStore = create<AppState>()(
         }
         const supportsMultiImage = modelConfig?.supports_multi_image ?? true
         const supportsOutputSize = modelConfig?.supports_output_size ?? true
+        const outputQuality = effectiveOutputQuality(supportsOutputSize, input.quality)
         const req: meApi.PlayImageRequest = {
           model: modelSlug,
           prompt: input.prompt,
           n: supportsMultiImage ? normalizeImageCount(input.count) : 1,
         }
-        if (supportsOutputSize) {
-          req.size = resolveOutputSize(input.aspectRatio, input.quality || '1K')
+        if (shouldSendOutputSize(modelConfig)) {
+          req.size = resolveOutputSize(input.aspectRatio, outputQuality)
         }
         try {
           return await meApi.playGenerateImage(
@@ -313,12 +327,13 @@ export const useStore = create<AppState>()(
         }
         const supportsMultiImage = modelConfig?.supports_multi_image ?? true
         const supportsOutputSize = modelConfig?.supports_output_size ?? true
+        const outputQuality = effectiveOutputQuality(supportsOutputSize, input.quality)
         const opts: { n?: number; size?: string; signal?: AbortSignal } = {
           n: supportsMultiImage ? normalizeImageCount(input.count) : 1,
           signal: input.signal,
         }
-        if (supportsOutputSize) {
-          opts.size = resolveOutputSize(input.aspectRatio, input.quality || '1K')
+        if (shouldSendOutputSize(modelConfig)) {
+          opts.size = resolveOutputSize(input.aspectRatio, outputQuality)
         }
         try {
           return await meApi.playEditImage(

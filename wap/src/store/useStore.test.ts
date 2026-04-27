@@ -328,7 +328,7 @@ describe('useStore backend integration', () => {
     )
   })
 
-  test('generateImage keeps raw prompt and omits size when model disables output size', async () => {
+  test('generateImage keeps raw prompt and still sends 1K size for local pool when model disables output size', async () => {
     vi.mocked(meApi.listMyModels).mockResolvedValue({
       items: [{
         id: 2,
@@ -356,6 +356,38 @@ describe('useStore backend integration', () => {
       model: 'single-default-size',
       prompt: 'future skyline',
       n: 1,
+      size: '1280x720',
+    })
+  })
+
+  test('generateImage keeps omitting size for upstream channel when model disables output size', async () => {
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [{
+        id: 2,
+        slug: 'upstream-default-size',
+        type: 'image',
+        description: 'upstream',
+        image_price_per_call: 5,
+        has_image_channel: true,
+        supports_output_size: false,
+      }],
+      total: 1,
+    })
+    const state = useStore.getState() as any
+    await state.fetchImageModels()
+
+    await state.generateImage({
+      prompt: 'future skyline',
+      aspectRatio: '16:9',
+      quality: '4K',
+      count: 4,
+    })
+
+    const [req] = vi.mocked(meApi.playGenerateImage).mock.calls.at(-1) || []
+    expect(req).toMatchObject({
+      model: 'upstream-default-size',
+      prompt: 'future skyline',
+      n: 4,
     })
     expect(req).not.toHaveProperty('size')
   })
@@ -430,7 +462,7 @@ describe('useStore backend integration', () => {
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
   })
 
-  test('editImage keeps raw prompt and omits size when model disables output size', async () => {
+  test('editImage keeps raw prompt and still sends 1K size for local pool when model disables output size', async () => {
     vi.mocked(meApi.listMyModels).mockResolvedValue({
       items: [{
         id: 2,
@@ -459,7 +491,40 @@ describe('useStore backend integration', () => {
       'single-default-size',
       'portrait relight',
       files,
-      expect.objectContaining({ n: 1 }),
+      expect.objectContaining({ size: '672x1008', n: 1 }),
+    )
+  })
+
+  test('editImage keeps omitting size for upstream channel when model disables output size', async () => {
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [{
+        id: 2,
+        slug: 'upstream-default-size',
+        type: 'image',
+        description: 'upstream',
+        image_price_per_call: 5,
+        has_image_channel: true,
+        supports_output_size: false,
+      }],
+      total: 1,
+    })
+    const state = useStore.getState() as any
+    await state.fetchImageModels()
+    const files = [new File(['demo'], 'demo.png', { type: 'image/png' })]
+
+    await state.editImage({
+      prompt: 'portrait relight',
+      aspectRatio: '2:3',
+      quality: '4K',
+      files,
+      count: 3,
+    })
+
+    expect(meApi.playEditImage).toHaveBeenCalledWith(
+      'upstream-default-size',
+      'portrait relight',
+      files,
+      expect.objectContaining({ n: 3 }),
     )
     const opts = vi.mocked(meApi.playEditImage).mock.calls.at(-1)?.[3]
     expect(opts).not.toHaveProperty('size')

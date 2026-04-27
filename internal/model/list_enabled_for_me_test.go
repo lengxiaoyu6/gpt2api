@@ -65,11 +65,11 @@ func TestListEnabledForMeReportsImageChannelAvailability(t *testing.T) {
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`INSERT INTO models
-			(slug, type, upstream_model_slug, image_price_per_call, description, enabled)
+			(slug, type, upstream_model_slug, image_price_per_call, supports_output_size, description, enabled)
 		VALUES
-			('gpt-image-2', 'image', 'gpt-image-2', 10, 'local image', 1),
-			('gpt-image-2-api', 'image', 'gpt-5.4', 10, 'upstream image', 1),
-			('gpt-5.4', 'chat', 'gpt-5.4', 0, 'chat', 1)`,
+			('gpt-image-2', 'image', 'gpt-image-2', 10, 0, 'local image', 1),
+			('gpt-image-2-api', 'image', 'gpt-5.4', 10, 0, 'upstream image', 1),
+			('gpt-5.4', 'chat', 'gpt-5.4', 0, 0, 'chat', 1)`,
 		`INSERT INTO upstream_channels
 			(name, type, base_url, api_key_enc, enabled)
 		VALUES
@@ -101,12 +101,16 @@ func TestListEnabledForMeReportsImageChannelAvailability(t *testing.T) {
 		t.Fatalf("missing gpt-image-2")
 	} else if got.HasImageChannel {
 		t.Fatalf("gpt-image-2 HasImageChannel = true, want false")
+	} else if !got.SupportsOutputSize {
+		t.Fatalf("gpt-image-2 SupportsOutputSize = false, want true for local account pool")
 	}
 
 	if got := bySlug["gpt-image-2-api"]; got == nil {
 		t.Fatalf("missing gpt-image-2-api")
 	} else if !got.HasImageChannel {
 		t.Fatalf("gpt-image-2-api HasImageChannel = false, want true")
+	} else if got.SupportsOutputSize {
+		t.Fatalf("gpt-image-2-api SupportsOutputSize = true, want stored false for upstream channel")
 	}
 
 	if got := bySlug["gpt-5.4"]; got == nil {

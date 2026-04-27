@@ -48,6 +48,8 @@ const currentImageModel = computed(
 const currentImageDesc = computed(() => currentImageModel.value?.description || '')
 const supportsMultiImage = computed(() => currentImageModel.value?.supports_multi_image ?? true)
 const supportsOutputSize = computed(() => currentImageModel.value?.supports_output_size ?? true)
+const isLocalImagePool = computed(() => currentImageModel.value?.has_image_channel !== true)
+const shouldSendOutputSize = computed(() => supportsOutputSize.value || isLocalImagePool.value)
 const effectiveT2iN = computed(() => supportsMultiImage.value ? t2iN.value : 1)
 const effectiveI2iN = computed(() => 1)
 const noticeText = computed(() => siteStore.get('site.image_notice'))
@@ -353,6 +355,10 @@ function resolveOutputSize(ratio: string, quality: OutputQualityValue): string {
   return ratioSizes[quality]
 }
 
+function effectiveOutputQuality(quality: OutputQualityValue): OutputQualityValue {
+  return supportsOutputSize.value ? quality : '1K'
+}
+
 // 预览小框的尺寸(按比例缩放后的 CSS px)。
 function ratioBoxStyle(r: RatioOpt) {
   return { width: `${r.w}px`, height: `${r.h}px` }
@@ -366,7 +372,7 @@ const t2iQuality = ref<OutputQualityValue>('1K')
 const t2iN = ref(1)
 const currentT2iPrice = computed(() => resolveImageUnitPrice(
   currentImageModel.value,
-  supportsOutputSize.value ? t2iQuality.value : '1K',
+  effectiveOutputQuality(t2iQuality.value),
 ))
 const currentT2iTotalPrice = computed(() => currentT2iPrice.value * effectiveT2iN.value)
 const t2iSending = ref(false)
@@ -405,7 +411,7 @@ async function sendText2Img() {
       model: selectedImageModel.value,
       prompt,
       n: effectiveT2iN.value,
-      ...(supportsOutputSize.value ? { size: resolveOutputSize(t2iRatio.value, t2iQuality.value) } : {}),
+      ...(shouldSendOutputSize.value ? { size: resolveOutputSize(t2iRatio.value, effectiveOutputQuality(t2iQuality.value)) } : {}),
     }
     const resp = await playGenerateImage(
       body,
@@ -472,7 +478,7 @@ const i2iRatio = ref<string>('1:1')
 const i2iQuality = ref<OutputQualityValue>('1K')
 const currentI2iPrice = computed(() => resolveImageUnitPrice(
   currentImageModel.value,
-  supportsOutputSize.value ? i2iQuality.value : '1K',
+  effectiveOutputQuality(i2iQuality.value),
 ))
 const currentI2iTotalPrice = computed(() => currentI2iPrice.value * effectiveI2iN.value)
 const i2iSending = ref(false)
@@ -576,7 +582,7 @@ async function sendImg2Img() {
       prompt,
       n: 1,
       reference_images: refImages.value.map((r) => r.dataUrl),
-      ...(supportsOutputSize.value ? { size: resolveOutputSize(i2iRatio.value, i2iQuality.value) } : {}),
+      ...(shouldSendOutputSize.value ? { size: resolveOutputSize(i2iRatio.value, effectiveOutputQuality(i2iQuality.value)) } : {}),
     }
     const resp = await playGenerateImage(
       body,

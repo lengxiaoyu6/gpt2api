@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +36,24 @@ const maxReferenceImages = 4
 
 // chatMsg 是 OpenAI chat message 的本地别名,便于 handleChatAsImage 内部表达。
 type chatMsg = chatgpt.ChatMessage
+
+var imageAspectRatioPrefixRE = regexp.MustCompile(`(?i)^\s*Make\s+the\s+aspect\s+ratio\s+\d+\s*:\s*\d+\s*,\s*`)
+
+var canonicalImageAspectRatios = []struct {
+	w int
+	h int
+}{
+	{1, 1},
+	{5, 4},
+	{9, 16},
+	{16, 9},
+	{4, 3},
+	{3, 2},
+	{4, 5},
+	{3, 4},
+	{2, 3},
+	{21, 9},
+}
 
 // ImagesHandler 挂载在 /v1/images/* 下的处理器。
 //
@@ -142,6 +162,19 @@ func imageResponseAccounting(m *modelpkg.Model, data []ImageGenData, ratio float
 }
 
 func normalizeImageRequestByModel(m *modelpkg.Model, n int, size string) (int, string) {
+	n = normalizeImageCountByModel(m, n)
+	if m != nil && !m.SupportsOutputSize {
+		return n, ""
+	}
+	return n, normalizeImageSize(size)
+}
+
+func normalizeLocalImageRequestByModel(m *modelpkg.Model, n int, size string) (int, string) {
+	n = normalizeImageCountByModel(m, n)
+	return n, normalizeImageSize(size)
+}
+
+func normalizeImageCountByModel(m *modelpkg.Model, n int) int {
 	if n <= 0 {
 		n = 1
 	}
@@ -151,13 +184,59 @@ func normalizeImageRequestByModel(m *modelpkg.Model, n int, size string) (int, s
 	if m != nil && !m.SupportsMultiImage {
 		n = 1
 	}
-	if m != nil && !m.SupportsOutputSize {
-		return n, ""
-	}
+	return n
+}
+
+func normalizeImageSize(size string) string {
 	if size == "" {
 		size = "1024x1024"
 	}
-	return n, size
+	return size
+}
+
+func aspectRatioFromImageSize(size string) string {
+	size = strings.TrimSpace(strings.ToLower(size))
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	w, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || w <= 0 {
+		return ""
+	}
+	h, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || h <= 0 {
+		return ""
+	}
+	for _, ratio := range canonicalImageAspectRatios {
+		if w*ratio.h == h*ratio.w {
+			return fmt.Sprintf("%d:%d", ratio.w, ratio.h)
+		}
+	}
+	divisor := gcdInt(w, h)
+	if divisor <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", w/divisor, h/divisor)
+}
+
+func applyImageSizeRatioPrefix(prompt, size string) string {
+	ratio := aspectRatioFromImageSize(size)
+	if ratio == "" {
+		return prompt
+	}
+	body := imageAspectRatioPrefixRE.ReplaceAllString(prompt, "")
+	return fmt.Sprintf("Make the aspect ratio %s , %s", ratio, strings.TrimSpace(body))
+}
+
+func gcdInt(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 func (h *ImagesHandler) currentStorageMode() string {
@@ -230,7 +309,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		return
 	}
 	rec.ModelID = m.ID
-	req.N, req.Size = normalizeImageRequestByModel(m, req.N, req.Size)
+	req.N = normalizeImageCountByModel(m, req.N)
 
 	// 2) 分组倍率 + RPM 限流(图像不走 TPM)
 	ratio := 1.0
@@ -262,10 +341,13 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 
 	// 若本地模型配置了外置渠道(OpenAI DALL·E / Gemini imagen 等),优先走渠道。
 	if h.Channels != nil {
-		if handled := h.dispatchImageToChannel(c, ak, m, &req, refs, rec, ratio); handled {
+		channelReq := req
+		channelReq.N, channelReq.Size = normalizeImageRequestByModel(m, req.N, req.Size)
+		if handled := h.dispatchImageToChannel(c, ak, m, &channelReq, refs, rec, ratio); handled {
 			return
 		}
 	}
+	req.N, req.Size = normalizeLocalImageRequestByModel(m, req.N, req.Size)
 
 	// 4) 预扣(图像按定价,est = actual)
 	cost := billing.ComputeImageCost(m, req.N, ratio, req.Size)
@@ -334,7 +416,8 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		KeyID:         ak.ID,
 		ModelID:       m.ID,
 		UpstreamModel: m.UpstreamModelSlug,
-		Prompt:        maybeAppendClaritySuffix(req.Prompt),
+		Prompt:        maybeAppendClaritySuffix(applyImageSizeRatioPrefix(req.Prompt, req.Size)),
+		Size:          req.Size,
 		N:             req.N,
 		MaxAttempts:   maxAttempts,
 		References:    refs,
@@ -537,7 +620,8 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 		KeyID:         ak.ID,
 		ModelID:       m.ID,
 		UpstreamModel: m.UpstreamModelSlug,
-		Prompt:        maybeAppendClaritySuffix(prompt),
+		Prompt:        maybeAppendClaritySuffix(applyImageSizeRatioPrefix(prompt, size)),
+		Size:          size,
 		N:             1,
 		MaxAttempts:   2,
 	})
@@ -785,7 +869,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		return
 	}
 	rec.ModelID = m.ID
-	n, size = normalizeImageRequestByModel(m, n, size)
+	n = normalizeImageCountByModel(m, n)
 
 	ratio := 1.0
 	rpmCap := ak.RPM
@@ -807,17 +891,19 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	}
 
 	if h.Channels != nil {
+		channelN, channelSize := normalizeImageRequestByModel(m, n, size)
 		req := &ImageGenRequest{
 			Model:          model,
 			Prompt:         prompt,
-			N:              n,
-			Size:           size,
+			N:              channelN,
+			Size:           channelSize,
 			ResponseFormat: "url",
 		}
 		if handled := h.dispatchImageToChannel(c, ak, m, req, refs, rec, ratio); handled {
 			return
 		}
 	}
+	n, size = normalizeLocalImageRequestByModel(m, n, size)
 
 	cost := billing.ComputeImageCost(m, n, ratio, size)
 	if cost > 0 {
@@ -868,7 +954,8 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 		KeyID:         ak.ID,
 		ModelID:       m.ID,
 		UpstreamModel: m.UpstreamModelSlug,
-		Prompt:        maybeAppendClaritySuffix(prompt),
+		Prompt:        maybeAppendClaritySuffix(applyImageSizeRatioPrefix(prompt, size)),
+		Size:          size,
 		N:             n,
 		MaxAttempts:   1, // 带参考图时只跑一次,避免重复上传
 		References:    refs,

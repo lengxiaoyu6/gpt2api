@@ -65,6 +65,93 @@ func TestPollConversationForImagesReturnsSuccessAfterCollectingExpectedRefs(t *t
 	}
 }
 
+func TestPrepareFConversationIncludesSizeWhenProvided(t *testing.T) {
+	var got map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/backend-api/f/conversation/prepare" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"conduit_token":"ct_size"}`))
+	}))
+	defer srv.Close()
+
+	cli := newTestClient(srv)
+	ct, err := cli.PrepareFConversation(context.Background(), ImageConvOpts{
+		Prompt:    "future skyline",
+		ChatToken: "chat-token",
+		Size:      "3840x2160",
+	})
+	if err != nil {
+		t.Fatalf("PrepareFConversation error: %v", err)
+	}
+	if ct != "ct_size" {
+		t.Fatalf("conduit token = %q", ct)
+	}
+	if got["size"] != "3840x2160" {
+		t.Fatalf("size = %#v", got["size"])
+	}
+}
+
+func TestStreamFConversationIncludesSizeForMultimodalRequest(t *testing.T) {
+	var got map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/backend-api/f/conversation" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	cli := newTestClient(srv)
+	stream, err := cli.StreamFConversation(context.Background(), ImageConvOpts{
+		Prompt:    "portrait relight",
+		ChatToken: "chat-token",
+		Size:      "2160x3840",
+		References: []*UploadedFile{{
+			FileID:   "file_ref_1",
+			FileName: "ref.png",
+			FileSize: 123,
+			MimeType: "image/png",
+			UseCase:  "multimodal",
+			Width:    64,
+			Height:   64,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("StreamFConversation error: %v", err)
+	}
+	_ = ParseImageSSE(stream)
+
+	if got["size"] != "2160x3840" {
+		t.Fatalf("size = %#v", got["size"])
+	}
+	msgs, ok := got["messages"].([]interface{})
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("messages = %#v", got["messages"])
+	}
+	msg, ok := msgs[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("message = %#v", msgs[0])
+	}
+	content, ok := msg["content"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("content = %#v", msg["content"])
+	}
+	if content["content_type"] != "multimodal_text" {
+		t.Fatalf("content_type = %#v", content["content_type"])
+	}
+}
+
 func newTestClient(srv *httptest.Server) *Client {
 	return &Client{
 		opts: Options{

@@ -76,6 +76,26 @@ func TestRunnerRunPreservesReturnedRefs(t *testing.T) {
 	}
 }
 
+func TestRunnerRunPassesRequestedSizeToAttempt(t *testing.T) {
+	r := &Runner{
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			if opt.Size != "3840x2160" {
+				t.Fatalf("Size = %q", opt.Size)
+			}
+			result.ConversationID = "conv_size_passthrough"
+			result.FileIDs = []string{"file:size_passthrough"}
+			result.SignedURLs = []string{"https://example.com/size_passthrough.png"}
+			result.ContentTypes = []string{"image/png"}
+			return true, "", nil
+		},
+	}
+
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_size_passthrough", Size: "3840x2160"})
+	if res.Status != StatusSuccess {
+		t.Fatalf("status = %s", res.Status)
+	}
+}
+
 func TestRunnerRunRetriesUpstreamErrorOnceWhenMaxAttemptsIsOne(t *testing.T) {
 	attempts := 0
 	r := &Runner{

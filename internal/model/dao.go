@@ -50,7 +50,22 @@ FROM models m
 WHERE m.enabled = 1
   AND m.deleted_at IS NULL
 ORDER BY m.id ASC`)
-	return rows, err
+	if err != nil {
+		return rows, err
+	}
+	for _, m := range rows {
+		applyUserVisibleImageCapabilities(m)
+	}
+	return rows, nil
+}
+
+func applyUserVisibleImageCapabilities(m *Model) {
+	if m == nil {
+		return
+	}
+	if m.Type == TypeImage && !m.HasImageChannel {
+		m.SupportsOutputSize = true
+	}
 }
 
 func (d *DAO) List(ctx context.Context) ([]*Model, error) {

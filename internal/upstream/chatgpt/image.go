@@ -35,6 +35,7 @@ import (
 // ImageConvOpts 是图像会话的入参。
 type ImageConvOpts struct {
 	Prompt         string          // 用户提示词(已处理完的,含可选 CLARITY_SUFFIX)
+	Size           string          // 目标输出尺寸,例如 1024x1024 / 3840x2160
 	UpstreamModel  string          // 默认 "gpt-5-3"
 	ConvID         string          // 复用会话时填,空则新建
 	ParentMsgID    string          // 复用会话时从 GetConversationHead 取;新会话随机
@@ -128,6 +129,9 @@ func (c *Client) PrepareFConversation(ctx context.Context, opt ImageConvOpts) (s
 	// 带陌生 UUID 上游会 404)
 	if opt.ConvID != "" {
 		payload["conversation_id"] = opt.ConvID
+	}
+	if opt.Size != "" {
+		payload["size"] = opt.Size
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -259,6 +263,9 @@ func (c *Client) StreamFConversation(ctx context.Context, opt ImageConvOpts) (<-
 	// 新会话不带 conversation_id(对齐浏览器抓包);已有会话才带
 	if opt.ConvID != "" {
 		payload["conversation_id"] = opt.ConvID
+	}
+	if opt.Size != "" {
+		payload["size"] = opt.Size
 	}
 	body, _ := json.Marshal(payload)
 
