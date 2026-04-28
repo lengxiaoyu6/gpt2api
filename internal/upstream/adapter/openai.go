@@ -463,15 +463,20 @@ func (a *openaiAdapter) imageGenerateViaResponsesOnce(ctx context.Context, upstr
 	if resp.StatusCode >= 400 {
 		return nil, upstreamErr(resp)
 	}
-	result, err := parseOpenAIResponsesImageSSE(resp.Body)
+	// 图生图时 partial_image 往往只是中间预览，甚至可能与参考图近似；
+	// 只有拿到 output_item.done / response.completed 里的最终图，才视为成功。
+	result, err := parseOpenAIResponsesImageSSE(resp.Body, len(req.References) == 0)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func parseOpenAIResponsesImageSSE(body io.ReadCloser) (*ImageResult, error) {
-	var bestB64 string
+func parseOpenAIResponsesImageSSE(body io.ReadCloser, allowPartialFallback bool) (*ImageResult, error) {
+	var (
+		bestB64    string
+		finalImage bool
+	)
 	err := scanSSE(body, func(event string, data []byte) bool {
 		if strings.TrimSpace(string(data)) == "[DONE]" {
 			return false
@@ -491,6 +496,7 @@ func parseOpenAIResponsesImageSSE(body io.ReadCloser) (*ImageResult, error) {
 			if err := json.Unmarshal(data, &obj); err == nil {
 				if b64 := imageB64FromOutputItem(obj.Item); b64 != "" {
 					bestB64 = b64
+					finalImage = true
 				}
 			}
 		case "response.completed":
@@ -500,18 +506,19 @@ func parseOpenAIResponsesImageSSE(body io.ReadCloser) (*ImageResult, error) {
 			if err := json.Unmarshal(data, &obj); err == nil {
 				if b64 := firstResponsesImage(obj.Response.Output); b64 != "" {
 					bestB64 = b64
+					finalImage = true
 				}
 			}
 		}
 		return true
 	})
 	if err != nil && !errors.Is(err, io.EOF) {
-		if bestB64 != "" && isSSEReadTimeout(err) {
+		if bestB64 != "" && (finalImage || allowPartialFallback) && isSSEReadTimeout(err) {
 			return &ImageResult{B64s: []string{bestB64}}, nil
 		}
 		return nil, err
 	}
-	if bestB64 == "" {
+	if bestB64 == "" || (!finalImage && !allowPartialFallback) {
 		return nil, errors.New("openai: empty image response")
 	}
 	return &ImageResult{B64s: []string{bestB64}}, nil

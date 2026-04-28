@@ -247,6 +247,32 @@ describe('generate image notice', () => {
     expect(screen.queryByText('生成完成后会自动同步到记录页')).toBeNull()
   })
 
+  test('generate page renders named workbench regions and desktop result placeholder', () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'GPT2API',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    expect(screen.getByRole('region', { name: '生成参数区' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '生成结果区' })).toBeInTheDocument()
+    expect(screen.getByText('结果将在此显示')).toBeInTheDocument()
+  })
+
   test('generate click shows dismissible submission dialog instead of loading button text', async () => {
     let resolveGenerate: (value: { created: number; data: Array<{ url: string; thumb_url?: string }> }) => void = () => {}
     const pendingGenerate = vi.fn().mockImplementation(

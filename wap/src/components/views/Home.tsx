@@ -4,6 +4,7 @@ import { Sparkles, Wand2, Image as ImageIcon, ChevronRight, Play, Video } from '
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import PageShell from '@/components/PageShell';
 import homeHero from '@/assets/home-hero.jpg';
 
 interface HomeViewProps {
@@ -12,14 +13,16 @@ interface HomeViewProps {
 }
 
 export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: HomeViewProps) {
-  const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
+  const [videoDialogOpen, setVideoDialogOpen] = React.useState(false);
+
   const handleFeatureKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, onClick: () => void) => {
     if (event.key !== 'Enter' && event.key !== ' ') {
-      return
+      return;
     }
-    event.preventDefault()
-    onClick()
-  }
+    event.preventDefault();
+    onClick();
+  };
+
   const features = [
     {
       title: '文生图',
@@ -45,37 +48,37 @@ export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: Ho
   ];
 
   return (
-    <div className="px-4 py-6 space-y-12">
-      <section className="relative h-[320px] rounded-3xl overflow-hidden group">
+    <PageShell width="wide" className="space-y-12 lg:space-y-16">
+      <section className="group relative h-[320px] overflow-hidden rounded-3xl lg:min-h-[460px] lg:h-[520px] lg:rounded-[2.5rem] lg:shadow-2xl">
         <img
           src={homeHero}
           alt="Hero"
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent flex flex-col justify-end p-8">
+        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black via-black/40 to-transparent p-8 lg:p-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="space-y-4"
+            className="max-w-2xl space-y-4 lg:space-y-6"
           >
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 backdrop-blur-md border border-primary/30 text-primary-foreground text-xs font-bold">
-              <Sparkles className="w-3 h-3" />
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/30 bg-primary/20 px-3 py-1 text-xs font-bold text-primary-foreground backdrop-blur-md lg:px-4 lg:py-1.5 lg:text-sm">
+              <Sparkles className="h-3 w-3 lg:h-4 lg:w-4" />
               <span>多模型图像引擎实时驱动</span>
             </div>
-            <h1 className="text-4xl font-extrabold text-white leading-tight tracking-tighter">
+            <h1 className="text-4xl font-extrabold leading-tight tracking-tighter text-white lg:text-6xl lg:leading-[0.95]">
               想象，<br />正在发生
             </h1>
-            <p className="text-gray-300 text-sm max-w-[280px] leading-relaxed">
+            <p className="max-w-md text-sm leading-relaxed text-gray-300 lg:text-base lg:text-gray-200">
               将脑海中的构想转换为高质量图像，文生图与图生图都可在同一入口完成。
             </p>
             <Button
               size="lg"
               onClick={onStartGeneration}
-              className="bg-white text-black hover:bg-gray-200 font-bold rounded-2xl group shadow-xl"
+              className="group w-fit rounded-2xl bg-white font-bold text-black shadow-xl hover:bg-gray-200 lg:h-14 lg:px-8 lg:text-base"
             >
               立刻开始创作
-              <ChevronRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
+              <ChevronRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1 lg:h-5 lg:w-5" />
             </Button>
           </motion.div>
         </div>
@@ -83,35 +86,35 @@ export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: Ho
 
       <section className="space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-black tracking-tight flex items-center gap-2">
-            核心功能 <span className="text-primary text-xs bg-primary/10 px-2 py-0.5 rounded-md">{features.length}</span>
+          <h2 className="flex items-center gap-2 text-xl font-black tracking-tight lg:text-2xl">
+            核心功能 <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary">{features.length}</span>
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-4">
-          {features.map((f, i) => (
+        <div role="region" aria-label="核心功能列表" className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
+          {features.map((feature, index) => (
             <Card
-              key={i}
+              key={index}
               role="button"
               tabIndex={0}
-              aria-label={f.title}
-              onClick={f.onClick}
-              onKeyDown={(event) => handleFeatureKeyDown(event, f.onClick)}
-              className="group cursor-pointer overflow-hidden border-border/50 bg-secondary/30 text-left backdrop-blur-sm transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              aria-label={feature.title}
+              onClick={feature.onClick}
+              onKeyDown={(event) => handleFeatureKeyDown(event, feature.onClick)}
+              className="group cursor-pointer overflow-hidden rounded-[2rem] border-border/50 bg-secondary/30 text-left backdrop-blur-sm transition-all hover:bg-secondary/50 hover:shadow-xl hover:shadow-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >
-              <div className="p-4 flex items-start gap-4">
-                <div className={`w-12 h-12 rounded-2xl ${f.color} flex items-center justify-center text-white shrink-0 shadow-lg`}>
-                  <f.icon className="w-6 h-6" />
+              <div className="flex items-start gap-4 p-5 lg:flex-col lg:gap-6 lg:p-6">
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${feature.color} text-white shadow-lg lg:h-14 lg:w-14`}>
+                  <feature.icon className="h-6 w-6 lg:h-7 lg:w-7" />
                 </div>
-                <div className="space-y-1">
-                  <h3 className="font-bold">{f.title}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
+                <div className="space-y-1 lg:flex-1 lg:space-y-2">
+                  <h3 className="font-bold lg:text-lg">{feature.title}</h3>
+                  <p className="text-xs leading-relaxed text-muted-foreground lg:text-sm">{feature.desc}</p>
                 </div>
                 <div
                   aria-hidden="true"
-                  className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors group-hover:bg-primary/20 group-hover:text-primary"
+                  className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors group-hover:bg-primary/20 group-hover:text-primary lg:ml-0 lg:h-10 lg:w-10"
                 >
-                  <Play className="w-4 h-4 fill-current" />
+                  <Play className="h-4 w-4 fill-current" />
                 </div>
               </div>
             </Card>
@@ -136,10 +139,10 @@ export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: Ho
         </DialogContent>
       </Dialog>
 
-      <div className="text-center pb-8 opacity-50 space-y-1">
-        <p className="text-[10px] font-medium tracking-widest uppercase">{siteName}</p>
+      <div className="space-y-1 pb-8 pt-2 text-center opacity-50 lg:pb-10 lg:pt-6">
+        <p className="text-[10px] font-medium uppercase tracking-widest">{siteName}</p>
         <p className="text-[8px]">© {siteName}</p>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -101,8 +101,8 @@ func TestListEnabledForMeReportsImageChannelAvailability(t *testing.T) {
 		t.Fatalf("missing gpt-image-2")
 	} else if got.HasImageChannel {
 		t.Fatalf("gpt-image-2 HasImageChannel = true, want false")
-	} else if !got.SupportsOutputSize {
-		t.Fatalf("gpt-image-2 SupportsOutputSize = false, want true for local account pool")
+	} else if got.SupportsOutputSize {
+		t.Fatalf("gpt-image-2 SupportsOutputSize = true, want stored false for local account pool")
 	}
 
 	if got := bySlug["gpt-image-2-api"]; got == nil {

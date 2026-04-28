@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { Bell, X } from 'lucide-react'
 
 import { listPublicAnnouncements, type Announcement } from '@/api/announcement'
@@ -136,14 +137,14 @@ function AnnouncementDialog({
 }) {
   const titleId = React.useId()
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-slate-950/45 px-5 py-8 backdrop-blur-md"
+      className="fixed inset-0 z-[70] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-slate-950/45 px-5 py-8 backdrop-blur-md"
     >
-      <section className="relative w-full max-w-[min(92vw,24rem)] overflow-hidden rounded-[2rem] border border-white/70 bg-background/95 p-5 text-center text-foreground shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-card/95 dark:ring-white/10">
+      <section className="relative w-full max-w-[min(92vw,42rem)] overflow-hidden rounded-[2rem] border border-white/70 bg-background/95 p-5 text-center text-foreground shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-card/95 dark:ring-white/10">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent" />
         <Button
           type="button"
@@ -166,6 +167,7 @@ function AnnouncementDialog({
         </h2>
         {children}
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -14,6 +14,7 @@ import {
 import { useStore, type HistoryRecord } from '../../store/useStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import PageShell from '@/components/PageShell';
 
 type TaskStateKind = 'success' | 'processing' | 'failed';
 
@@ -300,39 +301,40 @@ export default function HistoryView() {
   }
 
   return (
-    <div className="px-4 py-6 space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+    <PageShell width="wide" className="space-y-8 lg:space-y-10 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">时间轴</h1>
-          <p className="text-xs text-muted-foreground font-medium">存档所有创意瞬间</p>
+          <h1 className="text-2xl font-black tracking-tight lg:text-3xl">时间轴</h1>
+          <p className="text-xs text-muted-foreground font-medium lg:text-sm">存档所有创意瞬间</p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon"
-          aria-label="刷新记录"
-          disabled={historyLoading}
-          onClick={() => {
-            void handleRefreshHistory();
-          }}
-          className="h-11 w-11 rounded-full bg-secondary/80 text-foreground shadow-sm ring-1 ring-border/60"
-        >
-          <RefreshCw className={`w-5 h-5 ${historyLoading ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="搜索提示词..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10 rounded-2xl bg-secondary/30 border-none h-12 text-sm"
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:w-auto">
+          <div className="relative flex-1 sm:min-w-[18rem] lg:min-w-[20rem]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="搜索提示词..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-12 rounded-2xl border-none bg-secondary/30 pl-10 text-sm"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="刷新记录"
+            disabled={historyLoading}
+            onClick={() => {
+              void handleRefreshHistory();
+            }}
+            className="h-12 w-12 shrink-0 rounded-2xl bg-secondary/80 text-foreground shadow-sm ring-1 ring-border/60"
+          >
+            <RefreshCw className={`w-5 h-5 ${historyLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
       {filtered.length > 0 ? (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-6">
           {filtered.map((item, i) => {
             const previewUrl = getPreviewImageUrls(item)[0] || null;
             const taskStateKind = getTaskStateKind(item.status);
@@ -346,7 +348,7 @@ export default function HistoryView() {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.05 }}
                 onClick={() => openImageDetail(item)}
-                className="group relative aspect-[3/4] rounded-2xl overflow-hidden cursor-pointer border border-border/50 shadow-md bg-secondary/20"
+                className="group relative aspect-[3/4] cursor-pointer overflow-hidden rounded-[2rem] border border-border/50 bg-secondary/20 shadow-md transition-transform duration-300 lg:hover:-translate-y-1"
               >
                 {previewUrl ? (
                   <img
@@ -395,7 +397,7 @@ export default function HistoryView() {
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-20 text-center opacity-30 gap-4">
+        <div className="flex flex-col items-center justify-center gap-4 rounded-[2rem] border border-border/40 bg-secondary/10 py-20 text-center opacity-40">
           <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center">
             <ImageIcon className="w-8 h-8" />
           </div>
@@ -526,6 +528,6 @@ export default function HistoryView() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </PageShell>
   );
 }

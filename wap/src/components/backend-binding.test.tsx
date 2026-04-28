@@ -34,8 +34,21 @@ vi.mock('../api/auth', async (importOriginal) => {
   }
 })
 
+vi.mock('../api/credit', () => ({
+  listMyCreditLogs: vi.fn(),
+}))
+
+vi.mock('../api/apikey', () => ({
+  listKeys: vi.fn(),
+  createKey: vi.fn(),
+  updateKey: vi.fn(),
+  deleteKey: vi.fn(),
+}))
+
 const meApi = await import('../api/me')
 const authApi = await import('../api/auth')
+const creditApi = await import('../api/credit')
+const apiKeyApi = await import('../api/apikey')
 const httpModule = await import('../api/http')
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
@@ -50,10 +63,87 @@ function resetStore() {
   sessionStorage.clear()
 }
 
+function findAncestorWithClass(node: HTMLElement | null, className: string) {
+  let current = node
+
+  while (current) {
+    if (current.className.includes(className)) {
+      return current
+    }
+    current = current.parentElement
+  }
+
+  return null
+}
+
 async function switchToRegisterMode() {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: '立即注册' }))
   })
+}
+
+function seedProfileState(overrides: Record<string, unknown> = {}) {
+  useStore.setState({
+    user: {
+      id: 1,
+      email: 'demo@example.com',
+      nickname: 'Demo',
+      role: 'user',
+      status: 'active',
+      group_id: 1,
+      credit_balance: 89900,
+      credit_frozen: 0,
+    },
+    checkin: {
+      enabled: true,
+      today: '2026-04-22',
+      checked_in: false,
+      today_reward_credits: 500,
+      checked_at: '',
+      last_checked_at: '',
+      balance_after: 89900,
+      awarded_credits: 0,
+    },
+    history: [],
+    historyLoaded: true,
+    fetchHistory: vi.fn().mockResolvedValue([]),
+    submitCheckin: vi.fn().mockResolvedValue({
+      enabled: true,
+      today: '2026-04-22',
+      checked_in: false,
+      today_reward_credits: 500,
+      checked_at: '',
+      last_checked_at: '',
+      balance_after: 89900,
+      awarded_credits: 0,
+    }),
+    fetchMe: vi.fn().mockResolvedValue(null),
+    logout: vi.fn(),
+    forceRelogin: vi.fn(),
+    ...overrides,
+  } as any)
+}
+
+function mockApiKeyRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    user_id: 1,
+    name: 'Deploy Key',
+    key_prefix: 'sk-demo',
+    quota_limit: 250000,
+    quota_used: 50000,
+    rpm: 60,
+    tpm: 60000,
+    enabled: true,
+    last_used_at: '2026-04-28T10:00:00Z',
+    last_used_ip: '127.0.0.1',
+    expires_at: null,
+    created_at: '2026-04-28T08:00:00Z',
+    updated_at: '2026-04-28T08:00:00Z',
+    allowed_models: { String: 'gpt-image-1,gpt-image-2', Valid: true },
+    allowed_ips: { String: '127.0.0.1,10.0.0.1', Valid: true },
+    ...overrides,
+  }
 }
 
 describe('wap backend bindings', () => {
@@ -61,6 +151,18 @@ describe('wap backend bindings', () => {
     resetStore()
     vi.clearAllMocks()
     vi.useRealTimers()
+    vi.mocked(creditApi.listMyCreditLogs).mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    })
+    vi.mocked(apiKeyApi.listKeys).mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    })
   })
 
   afterEach(() => {
@@ -348,6 +450,56 @@ describe('wap backend bindings', () => {
     expect(fetchHistory).toHaveBeenLastCalledWith(true)
   })
 
+  test('history view uses wide shell and desktop grid classes', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: true,
+      historyLoading: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    const heading = screen.getByRole('heading', { name: '时间轴' })
+    const toolbar = findAncestorWithClass(heading, 'justify-between')
+    const grid = findAncestorWithClass(screen.getByAltText('Cloud city'), 'grid-cols-2')
+
+    expect(findAncestorWithClass(heading, 'max-w-[88rem]')).not.toBeNull()
+    expect(toolbar?.className).toContain('flex-col')
+    expect(toolbar?.className).toContain('lg:flex-row')
+    expect(grid?.className).toContain('lg:grid-cols-3')
+    expect(grid?.className).toContain('xl:grid-cols-4')
+  })
+
   test('profile view loads history count when opened before history tab', async () => {
     const fetchHistory = vi.fn().mockImplementation(async () => {
       useStore.setState({
@@ -428,6 +580,59 @@ describe('wap backend bindings', () => {
 
     await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('button', { name: /我的创作 2/ })).toBeInTheDocument()
+  })
+
+  test('profile view keeps profile and credit logs inside page shell', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      historyLoaded: true,
+      fetchHistory,
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 500,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 89900,
+        awarded_credits: 0,
+      },
+      submitCheckin: vi.fn().mockResolvedValue({
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 500,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 89900,
+        awarded_credits: 0,
+      }),
+      fetchMe: vi.fn().mockResolvedValue(null),
+      logout: vi.fn(),
+    } as any)
+
+    render(<ProfileView siteName="星河图像" />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    expect(findAncestorWithClass(screen.getByRole('heading', { name: '个人中心' }), 'max-w-7xl')).not.toBeNull()
+    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '查看可用积分使用记录' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '积分使用记录' })).toBeInTheDocument())
+    expect(findAncestorWithClass(screen.getByRole('heading', { name: '积分使用记录' }), 'max-w-7xl')).not.toBeNull()
   })
 
   test('history view renders processing and failed task states', async () => {
@@ -833,7 +1038,9 @@ describe('wap backend bindings', () => {
     expect(balanceCard).not.toBeNull()
     expect(within(balanceCard as HTMLElement).getByText('8.99')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '每日签到' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '每日签到' }))
+    })
 
     await waitFor(() => expect(submitCheckin).toHaveBeenCalledTimes(1))
   })
@@ -874,6 +1081,214 @@ describe('wap backend bindings', () => {
 
     expect(await screen.findByText('敬请期待')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '知道了' })).toBeInTheDocument()
+  })
+
+  test('profile api keys page can open and return', async () => {
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'API Keys' }))
+
+    expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument()
+    expect(apiKeyApi.listKeys).toHaveBeenCalledWith(1, 20)
+
+    fireEvent.click(screen.getByRole('button', { name: '返回个人中心' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '个人中心' })).toBeInTheDocument()
+    })
+  })
+
+  test('profile api keys renders empty state', async () => {
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'API Keys' }))
+
+    expect(await screen.findByText('还没有 API Key')).toBeInTheDocument()
+  })
+
+  test('profile api keys renders key list details', async () => {
+    vi.mocked(apiKeyApi.listKeys).mockResolvedValue({
+      list: [mockApiKeyRow()],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'API Keys' }))
+
+    expect(await screen.findByText('Deploy Key')).toBeInTheDocument()
+    expect(screen.getByText('sk-demo***')).toBeInTheDocument()
+    expect(screen.getByText('5.00 / 25.00')).toBeInTheDocument()
+    expect(screen.getByText('RPM 60')).toBeInTheDocument()
+    expect(screen.getByText('TPM 60000')).toBeInTheDocument()
+    expect(screen.getByText('gpt-image-1, gpt-image-2')).toBeInTheDocument()
+    expect(screen.getByText('127.0.0.1, 10.0.0.1')).toBeInTheDocument()
+    expect(screen.getByText('127.0.0.1')).toBeInTheDocument()
+    expect(screen.getByText('启用')).toBeInTheDocument()
+  })
+
+  test('profile api keys creates key and shows plaintext key once', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText,
+      },
+    })
+
+    vi.mocked(apiKeyApi.listKeys)
+      .mockResolvedValueOnce({
+        list: [],
+        total: 0,
+        page: 1,
+        page_size: 20,
+      })
+      .mockResolvedValueOnce({
+        list: [mockApiKeyRow()],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      })
+    vi.mocked(apiKeyApi.createKey).mockResolvedValue({
+      key: 'sk-live-plain',
+      record: mockApiKeyRow(),
+    })
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'API Keys' }))
+    fireEvent.click(await screen.findByRole('button', { name: '新建 Key' }))
+
+    const createDialog = await screen.findByRole('dialog')
+
+    fireEvent.change(within(createDialog).getByLabelText('名称'), {
+      target: { value: 'Deploy Key' },
+    })
+    fireEvent.change(within(createDialog).getByLabelText('额度'), {
+      target: { value: '250000' },
+    })
+    fireEvent.change(within(createDialog).getByLabelText('RPM'), {
+      target: { value: '60' },
+    })
+    fireEvent.change(within(createDialog).getByLabelText('TPM'), {
+      target: { value: '60000' },
+    })
+    fireEvent.change(within(createDialog).getByLabelText('允许模型'), {
+      target: { value: 'gpt-image-1, gpt-image-2' },
+    })
+    fireEvent.change(within(createDialog).getByLabelText('IP 白名单'), {
+      target: { value: '127.0.0.1, 10.0.0.1' },
+    })
+
+    fireEvent.click(within(createDialog).getByRole('button', { name: '创建 Key' }))
+
+    await waitFor(() => {
+      expect(apiKeyApi.createKey).toHaveBeenCalledWith({
+        name: 'Deploy Key',
+        quota_limit: 250000,
+        rpm: 60,
+        tpm: 60000,
+        allowed_models: ['gpt-image-1', 'gpt-image-2'],
+        allowed_ips: ['127.0.0.1', '10.0.0.1'],
+      })
+    })
+
+    const keyDialog = await screen.findByRole('dialog')
+    expect(within(keyDialog).getByText('请保存 API Key')).toBeInTheDocument()
+    expect(within(keyDialog).getByDisplayValue('sk-live-plain')).toBeInTheDocument()
+
+    fireEvent.click(within(keyDialog).getByRole('button', { name: '复制 Key' }))
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('sk-live-plain')
+    })
+  })
+
+  test('profile api keys updates status and deletes key', async () => {
+    vi.mocked(apiKeyApi.listKeys)
+      .mockResolvedValueOnce({
+        list: [mockApiKeyRow()],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      })
+      .mockResolvedValueOnce({
+        list: [mockApiKeyRow({ enabled: false })],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      })
+      .mockResolvedValueOnce({
+        list: [],
+        total: 0,
+        page: 1,
+        page_size: 20,
+      })
+    vi.mocked(apiKeyApi.updateKey).mockResolvedValue(mockApiKeyRow({ enabled: false }))
+    vi.mocked(apiKeyApi.deleteKey).mockResolvedValue({ deleted: 1 })
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'API Keys' }))
+
+    expect(await screen.findByText('Deploy Key')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '禁用' }))
+
+    await waitFor(() => {
+      expect(apiKeyApi.updateKey).toHaveBeenCalledWith(1, { enabled: false })
+    })
+    expect(await screen.findByRole('button', { name: '启用' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+
+    const deleteDialog = await screen.findByRole('dialog')
+    expect(within(deleteDialog).getByText('确认删除这个 API Key 吗？')).toBeInTheDocument()
+
+    fireEvent.click(within(deleteDialog).getByRole('button', { name: '确认删除' }))
+
+    await waitFor(() => {
+      expect(apiKeyApi.deleteKey).toHaveBeenCalledWith(1)
+    })
+    expect(await screen.findByText('还没有 API Key')).toBeInTheDocument()
+  })
+
+  test('profile api keys loads more results', async () => {
+    vi.mocked(apiKeyApi.listKeys)
+      .mockResolvedValueOnce({
+        list: [mockApiKeyRow({ id: 1, name: 'Key 1' })],
+        total: 2,
+        page: 1,
+        page_size: 20,
+      })
+      .mockResolvedValueOnce({
+        list: [mockApiKeyRow({ id: 2, name: 'Key 2', key_prefix: 'sk-next' })],
+        total: 2,
+        page: 2,
+        page_size: 20,
+      })
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'API Keys' }))
+
+    expect(await screen.findByText('Key 1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
+
+    await waitFor(() => {
+      expect(apiKeyApi.listKeys).toHaveBeenNthCalledWith(2, 2, 20)
+    })
+    expect(await screen.findByText('Key 2')).toBeInTheDocument()
   })
 
   test('profile security center submits password change and forces relogin', async () => {

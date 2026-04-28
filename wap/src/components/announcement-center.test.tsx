@@ -46,8 +46,29 @@ describe('wap announcement center', () => {
     const dialog = await screen.findByRole('dialog', { name: '维护公告' })
     expect(dialog).toHaveClass('min-h-[100dvh]', 'items-center', 'justify-center', 'px-5', 'py-8')
     const panel = dialog.firstElementChild
-    expect(panel).toHaveClass('max-w-[min(92vw,24rem)]', 'text-center', 'shadow-[0_24px_80px_rgba(15,23,42,0.28)]')
+    expect(panel).toHaveClass('max-w-[min(92vw,42rem)]', 'text-center', 'shadow-[0_24px_80px_rgba(15,23,42,0.28)]')
     expect(screen.getByText('重要公告')).toBeInTheDocument()
+  })
+
+  test('renders popup outside fixed toolbar stacking context', async () => {
+    vi.mocked(api.listPublicAnnouncements).mockResolvedValue({
+      items: [
+        { id: 4, title: '层级公告', content: '检查弹窗层级', enabled: true, sort_order: 30, created_at: '2026-04-26T00:00:00Z', updated_at: '2026-04-26T00:00:00Z' },
+      ],
+      total: 1,
+    })
+
+    render(
+      <header data-testid="toolbar" className="fixed top-0 z-40 backdrop-blur-xl">
+        <AnnouncementCenter active />
+      </header>,
+    )
+
+    const toolbar = screen.getByTestId('toolbar')
+    const dialog = await screen.findByRole('dialog', { name: '层级公告' })
+
+    expect(toolbar).not.toContain(dialog)
+    expect(dialog.parentElement).toBe(document.body)
   })
 
   test('keeps read announcement in list without auto popup', async () => {

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import PageShell from '@/components/PageShell';
 import { cn, formatCredit } from '@/lib/utils';
 import { useStore } from '../../store/useStore';
 import {
@@ -235,6 +236,7 @@ export default function GenerateView() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成失败，请稍后重试');
     } finally {
+      setSubmissionDialogOpen(false);
       setIsGenerating(false);
     }
   };
@@ -296,7 +298,7 @@ export default function GenerateView() {
   };
 
   return (
-    <div className="px-4 py-6 space-y-8 animate-in fade-in duration-500">
+    <PageShell width="wide" className="space-y-6 lg:space-y-8">
       <Dialog open={submissionDialogOpen} onOpenChange={setSubmissionDialogOpen}>
         <DialogContent className="rounded-3xl p-5" showCloseButton={false}>
           <div className="flex flex-col items-center gap-4 text-center">
@@ -322,10 +324,10 @@ export default function GenerateView() {
       </Dialog>
 
       {imageNotice ? (
-        <Card className="border-amber-500/25 bg-amber-500/10 px-4 py-3 rounded-3xl">
+        <Card className="rounded-3xl border-amber-500/25 bg-amber-500/10 px-4 py-3">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-300">
-              <AlertCircle className="w-4 h-4" />
+              <AlertCircle className="h-4 w-4" />
             </div>
             <div>
               <p className="text-sm leading-6 text-foreground/90">{imageNotice}</p>
@@ -334,12 +336,12 @@ export default function GenerateView() {
         </Card>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">创意实验室</h1>
-          <p className="text-xs text-muted-foreground font-medium">释放视觉想象力</p>
+          <h1 className="text-2xl font-black tracking-tight lg:text-3xl">创意实验室</h1>
+          <p className="text-xs font-medium text-muted-foreground lg:text-sm">释放视觉想象力</p>
         </div>
-        <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-right text-[10px] font-bold text-primary">
+        <div className="rounded-[1.75rem] border border-primary/20 bg-primary/10 px-4 py-3 text-right text-[10px] font-bold text-primary shadow-sm shadow-primary/10 lg:min-w-[18rem] lg:text-xs">
           <p>当前质量价格：{formatCredit(currentQualityPrice)} 积分 / 张</p>
           {supportsMultiImage ? (
             <p className="mt-1 text-[9px] font-medium text-foreground/80">多张生成会按张数累计扣费</p>
@@ -348,356 +350,403 @@ export default function GenerateView() {
         </div>
       </div>
 
-      <Tabs
-        value={mode}
-        onValueChange={(val) => setMode(val as 'txt' | 'img')}
-        className="w-full"
-      >
-        <TabsList className="w-full grid grid-cols-2 p-1 bg-secondary/50 rounded-2xl h-12">
-          <TabsTrigger value="txt" className="rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm">
-            <Wand2 className="w-4 h-4 mr-2" />
-            <span className="font-bold text-xs uppercase tracking-wider">文生图</span>
-          </TabsTrigger>
-          <TabsTrigger value="img" className="rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm">
-            <ImageIcon className="w-4 h-4 mr-2" />
-            <span className="font-bold text-xs uppercase tracking-wider">图生图</span>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      <Card className="border-border/50 bg-secondary/20 p-4 rounded-3xl space-y-4">
-        {mode === 'img' && (
-          <Card className="border-primary/20 bg-primary/8 px-4 py-3 rounded-2xl">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-                <AlertCircle className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-sm leading-6 text-foreground/90">图生图建议在 PC 端操作，上传和结果对照体验更好</p>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {mode === 'img' && (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="group relative aspect-video cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border/50 bg-background/50 transition-colors hover:border-primary/50"
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:gap-8">
+        <section aria-label="生成参数区" className="space-y-4 lg:sticky lg:top-28">
+          <Tabs
+            value={mode}
+            onValueChange={(val) => setMode(val as 'txt' | 'img')}
+            className="w-full"
           >
-            {sourceImages.length > 0 ? (
-              <div className="relative h-full w-full">
-                <div className={cn('grid h-full w-full gap-2.5 p-2.5', getSourceImageGridClass(sourceImages.length))}>
-                  {sourceImages.map((sourceImage, index) => (
-                    <div
-                      key={`${sourceImage.file.name}-${index}`}
-                      className={cn(
-                        'group/source relative min-h-0 overflow-hidden rounded-2xl border border-white/15 bg-background/70 shadow-lg shadow-black/10',
-                        getSourceImageTileClass(sourceImages.length, index),
-                      )}
-                    >
-                      <img
-                        src={sourceImage.preview}
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover/source:scale-105"
-                        alt={`参考图 ${index + 1}`}
-                      />
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/60 to-transparent" />
-                      <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur">
-                        参考图 {index + 1}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        aria-label={sourceImages.length === 1 ? '取消参考图' : `取消参考图 ${index + 1}`}
-                        className="absolute right-2 top-2 z-10 h-11 w-11 rounded-full bg-black/55 text-white shadow-lg shadow-black/25 backdrop-blur hover:bg-black/70"
-                        onClick={(event) => handleCancelSourceImage(index, event)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+            <TabsList className="grid h-12 w-full grid-cols-2 rounded-2xl bg-secondary/50 p-1">
+              <TabsTrigger value="txt" className="rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Wand2 className="mr-2 h-4 w-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">文生图</span>
+              </TabsTrigger>
+              <TabsTrigger value="img" className="rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <ImageIcon className="mr-2 h-4 w-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">图生图</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Card className="space-y-4 rounded-[2rem] border-border/50 bg-secondary/20 p-4 lg:p-5">
+            {mode === 'img' && (
+              <Card className="rounded-2xl border-primary/20 bg-primary/8 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                    <AlertCircle className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm leading-6 text-foreground/90">图生图建议在 PC 端操作，上传和结果对照体验更好</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {mode === 'img' && (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="group relative aspect-video cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border/50 bg-background/50 transition-colors hover:border-primary/50"
+              >
+                {sourceImages.length > 0 ? (
+                  <div className="relative h-full w-full">
+                    <div className={cn('grid h-full w-full gap-2.5 p-2.5', getSourceImageGridClass(sourceImages.length))}>
+                      {sourceImages.map((sourceImage, index) => (
+                        <div
+                          key={`${sourceImage.file.name}-${index}`}
+                          className={cn(
+                            'group/source relative min-h-0 overflow-hidden rounded-2xl border border-white/15 bg-background/70 shadow-lg shadow-black/10',
+                            getSourceImageTileClass(sourceImages.length, index),
+                          )}
+                        >
+                          <img
+                            src={sourceImage.preview}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover/source:scale-105"
+                            alt={`参考图 ${index + 1}`}
+                          />
+                          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/60 to-transparent" />
+                          <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur">
+                            参考图 {index + 1}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon"
+                            aria-label={sourceImages.length === 1 ? '取消参考图' : `取消参考图 ${index + 1}`}
+                            className="absolute right-2 top-2 z-10 h-11 w-11 rounded-full bg-black/55 text-white shadow-lg shadow-black/25 backdrop-blur hover:bg-black/70"
+                            onClick={(event) => handleCancelSourceImage(index, event)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-[10px] font-bold text-white shadow-lg shadow-black/20 backdrop-blur">
-                  已选择 {sourceImages.length}/{MAX_SOURCE_IMAGES} 张
-                </div>
-                {sourceImages.length < MAX_SOURCE_IMAGES && (
-                  <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/90 px-3 py-2 text-[10px] font-black text-primary-foreground shadow-lg shadow-primary/20 backdrop-blur transition-transform group-hover:scale-105">
-                    <ImageIcon className="h-3.5 w-3.5" />
-                    <span>继续添加</span>
+                    <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-[10px] font-bold text-white shadow-lg shadow-black/20 backdrop-blur">
+                      已选择 {sourceImages.length}/{MAX_SOURCE_IMAGES} 张
+                    </div>
+                    {sourceImages.length < MAX_SOURCE_IMAGES && (
+                      <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/90 px-3 py-2 text-[10px] font-black text-primary-foreground shadow-lg shadow-primary/20 backdrop-blur transition-transform group-hover:scale-105">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <span>继续添加</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center">
+                    <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 transition-transform group-hover:scale-110">
+                      <ImageIcon className="h-6 w-6 text-primary" />
+                    </div>
+                    <p className="text-xs font-bold">点击上传参考图</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">支持 PNG, JPG, WEBP，最多 {MAX_SOURCE_IMAGES} 张</p>
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                  <ImageIcon className="w-6 h-6 text-primary" />
-                </div>
-                <p className="text-xs font-bold">点击上传参考图</p>
-                <p className="text-[10px] text-muted-foreground mt-1">支持 PNG, JPG, WEBP，最多 {MAX_SOURCE_IMAGES} 张</p>
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden" />
               </div>
             )}
-            <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden" />
-          </div>
-        )}
 
-        <div className="space-y-4">
-          <div className="space-y-3">
-            <p className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-              图片模型
-            </p>
-            <div ref={modelPickerRef} className="relative">
-              {imageModels.length === 0 ? (
-                <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-muted-foreground">
-                  暂无可用模型
-                </div>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    aria-label={`图片模型 ${currentModelTitle}`}
-                    aria-haspopup="listbox"
-                    aria-expanded={isModelPickerOpen}
-                    onClick={() => setIsModelPickerOpen((open) => !open)}
-                    className={cn(
-                      'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none ring-inset',
-                      'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
-                      isModelPickerOpen
-                        ? 'border-primary/80 bg-card shadow-[0_14px_34px_-22px_rgba(0,0,0,0.75)] ring-2 ring-primary/35'
-                        : 'border-border/60 bg-card/70 shadow-sm shadow-black/5 hover:border-primary/45 hover:bg-card',
-                    )}
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-foreground">
-                        {currentModelTitle}
-                      </span>
-                      {currentModelSubtitle ? (
-                        <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
-                          {currentModelSubtitle}
-                        </span>
-                      ) : null}
-                    </span>
-                    <ChevronDown
-                      aria-hidden="true"
-                      className={cn(
-                        'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
-                        isModelPickerOpen && 'rotate-180 text-primary',
-                      )}
-                    />
-                  </button>
-                  {isModelPickerOpen ? (
-                    <div
-                      data-model-picker-panel="true"
-                      className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full overflow-hidden rounded-2xl border border-primary/30 bg-popover p-2 shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)] ring-1 ring-primary/20 backdrop-blur"
-                    >
-                      <ScrollArea className="max-h-72">
-                        <div aria-label="图片模型列表" role="listbox" className="space-y-2 pr-2">
-                          {imageModels.map((model) => {
-                            const isActive = selectedImageModel === model.slug;
-                            const modelTitle = getModelPrimaryLabel(model);
-                            const modelSubtitle = getModelSecondaryLabel(model);
-
-                            return (
-                              <button
-                                key={model.slug}
-                                type="button"
-                                aria-selected={isActive}
-                                onClick={() => {
-                                  setSelectedImageModel(model.slug);
-                                  setIsModelPickerOpen(false);
-                                }}
-                                className={cn(
-                                  'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none',
-                                  'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
-                                  isActive
-                                    ? 'border-primary/70 bg-primary/18 shadow-lg shadow-primary/15 ring-1 ring-primary/25'
-                                    : 'border-border/60 bg-card/80 shadow-sm shadow-black/5 hover:border-primary/45 hover:bg-primary/8',
-                                )}
-                              >
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-semibold text-foreground">
-                                    {modelTitle}
-                                  </span>
-                                  {modelSubtitle ? (
-                                    <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
-                                      {modelSubtitle}
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <span
-                                  aria-hidden="true"
-                                  className={cn(
-                                    'h-2.5 w-2.5 shrink-0 rounded-full border transition-colors',
-                                    isActive
-                                      ? 'border-primary bg-primary shadow-[0_0_0_4px_rgba(124,58,237,0.14)]'
-                                      : 'border-border bg-muted/20',
-                                  )}
-                                />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </ScrollArea>
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <p className="block pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  图片模型
+                </p>
+                <div ref={modelPickerRef} className="relative">
+                  {imageModels.length === 0 ? (
+                    <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-muted-foreground">
+                      暂无可用模型
                     </div>
-                  ) : null}
-                </>
-              )}
-            </div>
-          </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        aria-label={`图片模型 ${currentModelTitle}`}
+                        aria-haspopup="listbox"
+                        aria-expanded={isModelPickerOpen}
+                        onClick={() => setIsModelPickerOpen((open) => !open)}
+                        className={cn(
+                          'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none ring-inset',
+                          'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
+                          isModelPickerOpen
+                            ? 'border-primary/80 bg-card shadow-[0_14px_34px_-22px_rgba(0,0,0,0.75)] ring-2 ring-primary/35'
+                            : 'border-border/60 bg-card/70 shadow-sm shadow-black/5 hover:border-primary/45 hover:bg-card',
+                        )}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-foreground">
+                            {currentModelTitle}
+                          </span>
+                          {currentModelSubtitle ? (
+                            <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
+                              {currentModelSubtitle}
+                            </span>
+                          ) : null}
+                        </span>
+                        <ChevronDown
+                          aria-hidden="true"
+                          className={cn(
+                            'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                            isModelPickerOpen && 'rotate-180 text-primary',
+                          )}
+                        />
+                      </button>
+                      {isModelPickerOpen ? (
+                        <div
+                          data-model-picker-panel="true"
+                          className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full overflow-hidden rounded-2xl border border-primary/30 bg-popover p-2 shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)] ring-1 ring-primary/20 backdrop-blur"
+                        >
+                          <ScrollArea className="max-h-72">
+                            <div aria-label="图片模型列表" role="listbox" className="space-y-2 pr-2">
+                              {imageModels.map((model) => {
+                                const isActive = selectedImageModel === model.slug;
+                                const modelTitle = getModelPrimaryLabel(model);
+                                const modelSubtitle = getModelSecondaryLabel(model);
 
-          <div className="relative">
-            <Textarea
-              placeholder={mode === 'txt' ? '描述想看到的画面...' : '描述想要修改、增强或重绘的部分...'}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="min-h-[140px] resize-none border-none bg-background/50 focus-visible:ring-primary/20 rounded-2xl p-4 text-sm leading-relaxed"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">画布比例</p>
-            <div className="grid grid-cols-5 gap-2">
-              {IMAGE_RATIO_OPTIONS.map((option) => {
-                const isActive = activeAspectRatio === option.ratio;
-                return (
-                  <button
-                    type="button"
-                    key={option.ratio}
-                    aria-label={`${option.ratio} ${option.label}`}
-                    onClick={() => handleAspectRatioChange(option.ratio)}
-                    className={cn(
-                      'flex flex-col items-center justify-center rounded-xl border px-1 py-2.5 transition-all',
-                      isActive
-                        ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                        : 'bg-background/50 border-border/50 hover:border-primary/30',
-                    )}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        'mb-1 rounded-sm border transition-colors',
-                        isActive ? 'border-primary/60 bg-primary/20' : 'border-border/80 bg-muted/30',
-                      )}
-                      style={getRatioPreviewStyle(option)}
-                    />
-                    <span className="text-[10px] font-black">{option.ratio}</span>
-                    <span className="text-[9px] font-semibold leading-tight">{option.label}</span>
-                    <span className={cn('mt-0.5 text-[8px]', isActive ? 'opacity-80 text-foreground/80' : 'opacity-60 text-muted-foreground')}>
-                      {option.desc}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {supportsOutputSize ? (
-            <div className="space-y-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">输出质量</p>
-              <div className="grid grid-cols-3 gap-2">
-                {OUTPUT_QUALITY_OPTIONS.map((option) => {
-                  const isActive = activeOutputQuality === option.value;
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      aria-label={option.label}
-                      onClick={() => handleOutputQualityChange(option.value)}
-                      className={cn(
-                        'rounded-2xl border px-2 py-3 text-center transition-all',
-                        isActive
-                          ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                          : 'border-border/50 bg-background/50 hover:border-primary/30',
-                      )}
-                    >
-                      <span className="block text-[11px] font-bold">{option.label}</span>
-                    </button>
-                  );
-                })}
+                                return (
+                                  <button
+                                    key={model.slug}
+                                    type="button"
+                                    aria-selected={isActive}
+                                    onClick={() => {
+                                      setSelectedImageModel(model.slug);
+                                      setIsModelPickerOpen(false);
+                                    }}
+                                    className={cn(
+                                      'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all outline-none',
+                                      'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15',
+                                      isActive
+                                        ? 'border-primary/70 bg-primary/18 shadow-lg shadow-primary/15 ring-1 ring-primary/25'
+                                        : 'border-border/60 bg-card/80 shadow-sm shadow-black/5 hover:border-primary/45 hover:bg-primary/8',
+                                    )}
+                                  >
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-sm font-semibold text-foreground">
+                                        {modelTitle}
+                                      </span>
+                                      {modelSubtitle ? (
+                                        <span className="mt-1 block truncate text-[10px] font-medium tracking-wide text-muted-foreground/90">
+                                          {modelSubtitle}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                    <span
+                                      aria-hidden="true"
+                                      className={cn(
+                                        'h-2.5 w-2.5 shrink-0 rounded-full border transition-colors',
+                                        isActive
+                                          ? 'border-primary bg-primary shadow-[0_0_0_4px_rgba(124,58,237,0.14)]'
+                                          : 'border-border bg-muted/20',
+                                      )}
+                                    />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : null}
 
-          {supportsMultiImage ? (
-            <div className="space-y-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">生成张数</p>
-              <div className="grid grid-cols-4 gap-2">
-                {IMAGE_COUNT_OPTIONS.map((count) => {
-                  const isActive = imageCount === count;
-                  return (
-                    <button
-                      key={count}
-                      type="button"
-                      onClick={() => setImageCount(count)}
-                      className={cn(
-                        'rounded-2xl border px-3 py-3 text-sm font-bold transition-all',
-                        isActive
-                          ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
-                          : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground',
-                      )}
-                    >
-                      {count} 张
-                    </button>
-                  );
-                })}
+              <div className="relative">
+                <Textarea
+                  placeholder={mode === 'txt' ? '描述想看到的画面...' : '描述想要修改、增强或重绘的部分...'}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="min-h-[140px] resize-none rounded-2xl border-none bg-background/50 p-4 text-sm leading-relaxed focus-visible:ring-primary/20"
+                />
               </div>
+
+              <div className="space-y-3">
+                <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">画布比例</p>
+                <div className="grid grid-cols-5 gap-2">
+                  {IMAGE_RATIO_OPTIONS.map((option) => {
+                    const isActive = activeAspectRatio === option.ratio;
+                    return (
+                      <button
+                        type="button"
+                        key={option.ratio}
+                        aria-label={`${option.ratio} ${option.label}`}
+                        onClick={() => handleAspectRatioChange(option.ratio)}
+                        className={cn(
+                          'flex flex-col items-center justify-center rounded-xl border px-1 py-2.5 transition-all',
+                          isActive
+                            ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                            : 'bg-background/50 border-border/50 hover:border-primary/30',
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'mb-1 rounded-sm border transition-colors',
+                            isActive ? 'border-primary/60 bg-primary/20' : 'border-border/80 bg-muted/30',
+                          )}
+                          style={getRatioPreviewStyle(option)}
+                        />
+                        <span className="text-[10px] font-black">{option.ratio}</span>
+                        <span className="text-[9px] font-semibold leading-tight">{option.label}</span>
+                        <span className={cn('mt-0.5 text-[8px]', isActive ? 'text-foreground/80 opacity-80' : 'text-muted-foreground opacity-60')}>
+                          {option.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {supportsOutputSize ? (
+                <div className="space-y-3">
+                  <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">输出质量</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {OUTPUT_QUALITY_OPTIONS.map((option) => {
+                      const isActive = activeOutputQuality === option.value;
+                      return (
+                        <button
+                          key={option.label}
+                          type="button"
+                          aria-label={option.label}
+                          onClick={() => handleOutputQualityChange(option.value)}
+                          className={cn(
+                            'rounded-2xl border px-2 py-3 text-center transition-all',
+                            isActive
+                              ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                              : 'border-border/50 bg-background/50 hover:border-primary/30',
+                          )}
+                        >
+                          <span className="block text-[11px] font-bold">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {supportsMultiImage ? (
+                <div className="space-y-3">
+                  <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">生成张数</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {IMAGE_COUNT_OPTIONS.map((count) => {
+                      const isActive = imageCount === count;
+                      return (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => setImageCount(count)}
+                          className={cn(
+                            'rounded-2xl border px-3 py-3 text-sm font-bold transition-all',
+                            isActive
+                              ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                              : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                          )}
+                        >
+                          {count} 张
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
 
-        <Button
-          className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg shadow-xl shadow-primary/25 disabled:opacity-50"
-          onClick={handleGenerate}
-          disabled={isGenerating || !selectedImageModel}
-        >
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5" />
-            <span>开始创作</span>
-          </div>
-        </Button>
-      </Card>
+            <Button
+              className="h-14 w-full rounded-2xl bg-primary text-lg font-black text-primary-foreground shadow-xl shadow-primary/25 hover:bg-primary/90 disabled:opacity-50"
+              onClick={handleGenerate}
+              disabled={isGenerating || !selectedImageModel}
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                <span>开始创作</span>
+              </div>
+            </Button>
+          </Card>
+        </section>
 
-      <AnimatePresence>
-        {resultImages.length > 0 && (
-          <motion.section
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="space-y-4 pb-12"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
-                生成结果 <Check className="w-4 h-4 text-green-500" />
-              </h2>
+        <section aria-label="生成结果区" className="space-y-4 lg:min-h-[48rem]">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wider">
+              生成结果 {resultImages.length > 0 ? <Check className="h-4 w-4 text-green-500" /> : null}
+            </h2>
+            {resultImages.length > 0 ? (
               <Button variant="secondary" size="sm" onClick={clearResults} className="rounded-xl px-3">
-                <X className="w-4 h-4 mr-1" />
+                <X className="mr-1 h-4 w-4" />
                 清空结果
               </Button>
-            </div>
+            ) : null}
+          </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {resultImages.map((image, index) => (
-                <div key={`${image.originalUrl}-${index}`} className="relative overflow-hidden rounded-3xl border border-primary/20 bg-card shadow-xl">
-                  <img src={image.displayUrl} alt={`Result ${index + 1}`} className="aspect-square w-full object-cover" />
-                  {isPreviewResult && (
-                    <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
-                      预览图
-                    </div>
-                  )}
-                  <a
-                    href={image.originalUrl}
-                    download
-                    target="_blank"
-                    rel="noopener"
-                    aria-label={`下载原图 ${index + 1}`}
-                    className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm"
-                  >
-                    <Download className="h-4 w-4" />
-                  </a>
+          <AnimatePresence>
+            {resultImages.length > 0 ? (
+              <motion.div
+                key="result"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+              >
+                {resultImages.map((image, index) => (
+                  <div key={`${image.originalUrl}-${index}`} className="relative overflow-hidden rounded-[2rem] border border-primary/20 bg-card shadow-xl">
+                    <img src={image.displayUrl} alt={`Result ${index + 1}`} className="aspect-square w-full object-cover" />
+                    {isPreviewResult ? (
+                      <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
+                        预览图
+                      </div>
+                    ) : null}
+                    <a
+                      href={image.originalUrl}
+                      download
+                      target="_blank"
+                      rel="noopener"
+                      aria-label={`下载原图 ${index + 1}`}
+                      className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm"
+                    >
+                      <Download className="h-4 w-4" />
+                    </a>
+                  </div>
+                ))}
+              </motion.div>
+            ) : isGenerating ? (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex min-h-[28rem] flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-border/40 bg-secondary/10 p-8 text-center"
+              >
+                <div className="relative mb-6 h-24 w-24">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+                    className="absolute inset-0 rounded-full border-t-4 border-primary"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Sparkles className="h-10 w-10 animate-pulse text-primary" />
+                  </div>
                 </div>
-              ))}
-            </div>
-          </motion.section>
-        )}
-      </AnimatePresence>
-    </div>
+                <h3 className="mb-2 text-xl font-black tracking-tight">图像生成中</h3>
+                <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                  当前任务已进入处理队列，生成完成后会在此区域展示结果图。
+                </p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex min-h-[28rem] flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-border/30 bg-secondary/5 p-10 text-center"
+              >
+                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-secondary/50 text-muted-foreground">
+                  <AlertCircle className="h-10 w-10" />
+                </div>
+                <h3 className="text-lg font-black tracking-tight">结果将在此显示</h3>
+                <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                  完成提示词、模型和比例设置后，当前工作台会展示生成图像与下载入口。
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+      </div>
+    </PageShell>
   );
 }

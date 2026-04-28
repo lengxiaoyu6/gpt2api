@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('../api/site', () => ({
@@ -26,6 +26,13 @@ vi.mock('../api/recharge', () => ({
 
 vi.mock('../api/credit', () => ({
   listMyCreditLogs: vi.fn(),
+}))
+
+vi.mock('../api/apikey', () => ({
+  listKeys: vi.fn(),
+  createKey: vi.fn(),
+  updateKey: vi.fn(),
+  deleteKey: vi.fn(),
 }))
 
 const siteApi = await import('../api/site')
@@ -115,9 +122,12 @@ describe('wap integration', () => {
     expect(screen.getByText('8.99')).toBeInTheDocument()
   })
 
-  test('bottom navigation uses 生图 label', () => {
+  test('app exposes named desktop and mobile navigation containers', () => {
     render(<App />)
 
+    expect(screen.getByRole('navigation', { name: '桌面侧边导航' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '移动底部导航' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '桌面信息栏' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '生图' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '生成' })).toBeNull()
   })
@@ -220,12 +230,20 @@ describe('wap integration', () => {
 
     const main = screen.getByRole('main')
     expect(main.className).toContain('flex-1')
-    expect(main.className).not.toContain('min-h-screen')
+    expect(main.className).toContain('flex')
+    expect(main.className).toContain('flex-col')
 
     const profileFooter = screen.getByText('© 星河图像').parentElement
     expect(profileFooter).not.toBeNull()
+    expect(profileFooter?.className).toContain('mt-auto')
     expect(profileFooter?.className).toContain('pb-6')
     expect(profileFooter?.className).not.toContain('pb-12')
+
+    const profileContentColumn = profileFooter?.parentElement
+    expect(profileContentColumn).not.toBeNull()
+    expect(profileContentColumn?.className).toContain('flex')
+    expect(profileContentColumn?.className).toContain('flex-1')
+    expect(profileContentColumn?.className).toContain('flex-col')
   })
 
   test('profile menu does not render help entry', () => {
@@ -258,6 +276,7 @@ describe('wap integration', () => {
     render(<App />)
 
     expect(screen.getByText('我的会员')).toBeInTheDocument()
+    expect(screen.getByText('API Keys')).toBeInTheDocument()
     expect(screen.getByText('充值积分')).toBeInTheDocument()
     expect(screen.getByText('安全中心')).toBeInTheDocument()
     expect(screen.queryByText('帮助与反馈')).toBeNull()
@@ -294,6 +313,79 @@ describe('wap integration', () => {
 
     expect(screen.getByText('个人中心')).toBeInTheDocument()
     expect(container.querySelector('.lucide-settings')).toBeNull()
+  })
+
+  test('profile does not render account status card', () => {
+    useStore.setState({
+      activeTab: 'profile',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 0,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 0,
+        awarded_credits: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+
+    expect(screen.queryByText('账号状态')).toBeNull()
+    expect(screen.queryByText('创作数量')).toBeNull()
+  })
+
+  test('desktop sidebar places logout action under user summary', () => {
+    useStore.setState({
+      activeTab: 'profile',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      history: [],
+      checkin: {
+        enabled: true,
+        today: '2026-04-22',
+        checked_in: false,
+        today_reward_credits: 0,
+        checked_at: '',
+        last_checked_at: '',
+        balance_after: 0,
+        awarded_credits: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+
+    const desktopSidebar = screen.getByRole('navigation', { name: '桌面侧边导航' }).closest('aside')
+
+    expect(desktopSidebar).not.toBeNull()
+    expect(within(desktopSidebar as HTMLElement).getByRole('button', { name: '退出登录' })).toBeInTheDocument()
+    expect(
+      screen
+        .getAllByRole('button', { name: '退出登录' })
+        .some((button) => button.className.includes('lg:hidden')),
+    ).toBe(true)
   })
 
   test('profile recharge entry opens redeem dialog and submits redeem code', async () => {
@@ -418,8 +510,8 @@ describe('wap integration', () => {
       expect(screen.getByText('积分使用记录')).toBeInTheDocument()
     })
     expect(creditApi.listMyCreditLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
-    expect(screen.getByText('图片生成消费')).toBeInTheDocument()
-    expect(screen.getByText('-12.00')).toBeInTheDocument()
+    expect(await screen.findByText('图片生成消费')).toBeInTheDocument()
+    expect(await screen.findByText('-12.00')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '返回个人中心' }))
 
@@ -432,6 +524,7 @@ describe('wap integration', () => {
     render(<HomeView onStartGeneration={() => {}} />)
 
     const heroSection = screen.getByAltText('Hero').closest('section')
+    const featureGrid = screen.getByRole('region', { name: '核心功能列表' })
 
     expect(screen.getByText('文生图')).toBeInTheDocument()
     expect(screen.getByText('图生图')).toBeInTheDocument()
@@ -442,6 +535,8 @@ describe('wap integration', () => {
     expect(screen.queryByText('灵感图鉴')).toBeNull()
     expect(screen.queryByText('更多作品')).toBeNull()
     expect(heroSection?.className).toContain('h-[320px]')
+    expect(heroSection?.className).toContain('lg:min-h-[460px]')
+    expect(featureGrid.className).toContain('lg:grid-cols-3')
 
     fireEvent.click(screen.getByText('生成视频'))
 

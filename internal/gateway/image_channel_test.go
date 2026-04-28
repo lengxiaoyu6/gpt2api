@@ -412,8 +412,8 @@ func TestImageGenerationsRoutesReferenceImagesToResponsesChannel(t *testing.T) {
 			t.Fatalf("decode upstream request: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "event: response.image_generation_call.partial_image\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"cGFydGlhbA==\",\"output_format\":\"png\"}\n\n")
+		_, _ = io.WriteString(w, "event: response.output_item.done\n")
+		_, _ = io.WriteString(w, "data: {\"item\":{\"type\":\"image_generation_call\",\"result\":\"ZmluYWw=\"}}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer srv.Close()
@@ -490,7 +490,7 @@ func TestImageGenerationsRoutesReferenceImagesToResponsesChannel(t *testing.T) {
 	if len(resp.Data) != 1 {
 		t.Fatalf("len(resp.Data) = %d, want 1", len(resp.Data))
 	}
-	if got := resp.Data[0].URL; got != "data:image/png;base64,cGFydGlhbA==" {
+	if got := resp.Data[0].URL; got != "data:image/png;base64,ZmluYWw=" {
 		t.Fatalf("resp.Data[0].URL = %q", got)
 	}
 }
@@ -738,8 +738,8 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 			t.Fatalf("decode upstream request: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "event: response.image_generation_call.partial_image\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"bXVsdGktcmVm\"}\n\n")
+		_, _ = io.WriteString(w, "event: response.output_item.done\n")
+		_, _ = io.WriteString(w, "data: {\"item\":{\"type\":\"image_generation_call\",\"result\":\"bXVsdGktcmVmLWZpbmFs\"}}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer srv.Close()
@@ -821,7 +821,7 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 	if len(resp.Data) != 1 {
 		t.Fatalf("len(resp.Data) = %d, want 1", len(resp.Data))
 	}
-	if got := resp.Data[0].URL; got != "data:image/png;base64,bXVsdGktcmVm" {
+	if got := resp.Data[0].URL; got != "data:image/png;base64,bXVsdGktcmVmLWZpbmFs" {
 		t.Fatalf("resp.Data[0].URL = %q", got)
 	}
 }

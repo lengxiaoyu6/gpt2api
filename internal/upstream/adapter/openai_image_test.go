@@ -261,8 +261,8 @@ func TestOpenAIImageGenerateResponsesEndpointIncludesReferenceImages(t *testing.
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "event: response.image_generation_call.partial_image\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"cGFydGlhbA==\"}\n\n")
+		_, _ = io.WriteString(w, "event: response.output_item.done\n")
+		_, _ = io.WriteString(w, "data: {\"item\":{\"type\":\"image_generation_call\",\"result\":\"ZmluYWw=\"}}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer srv.Close()
@@ -299,6 +299,27 @@ func TestOpenAIImageGenerateResponsesEndpointIncludesReferenceImages(t *testing.
 	}
 	if got := content[2].(map[string]any)["image_url"]; got != "https://img.example.com/ref-2.png" {
 		t.Fatalf("content[2].image_url = %#v", got)
+	}
+}
+
+func TestOpenAIImageGenerateResponsesEndpointRejectsPartialOnlyResultWhenReferenceImagesPresent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: response.image_generation_call.partial_image\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"cGFydGlhbA==\"}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	a := NewOpenAI(Params{BaseURL: srv.URL + "/v1/responses", APIKey: "test"})
+	_, err := a.ImageGenerate(context.Background(), "gpt-5.4", &ImageRequest{
+		Prompt: "换个风格",
+		References: []ImageReference{
+			{URL: "https://img.example.com/ref-1.png"},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "empty image response") {
+		t.Fatalf("err = %v, want empty image response", err)
 	}
 }
 
