@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const generateImage = vi.fn()
@@ -276,6 +278,73 @@ describe('generate image notice', () => {
     expect(screen.getByRole('region', { name: '生成参数区' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: '生成结果区' })).toBeInTheDocument()
     expect(screen.getByText('结果将在此显示')).toBeInTheDocument()
+  })
+
+  test('generate prompt textarea keeps fixed rows and internal scroll', async () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'GPT2API',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    const textarea = screen.getByPlaceholderText('描述想看到的画面...')
+
+    expect(textarea).toHaveAttribute('rows', '5')
+    expect(textarea).toHaveClass(
+      'field-sizing-fixed',
+      'h-[140px]',
+      'max-h-[140px]',
+      'overflow-y-auto',
+      'resize-none',
+      'overscroll-contain',
+      'pr-5',
+      'prompt-scrollbar',
+    )
+    expect(textarea).not.toHaveClass('field-sizing-content')
+
+    await act(async () => {
+      fireEvent.change(textarea, {
+        target: {
+          value: Array.from({ length: 20 }, (_, index) => `第 ${index + 1} 行画面描述`).join('\n'),
+        },
+      })
+    })
+
+    expect(textarea).toHaveAttribute('rows', '5')
+    expect(textarea).toHaveClass(
+      'field-sizing-fixed',
+      'h-[140px]',
+      'max-h-[140px]',
+      'overflow-y-auto',
+      'resize-none',
+      'overscroll-contain',
+      'pr-5',
+      'prompt-scrollbar',
+    )
+    expect(textarea).not.toHaveClass('field-sizing-content')
+  })
+
+  test('generate prompt textarea scrollbar utility keeps native scrollbars subtle', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+
+    expect(css).toContain('.prompt-scrollbar')
+    expect(css).toContain('scrollbar-width: thin')
+    expect(css).toContain('scrollbar-gutter: stable')
+    expect(css).toContain('.prompt-scrollbar::-webkit-scrollbar-thumb')
   })
 
   test('generate click shows dismissible submission dialog instead of loading button text', async () => {

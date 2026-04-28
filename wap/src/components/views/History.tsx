@@ -785,6 +785,7 @@ export default function HistoryView() {
               <div className="min-w-0 flex-1 space-y-2">
                 <DialogTitle className="text-xl font-black tracking-tight">删除历史记录</DialogTitle>
                 <DialogDescription className="space-y-1 leading-5">
+                  <span className="block font-semibold text-foreground">确认删除这条历史记录吗？</span>
                   <span className="block">删除后该记录会从时间轴中移除，生成图片记录也会同步删除。</span>
                 </DialogDescription>
               </div>

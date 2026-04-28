@@ -128,3 +128,48 @@
     @apply font-sans;
     }
 }
+
+@layer utilities {
+  .prompt-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 38%, transparent) transparent;
+  }
+
+  .prompt-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .prompt-scrollbar::-webkit-scrollbar-track {
+    margin: 12px 0;
+    background: transparent;
+  }
+
+  .prompt-scrollbar::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 36%, transparent);
+    background-clip: padding-box;
+  }
+
+  .prompt-scrollbar:hover::-webkit-scrollbar-thumb,
+  .prompt-scrollbar:focus-visible::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 42%, transparent);
+    background-clip: padding-box;
+  }
+
+  .dark .prompt-scrollbar {
+    scrollbar-color: color-mix(in oklab, var(--foreground) 28%, transparent) transparent;
+  }
+
+  .dark .prompt-scrollbar::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 22%, transparent);
+    background-clip: padding-box;
+  }
+
+  .dark .prompt-scrollbar:hover::-webkit-scrollbar-thumb,
+  .dark .prompt-scrollbar:focus-visible::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 34%, transparent);
+    background-clip: padding-box;
+  }
+}

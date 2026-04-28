@@ -550,10 +550,11 @@ export default function GenerateView() {
 
               <div className="relative">
                 <Textarea
+                  rows={5}
                   placeholder={mode === 'txt' ? '描述想看到的画面...' : '描述想要修改、增强或重绘的部分...'}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  className="min-h-[140px] resize-none rounded-2xl border-none bg-background/50 p-4 text-sm leading-relaxed focus-visible:ring-primary/20"
+                  className="prompt-scrollbar field-sizing-fixed h-[140px] min-h-[140px] max-h-[140px] resize-none overflow-y-auto overscroll-contain rounded-2xl border-none bg-background/50 p-4 pr-5 text-sm leading-relaxed focus-visible:ring-primary/20"
                 />
               </div>
 
