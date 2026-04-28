@@ -13,6 +13,8 @@ export type { AspectRatio, OutputQualityValue } from '../features/image/options'
 
 export interface HistoryRecord extends meApi.ImageTask {}
 
+const HISTORY_PAGE_LIMIT = 20
+
 const defaultSiteInfo: Record<string, string> = {
   'site.name': 'GPT2API',
   'site.description': 'AI 创作平台',
@@ -92,6 +94,9 @@ interface AppState {
   history: HistoryRecord[]
   historyLoaded: boolean
   historyLoading: boolean
+  historyHasMore: boolean
+  historyOffset: number
+  historyLimit: number
   isDark: boolean
   activeTab: TabKey
   pendingTab: TabKey
@@ -106,7 +111,7 @@ interface AppState {
   fetchMe: () => Promise<authApi.UserInfo | null>
   fetchCheckin: () => Promise<meApi.CheckinStatus | null>
   fetchImageModels: () => Promise<meApi.ImageModel[]>
-  fetchHistory: (force?: boolean) => Promise<HistoryRecord[]>
+  fetchHistory: (force?: boolean, append?: boolean) => Promise<HistoryRecord[]>
   deleteHistoryRecord: (taskID: string) => Promise<void>
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
@@ -157,6 +162,9 @@ export const useStore = create<AppState>()(
       history: [],
       historyLoaded: false,
       historyLoading: false,
+      historyHasMore: false,
+      historyOffset: 0,
+      historyLimit: HISTORY_PAGE_LIMIT,
       isDark: true,
       activeTab: 'home',
       pendingTab: 'home',
@@ -219,6 +227,9 @@ export const useStore = create<AppState>()(
           history: [],
           historyLoaded: false,
           historyLoading: false,
+          historyHasMore: false,
+          historyOffset: 0,
+          historyLimit: HISTORY_PAGE_LIMIT,
           authOverlayOpen: false,
           activeTab: 'home',
           pendingTab: 'home',
@@ -238,6 +249,9 @@ export const useStore = create<AppState>()(
           history: [],
           historyLoaded: false,
           historyLoading: false,
+          historyHasMore: false,
+          historyOffset: 0,
+          historyLimit: HISTORY_PAGE_LIMIT,
           authOverlayOpen: true,
           activeTab: 'home',
           pendingTab: tab,
@@ -269,15 +283,35 @@ export const useStore = create<AppState>()(
         return available
       },
 
-      async fetchHistory(force = false) {
-        if (get().historyLoaded && !force) {
-          return get().history
+      async fetchHistory(force = false, append = false) {
+        const current = get()
+        if (!append && current.historyLoaded && !force) {
+          return current.history
         }
+        const limit = current.historyLimit || HISTORY_PAGE_LIMIT
+        const offset = append && !force ? current.historyOffset : 0
+
         set({ historyLoading: true })
         try {
-          const data = await meApi.listMyImageTasks({ limit: 20, offset: 0 })
-          set({ history: data.items || [], historyLoaded: true, historyLoading: false })
-          return data.items || []
+          const data = await meApi.listMyImageTasks({ limit, offset })
+          const items = data.items || []
+          const responseLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : limit
+          const responseOffset = typeof data.offset === 'number' ? data.offset : offset
+          const history = append && !force ? [...get().history, ...items] : items
+          const nextOffset = responseOffset + items.length
+          const historyHasMore = typeof data.total === 'number'
+            ? nextOffset < data.total
+            : items.length >= responseLimit
+
+          set({
+            history,
+            historyLoaded: true,
+            historyLoading: false,
+            historyHasMore,
+            historyOffset: nextOffset,
+            historyLimit: responseLimit,
+          })
+          return history
         } catch (error) {
           set({ historyLoading: false })
           throw error
@@ -384,6 +418,9 @@ export const useStore = create<AppState>()(
           history: [],
           historyLoaded: false,
           historyLoading: false,
+          historyHasMore: false,
+          historyOffset: 0,
+          historyLimit: HISTORY_PAGE_LIMIT,
           activeTab: isProtectedTab(activeTab) ? 'home' : activeTab,
           pendingTab: isProtectedTab(activeTab) ? activeTab : 'home',
           authOverlayOpen: true,

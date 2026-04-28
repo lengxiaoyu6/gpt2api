@@ -274,7 +274,7 @@ async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
 }
 
 export default function HistoryView() {
-  const { user, history, historyLoading, fetchHistory, imageModels, deleteHistoryRecord } = useStore();
+  const { user, history, historyLoading, historyHasMore, fetchHistory, imageModels, deleteHistoryRecord } = useStore();
   const [selectedImage, setSelectedImage] = useState<HistoryRecord | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [search, setSearch] = useState('');
@@ -296,7 +296,18 @@ export default function HistoryView() {
     await fetchHistory(true);
   }
 
-  const filtered = history.filter((item) => item.prompt.toLowerCase().includes(search.toLowerCase()));
+  async function handleLoadMoreHistory() {
+    if (!user || historyLoading || !historyHasMore) {
+      return;
+    }
+
+    await fetchHistory(false, true);
+  }
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const filtered = normalizedSearch
+    ? history.filter((item) => item.prompt.toLowerCase().includes(normalizedSearch))
+    : history;
   const selectedImageKind = selectedImage ? getTaskStateKind(selectedImage.status) : null;
   const selectedPreviewUrls = getPreviewImageUrls(selectedImage);
   const selectedOriginalUrls = getOriginalImageUrls(selectedImage);
@@ -554,6 +565,29 @@ export default function HistoryView() {
           </div>
         </div>
       )}
+
+      {historyHasMore ? (
+        <div className="flex justify-center pt-2">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={historyLoading}
+            onClick={() => {
+              void handleLoadMoreHistory();
+            }}
+            className="h-12 min-w-36 gap-2 rounded-2xl border border-border/60 bg-secondary/80 px-6 font-bold shadow-sm"
+          >
+            {historyLoading ? (
+              <>
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+                <span>加载中</span>
+              </>
+            ) : (
+              '加载更多'
+            )}
+          </Button>
+        </div>
+      ) : null}
 
       <AnimatePresence>
         {selectedImage && selectedImageKind && (

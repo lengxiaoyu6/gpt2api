@@ -40,6 +40,24 @@ function resetStore() {
   sessionStorage.clear()
 }
 
+function mockImageTask(id: number) {
+  return {
+    id,
+    task_id: `task-${id}`,
+    user_id: 1,
+    model_id: 1,
+    account_id: 1,
+    prompt: `Cloud city ${id}`,
+    n: 1,
+    size: '1024x1024',
+    status: 'succeeded',
+    credit_cost: 5,
+    image_urls: [`/p/img/task-${id}/0`],
+    thumb_urls: [`/p/thumb/task-${id}/0`],
+    created_at: `2026-04-22T10:${String(id).padStart(2, '0')}:00Z`,
+  }
+}
+
 describe('useStore backend integration', () => {
   beforeEach(() => {
     resetStore()
@@ -330,6 +348,39 @@ describe('useStore backend integration', () => {
     expect(meApi.deleteMyImageTask).toHaveBeenCalledWith('task-1')
     expect((useStore.getState() as any).history.map((item: any) => item.task_id)).toEqual(['task-2'])
     expect((useStore.getState() as any).historyLoaded).toBe(true)
+  })
+
+  test('fetchHistory appends next image task page with offset', async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => mockImageTask(index + 1))
+    const secondPage = [mockImageTask(21)]
+
+    vi.mocked(meApi.listMyImageTasks)
+      .mockResolvedValueOnce({
+        items: firstPage,
+        total: 21,
+        limit: 20,
+        offset: 0,
+      } as any)
+      .mockResolvedValueOnce({
+        items: secondPage,
+        total: 21,
+        limit: 20,
+        offset: 20,
+      } as any)
+
+    const state = useStore.getState() as any
+
+    await state.fetchHistory(true)
+    await (useStore.getState() as any).fetchHistory(false, true)
+
+    expect(meApi.listMyImageTasks).toHaveBeenNthCalledWith(1, { limit: 20, offset: 0 })
+    expect(meApi.listMyImageTasks).toHaveBeenNthCalledWith(2, { limit: 20, offset: 20 })
+    expect((useStore.getState() as any).history.map((item: any) => item.task_id)).toEqual([
+      ...firstPage.map((item) => item.task_id),
+      'task-21',
+    ])
+    expect((useStore.getState() as any).historyHasMore).toBe(false)
+    expect((useStore.getState() as any).historyOffset).toBe(21)
   })
 
   test('generateImage lazily prefers image model with upstream channel when no selection exists', async () => {

@@ -97,7 +97,7 @@ export function listMyModels() {
 }
 
 export function listMyImageTasks(params: { limit?: number; offset?: number } = {}) {
-  return http.get('/api/me/images/tasks', { params }) as Promise<{ items: ImageTask[]; limit: number; offset: number }>
+  return http.get('/api/me/images/tasks', { params }) as Promise<{ items: ImageTask[]; total?: number; limit: number; offset: number }>
 }
 
 export function getMyImageTask(taskID: string) {
