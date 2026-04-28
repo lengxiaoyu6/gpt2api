@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertTriangle,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Download,
   Image as ImageIcon,
@@ -261,6 +263,8 @@ export default function HistoryView() {
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
+  const isFirstPreviewImage = previewIndex === 0;
+  const isLastPreviewImage = previewIndex >= selectedPreviewUrls.length - 1;
   const selectedImageModelLabel = selectedImage
     ? imageModels.find((item) => item.id === selectedImage.model_id)?.slug?.trim() || '未知'
     : '未知';
@@ -275,6 +279,22 @@ export default function HistoryView() {
     touchStartXRef.current = null;
     setPreviewIndex(0);
     setSelectedImage(null);
+  }
+
+  function showPreviousPreviewImage() {
+    if (!hasMultiplePreviewImages) {
+      return;
+    }
+
+    setPreviewIndex((current) => Math.max(0, current - 1));
+  }
+
+  function showNextPreviewImage() {
+    if (!hasMultiplePreviewImages) {
+      return;
+    }
+
+    setPreviewIndex((current) => Math.min(selectedPreviewUrls.length - 1, current + 1));
   }
 
   function handlePreviewTouchStart(event: React.TouchEvent<HTMLDivElement>) {
@@ -305,11 +325,11 @@ export default function HistoryView() {
     }
 
     if (deltaX > 0) {
-      setPreviewIndex((current) => Math.min(selectedPreviewUrls.length - 1, current + 1));
+      showNextPreviewImage();
       return;
     }
 
-    setPreviewIndex((current) => Math.max(0, current - 1));
+    showPreviousPreviewImage();
   }
 
   async function handleDownloadOriginal() {
@@ -362,7 +382,9 @@ export default function HistoryView() {
       {filtered.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-6">
           {filtered.map((item, i) => {
-            const previewUrl = getPreviewImageUrls(item)[0] || null;
+            const previewUrls = getPreviewImageUrls(item);
+            const resultImageCount = Math.max(getOriginalImageUrls(item).length, previewUrls.length);
+            const previewUrl = previewUrls[0] || null;
             const taskStateKind = getTaskStateKind(item.status);
             const cardStateLabel = getTaskCardLabel(item.status);
             const detailStateLabel = getTaskDetailLabel(item.status);
@@ -398,6 +420,12 @@ export default function HistoryView() {
                     </div>
                   </div>
                 )}
+                {resultImageCount > 1 ? (
+                  <div className="absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/65 px-3 py-1.5 text-[11px] font-bold text-white shadow-lg shadow-black/25 backdrop-blur-md">
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    <span>共 {resultImageCount} 张</span>
+                  </div>
+                ) : null}
                 <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
                   <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-semibold backdrop-blur-md ${getTaskBadgeClassName(taskStateKind)}`}>
                     <TaskStateIcon
@@ -479,9 +507,57 @@ export default function HistoryView() {
                   </div>
                 )}
                 {hasMultiplePreviewImages ? (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-xs font-semibold text-white/90 backdrop-blur-md">
-                    {previewIndex + 1} / {selectedPreviewUrls.length}
+                  <div className="absolute inset-x-4 bottom-4 z-10 flex flex-col items-center gap-2">
+                    <div className="rounded-full border border-white/20 bg-black/65 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-black/25 backdrop-blur-md">
+                      第 {previewIndex + 1} 张 / 共 {selectedPreviewUrls.length} 张
+                    </div>
+                    <div className="rounded-full border border-white/15 bg-black/50 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+                      左右滑动或点击箭头切换
+                    </div>
+                    <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1.5 backdrop-blur-md">
+                      {selectedPreviewUrls.map((url, index) => (
+                        <span
+                          key={`${url}-${index}`}
+                          aria-hidden="true"
+                          className={`h-1.5 rounded-full transition-all ${
+                            index === previewIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/45'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
+                ) : null}
+                {hasMultiplePreviewImages ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      aria-label="上一张"
+                      disabled={isFirstPreviewImage}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        showPreviousPreviewImage();
+                      }}
+                      className="absolute left-3 top-1/2 z-10 h-11 w-11 -translate-y-1/2 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 backdrop-blur-md hover:bg-black/75 disabled:opacity-35"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      aria-label="下一张"
+                      disabled={isLastPreviewImage}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        showNextPreviewImage();
+                      }}
+                      className="absolute right-3 top-1/2 z-10 h-11 w-11 -translate-y-1/2 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 backdrop-blur-md hover:bg-black/75 disabled:opacity-35"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  </>
                 ) : null}
                 <Button
                   variant="secondary"

@@ -1232,7 +1232,7 @@ describe('wap backend bindings', () => {
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
       expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/0')
-      expect(screen.getByText('1 / 2')).toBeInTheDocument()
+      expect(screen.getByText('第 1 张 / 共 2 张')).toBeInTheDocument()
 
       await act(async () => {
         fireEvent.touchStart(screen.getByAltText('Detail'), {
@@ -1245,7 +1245,7 @@ describe('wap backend bindings', () => {
       })
 
       await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/1'))
-      expect(screen.getByText('2 / 2')).toBeInTheDocument()
+      expect(screen.getByText('第 2 张 / 共 2 张')).toBeInTheDocument()
 
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
@@ -1260,6 +1260,65 @@ describe('wap backend bindings', () => {
       URL.revokeObjectURL = originalRevokeObjectURL
       vi.unstubAllGlobals()
     }
+  })
+
+  test('history view makes multi-image count and switching controls visible', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 22,
+          task_id: 'task-visible-multi',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Visible multi city',
+          n: 3,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 15,
+          image_urls: ['/p/img/task-visible-multi/0', '/p/img/task-visible-multi/1', '/p/img/task-visible-multi/2'],
+          thumb_urls: ['/p/thumb/task-visible-multi/0', '/p/thumb/task-visible-multi/1', '/p/thumb/task-visible-multi/2'],
+          created_at: '2026-04-22T12:30:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('共 3 张')).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Visible multi city'))
+    })
+
+    expect(await screen.findByText('第 1 张 / 共 3 张')).toBeInTheDocument()
+    expect(screen.getByText('左右滑动或点击箭头切换')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '上一张' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '下一张' }))
+    })
+
+    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-visible-multi/1')
+    expect(screen.getByText('第 2 张 / 共 3 张')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '上一张' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
   })
 
   test('history view constrains long prompt inside detail panel', async () => {
