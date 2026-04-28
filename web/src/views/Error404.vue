@@ -4,9 +4,9 @@ const router = useRouter()
 </script>
 <template>
   <div class="err-page">
-    <el-result icon="warning" title="404" sub-title="页面不存在,或你没有访问它的权限。">
+    <el-result icon="warning" title="404" sub-title="页面不存在，返回后台首页继续处理管理事务。">
       <template #extra>
-        <el-button type="primary" @click="router.replace('/')">返回首页</el-button>
+        <el-button type="primary" @click="router.replace('/admin/dashboard')">返回后台首页</el-button>
       </template>
     </el-result>
   </div>

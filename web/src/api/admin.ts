@@ -87,6 +87,36 @@ export function listCreditLogs(userID: number, limit = 50, offset = 0): Promise<
   return http.get(`/api/admin/users/${userID}/credit-logs`, { params: { limit, offset } })
 }
 
+export interface AdminImageTask {
+  id: number
+  task_id: string
+  user_id: number
+  user_email: string
+  prompt: string
+  n: number
+  size: string
+  upscale: string
+  status: string
+  result_urls_parsed: string[]
+  error: string
+  credit_cost: number
+  estimated_credit: number
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+}
+
+export interface AdminImageTaskListResp {
+  list: AdminImageTask[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export function listImageTasks(params: { page?: number; page_size?: number; keyword?: string; status?: string; start_at?: string; end_at?: string } = {}): Promise<AdminImageTaskListResp> {
+  return http.get('/api/admin/image-tasks', { params }) as unknown as Promise<AdminImageTaskListResp>
+}
+
 // ============ credits (全局) ============
 
 export interface CreditLogGlobal extends CreditLog {

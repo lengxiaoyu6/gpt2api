@@ -25,7 +25,7 @@ const brand = brandParts()
 const brandRepoHref = `https://${brand.repo}`
 const brandQQHref = `https://qm.qq.com/q/${brand.qq}`
 
-const { menu, user, role } = storeToRefs(store)
+const { adminMenu, user, role } = storeToRefs(store)
 const collapsed = ref(false)
 const drawerOpen = ref(false)
 const isMobile = ref(false)
@@ -66,14 +66,14 @@ const titleMap = computed(() => {
       if (it.children) walk(it.children)
     }
   }
-  walk(menu.value)
+  walk(adminMenu.value)
   return m
 })
 
 const currentTitle = computed(() => titleMap.value.get(activePath.value) || (route.meta.title as string) || '')
 
 async function loadMenu() {
-  if (menu.value.length > 0) return
+  if (adminMenu.value.length > 0) return
   loadingMenu.value = true
   try {
     await store.fetchMenu()
@@ -129,12 +129,12 @@ watch(() => store.isLoggedIn, (v) => {
         :default-active="activePath"
         :collapse="sideCollapsed"
         background-color="transparent"
-        text-color="#cfd3dc"
-        active-text-color="#ffffff"
-        class="side-menu"
-        router
-      >
-        <template v-for="group in menu" :key="group.key">
+      text-color="#cfd3dc"
+      active-text-color="#ffffff"
+      class="side-menu"
+      router
+    >
+        <template v-for="group in adminMenu" :key="group.key">
           <el-menu-item v-if="!group.children?.length && group.path" :index="group.path">
             <el-icon v-if="group.icon"><component :is="group.icon" /></el-icon>
             <template #title>{{ group.title }}</template>
@@ -168,7 +168,7 @@ watch(() => store.isLoggedIn, (v) => {
         </div>
 
         <div class="right">
-          <AnnouncementCenter :active="route.path.startsWith('/personal')" />
+          <AnnouncementCenter :active="route.path.startsWith('/admin')" />
 
           <el-tooltip :content="ui.isDark ? '切换到亮色' : '切换到暗色'" placement="bottom">
             <el-button link class="theme-btn" @click="ui.toggleDark()">
@@ -189,11 +189,11 @@ watch(() => store.isLoggedIn, (v) => {
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="/personal/dashboard">
-                  <el-icon><User /></el-icon> 个人中心
+                <el-dropdown-item command="/admin/dashboard">
+                  <el-icon><House /></el-icon> 后台首页
                 </el-dropdown-item>
-                <el-dropdown-item command="/personal/billing">
-                  <el-icon><Wallet /></el-icon> 账单
+                <el-dropdown-item command="/admin/settings">
+                  <el-icon><Tools /></el-icon> 系统设置
                 </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon> 退出登录

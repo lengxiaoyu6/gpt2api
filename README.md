@@ -311,18 +311,19 @@ docker compose logs -f server
 >
 > **本项目 *不* 预置任何"默认管理员账号"或"默认密码"。** 部署起来后请按以下步骤走:
 >
-> 1. 浏览器打开 **`http://<服务器IP>:8080/register`**
+> 1. 浏览器打开 **WAP 站点**，例如已配置的 `http://imgwap.domain.com/`
 > 2. 用自己的邮箱 + 自设密码完成第一次注册
 > 3. **这第一个账号会自动拿到 `admin` 角色**(见 `internal/auth/service.go` 的 `Register` Bootstrap 规则)
 > 4. 之后再注册的账号都是普通用户
-> 5. 首位 admin 登录后,强烈建议去**管理后台 → 系统设置**把"允许开放注册"关掉,避免被陌生人占用
+> 5. 首位 admin 随后访问 **Web 管理后台 `/login`**，进入系统设置关闭开放注册
 >
 > 如果你在网上看到"Admin123456" / "admin@smoke.test" 这类字样,那是 `scripts/smoke.mjs` 冒烟测试脚本自己创建测试账号时用的参数,**与部署默认凭证无关**。
 
 ### 5. 首次登录
 
-- 前端站点地址:`http://<服务器IP>:8080/`
-- 按上面的 ⚠️ 框完成首位 admin 注册即可登录。
+- Web 管理后台地址:`http://<服务器IP>:8080/login`
+- WAP 用户侧站点地址:已配置的 WAP 域名或对应入口
+- `web/` 仅面向管理员；注册、创作与个人资料场景由 `wap/` 承接。
 - 忘记管理员密码、或需要把某个普通用户提权为 admin,见「FAQ · 管理员密码找回 / 提权」。
 
 ### 6. 日常更新流程速查
@@ -615,14 +616,11 @@ scheduler:
 
 ## 九、管理后台功能概览
 
+`web/` 当前为纯管理后台。普通用户注册、创作、账单与资料入口统一放在 `wap/`。
+
 | 页面 | 路径 | 核心能力 |
 |------|------|---------|
-| 个人总览 | `/personal/dashboard` | 积分余额、14 天请求趋势、热门模型、最近请求/账变 |
-| 在线体验 | `/personal/play` | 浏览器内 Playground,文生图 / 图生图,实时扣费 |
-| 接口文档 | `/personal/docs` | curl / Python SDK 代码片段、历史任务列表 |
-| API Keys | `/personal/keys` | 创建 / 禁用 / 限流 Key |
-| 使用记录 | `/personal/usage` | 本人的请求日志 / 积分流水 |
-| 账单与充值 | `/personal/billing` | 套餐购买、易支付下单 |
+| 后台概览 | `/admin/dashboard` | 汇总用户、管理员、待处理订单、近 7 天请求、最近图片任务 |
 | 用户管理 | `/admin/users` | 用户 CRUD、角色、状态、分组 |
 | 积分管理 | `/admin/credits` | 手动调账、账变流水 |
 | 充值订单 | `/admin/recharges` | 充值流水、套餐管理 |
@@ -674,13 +672,13 @@ gpt2api/
 │   │   ├── api/                  # axios 封装
 │   │   ├── config/               # feature flag(含 ENABLE_CHAT_MODEL)
 │   │   ├── stores/               # pinia
-│   │   ├── views/personal/       # 用户侧页面
+│   │   ├── views/auth/           # 管理员登录
 │   │   ├── views/admin/          # 管理员页面
 │   │   └── router/
-│   └── dist/                     # 构建产物(Dockerfile 会 COPY 进镜像)
+│   └── dist/                     # 管理后台构建产物(Dockerfile 会 COPY 进镜像)
 ├── wap/                        # WAP 前端源码
 │   ├── src/
-│   └── dist/                     # 构建产物(Dockerfile 会 COPY 进镜像)
+│   └── dist/                     # 用户侧构建产物(Dockerfile 会 COPY 进镜像)
 ├── API_NOTES.md                # chatgpt.com 逆向接口备忘
 ├── RISK_AND_SAAS.md            # 风控 / 防封号原则
 └── README.md                   # 当前文档

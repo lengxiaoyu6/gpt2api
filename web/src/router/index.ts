@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import BasicLayout from '@/layouts/BasicLayout.vue'
-import PublicLayout from '@/layouts/PublicLayout.vue'
+import BlankLayout from '@/layouts/BlankLayout.vue'
 import { useUserStore } from '@/stores/user'
 
 /**
@@ -15,51 +15,24 @@ import { useUserStore } from '@/stores/user'
  * 真正的守门人在后端 middleware.RequirePerm,前端只是体验优化。
  */
 const routes: RouteRecordRaw[] = [
-  // 首页:自带导航 + hero + 界面预览 + 技术栈 + 部署 + 完整 footer,
-  // 不套 BlankLayout(避免 BlankLayout 的简短广告 footer 和 Home 自身的 footer 重复)。
+  { path: '/', redirect: '/login', meta: { public: true } },
   {
-    path: '/',
-    component: PublicLayout,
-    meta: { public: true },
+    path: '/login',
+    component: BlankLayout,
     children: [
-      { path: '', component: () => import('@/views/public/Home.vue'), meta: { public: true, title: '首页' } },
-      { path: 'showcase', component: () => import('@/views/public/Showcase.vue'), meta: { public: true, title: '案例展示' } },
-      { path: 'login', component: () => import('@/views/auth/Login.vue'), meta: { public: true, title: '登录' } },
-      { path: 'register', component: () => import('@/views/auth/Register.vue'), meta: { public: true, title: '注册' } },
-      { path: 'pricing', component: () => import('@/views/public/Pricing.vue'), meta: { public: true, title: '定价方案' } },
+      { path: '', component: () => import('@/views/auth/Login.vue'), meta: { public: true, title: '登录后台' } },
     ],
   },
-  {
-    path: '/personal',
-    component: BasicLayout,
-    redirect: '/personal/dashboard',
-    children: [
-      { path: 'dashboard', component: () => import('@/views/personal/Dashboard.vue'),
-        meta: { title: '个人总览', perm: 'self:profile' } },
-      { path: 'security', component: () => import('@/views/personal/Security.vue'),
-        meta: { title: '安全中心', perm: 'self:profile' } },
-      { path: 'keys', component: () => import('@/views/personal/ApiKeys.vue'),
-        meta: { title: 'API Keys', perm: 'self:key' } },
-      { path: 'usage', component: () => import('@/views/personal/Usage.vue'),
-        meta: { title: '使用记录', perm: 'self:usage' } },
-      { path: 'billing', component: () => import('@/views/personal/Billing.vue'),
-        meta: { title: '账单与充值', perm: 'self:recharge' } },
-      { path: 'play', component: () => import('@/views/personal/OnlinePlay.vue'),
-        meta: { title: '在线体验', perm: ['self:image', 'self:usage'] } },
-      { path: 'docs', component: () => import('@/views/personal/ApiDocs.vue'),
-        meta: { title: '接口文档', perm: ['self:usage', 'self:image'] } },
-      { path: 'history-tasks', component: () => import('@/views/personal/HistoryTasks.vue'),
-        meta: { title: '历史任务', perm: 'self:image' } },
-      // 旧路径兼容
-      { path: 'playground', redirect: '/personal/docs' },
-      { path: 'images', redirect: '/personal/play' },
-    ],
-  },
+  { path: '/register', redirect: '/login', meta: { public: true } },
+  { path: '/pricing', redirect: '/login', meta: { public: true } },
+  { path: '/showcase', redirect: '/login', meta: { public: true } },
+  { path: '/personal/:pathMatch(.*)*', redirect: '/login', meta: { public: true } },
   {
     path: '/admin',
     component: BasicLayout,
-    redirect: '/admin/users',
+    redirect: '/admin/dashboard',
     children: [
+      { path: 'dashboard', component: () => import('@/views/admin/Dashboard.vue'), meta: { title: '后台概览' } },
       { path: 'users', component: () => import('@/views/admin/Users.vue'),
         meta: { title: '用户管理', perm: 'user:read' } },
       { path: 'credits', component: () => import('@/views/admin/Credits.vue'),
@@ -115,8 +88,19 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const store = useUserStore()
-  const title = (to.meta.title as string) || 'GPT2API 控制台'
+  const title = (to.meta.title as string) || 'GPT2API 后台'
   document.title = title
+
+  if (to.path === '/login' && store.isLoggedIn) {
+    try {
+      await store.fetchMe()
+      await store.assertAdminAccess()
+      return { path: '/admin/dashboard' }
+    } catch {
+      store.clear()
+      return true
+    }
+  }
 
   if (to.meta.public) return true
 
@@ -124,13 +108,12 @@ router.beforeEach(async (to) => {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
 
-  // 还没拉过 me,先补一次(可能来自刷新)
-  if (!store.user || store.permissions.length === 0) {
-    try {
-      await store.fetchMe()
-    } catch {
-      return { path: '/login', query: { redirect: to.fullPath } }
-    }
+  try {
+    await store.fetchMe()
+    await store.assertAdminAccess()
+  } catch {
+    store.clear()
+    return { path: '/login', query: { redirect: to.fullPath } }
   }
 
   const perm = to.meta.perm as string | string[] | undefined

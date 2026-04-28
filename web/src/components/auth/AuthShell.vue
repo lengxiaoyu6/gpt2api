@@ -1,20 +1,25 @@
 <script setup lang="ts">
-defineProps<{
+import { computed, useSlots } from 'vue'
+
+const props = defineProps<{
   siteFooter?: string
 }>()
+
+const slots = useSlots()
+const hasHero = computed(() => typeof slots.hero === 'function')
 </script>
 
 <template>
   <div class="auth-shell">
     <div class="auth-shell__glow auth-shell__glow--blue" />
     <div class="auth-shell__glow auth-shell__glow--cyan" />
-    <div class="auth-shell__container">
-      <aside class="auth-shell__hero">
+    <div class="auth-shell__container" :class="{ 'auth-shell__container--compact': !hasHero }">
+      <aside v-if="hasHero" class="auth-shell__hero">
         <slot name="hero" />
       </aside>
       <section class="auth-shell__form">
         <slot />
-        <p v-if="siteFooter" class="auth-shell__site-footer">{{ siteFooter }}</p>
+        <p v-if="props.siteFooter" class="auth-shell__site-footer">{{ props.siteFooter }}</p>
       </section>
     </div>
   </div>
@@ -69,6 +74,12 @@ defineProps<{
   margin: 0 auto;
 }
 
+.auth-shell__container--compact {
+  grid-template-columns: minmax(320px, 420px);
+  justify-content: center;
+  max-width: 420px;
+}
+
 .auth-shell__hero,
 .auth-shell__form {
   min-width: 0;
@@ -79,6 +90,11 @@ defineProps<{
   flex-direction: column;
   align-items: stretch;
   gap: 16px;
+}
+
+.auth-shell__container--compact .auth-shell__form {
+  max-width: 420px;
+  margin: 0 auto;
 }
 
 .auth-shell__site-footer {

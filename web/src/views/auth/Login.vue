@@ -4,7 +4,6 @@ import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import AuthFormCard from '@/components/auth/AuthFormCard.vue'
-import AuthHeroPanel from '@/components/auth/AuthHeroPanel.vue'
 import AuthShell from '@/components/auth/AuthShell.vue'
 import { useSiteStore } from '@/stores/site'
 import { useUserStore } from '@/stores/user'
@@ -15,12 +14,7 @@ const store = useUserStore()
 const site = useSiteStore()
 
 const siteName = computed(() => site.get('site.name', 'GPT2API'))
-const siteDesc = computed(() =>
-  site.get('site.description', '面向开发者与小规模业务的 GPT-image 中转 API 平台'),
-)
-const siteLogo = computed(() => site.get('site.logo_url', ''))
 const siteFooter = computed(() => site.get('site.footer', ''))
-const allowRegister = computed(() => site.allowRegister())
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -50,8 +44,9 @@ async function onSubmit() {
   loading.value = true
   try {
     await store.login(form.email, form.password)
+    await store.assertAdminAccess()
     ElMessage.success('登录成功')
-    const redirect = (route.query.redirect as string) || '/personal/dashboard'
+    const redirect = (route.query.redirect as string) || '/admin/dashboard'
     router.replace(redirect)
   } catch (err: unknown) {
     submitError.value = err instanceof Error ? err.message : '登录失败，请稍后重试'
@@ -63,22 +58,17 @@ async function onSubmit() {
 
 <template>
   <AuthShell :site-footer="siteFooter">
-    <template #hero>
-      <AuthHeroPanel
-        :site-name="siteName"
-        :site-desc="siteDesc"
-        :site-logo="siteLogo"
-        :allow-register="allowRegister"
-      />
-    </template>
-
     <AuthFormCard
-      title="登录控制台"
-      subtitle="欢迎回来，管理 API 密钥、查看图像任务、调用记录与账户额度"
+      title="后台登录"
+      subtitle="请输入管理员账号和密码"
     >
-      <div class="auth-card-head">
-        <router-link to="/" class="auth-back">返回首页</router-link>
-        <p class="auth-tip">首次使用可先注册账号并领取体验额度</p>
+      <div class="auth-login-head">
+        <div class="auth-login-head__mark">{{ (siteName[0] || 'G').toUpperCase() }}</div>
+        <div class="auth-login-head__copy">
+          <p class="auth-login-head__badge">管理后台</p>
+          <h3>{{ siteName }}</h3>
+          <p class="auth-login-head__desc">仅限管理员账号访问，用于处理用户、订单、额度与系统配置。</p>
+        </div>
       </div>
 
       <el-form
@@ -119,9 +109,8 @@ async function onSubmit() {
 
       <template #footer>
         <div class="auth-foot">
-          <p v-if="allowRegister">还没有账户时，可先注册后进入控制台。</p>
-          <p v-else>当前采用邀请开通方式，可联系管理员创建账号。</p>
-          <router-link v-if="allowRegister" to="/register">立即注册</router-link>
+          <p>登录成功后进入后台首页。</p>
+          <p>普通账号完成认证后会返回登录页。</p>
         </div>
       </template>
     </AuthFormCard>
@@ -129,28 +118,52 @@ async function onSubmit() {
 </template>
 
 <style scoped lang="scss">
-.auth-card-head {
+.auth-login-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
-.auth-back {
+.auth-login-head__mark {
   display: inline-flex;
   align-items: center;
-  color: #93c5fd;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(59, 130, 246, 0.48));
+  color: #eff6ff;
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.18);
 }
 
-.auth-tip {
+.auth-login-head__copy {
+  min-width: 0;
+}
+
+.auth-login-head__badge {
   margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: 0.08em;
+  color: #93c5fd;
+}
+
+.auth-login-head__copy h3 {
+  margin: 6px 0 0;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #f8fafc;
+}
+
+.auth-login-head__desc {
+  margin: 8px 0 0;
   font-size: 13px;
   line-height: 1.7;
-  text-align: right;
   color: #94a3b8;
 }
 
@@ -203,13 +216,12 @@ async function onSubmit() {
 }
 
 @media (max-width: 640px) {
-  .auth-card-head {
+  .auth-login-head {
     align-items: flex-start;
-    flex-direction: column;
   }
 
-  .auth-tip {
-    text-align: left;
+  .auth-login-head__copy h3 {
+    font-size: 20px;
   }
 }
 </style>
