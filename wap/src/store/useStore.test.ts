@@ -16,6 +16,7 @@ vi.mock('../api/me', () => ({
   checkinToday: vi.fn(),
   listMyModels: vi.fn(),
   listMyImageTasks: vi.fn(),
+  deleteMyImageTask: vi.fn(),
   playGenerateImage: vi.fn(),
   playEditImage: vi.fn(),
 }))
@@ -52,6 +53,7 @@ describe('useStore backend integration', () => {
       total: 1,
     })
     vi.mocked(meApi.listMyImageTasks).mockResolvedValue({ items: [], limit: 20, offset: 0 })
+    vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
     vi.mocked(meApi.getMyCheckinStatus).mockResolvedValue({
       enabled: true,
       today: '2026-04-22',
@@ -284,6 +286,50 @@ describe('useStore backend integration', () => {
 
     expect(models.map((item: any) => item.slug)).toEqual(['gpt-image-2', 'gpt-image-2-api'])
     expect(useStore.getState().selectedImageModel).toBe('gpt-image-2-api')
+  })
+
+  test('deleteHistoryRecord calls image task delete API and removes record locally', async () => {
+    useStore.setState({
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+        {
+          id: 2,
+          task_id: 'task-2',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Forest city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-2/0'],
+          created_at: '2026-04-22T11:00:00Z',
+        },
+      ],
+      historyLoaded: true,
+    } as any)
+
+    const state = useStore.getState() as any
+
+    await state.deleteHistoryRecord('task-1')
+
+    expect(meApi.deleteMyImageTask).toHaveBeenCalledWith('task-1')
+    expect((useStore.getState() as any).history.map((item: any) => item.task_id)).toEqual(['task-2'])
+    expect((useStore.getState() as any).historyLoaded).toBe(true)
   })
 
   test('generateImage lazily prefers image model with upstream channel when no selection exists', async () => {

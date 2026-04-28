@@ -23,6 +23,7 @@ vi.mock('../api/me', async (importOriginal) => {
   return {
     ...actual,
     changeMyPassword: vi.fn(),
+    deleteMyImageTask: vi.fn(),
   }
 })
 
@@ -163,6 +164,7 @@ describe('wap backend bindings', () => {
       page: 1,
       page_size: 20,
     })
+    vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
   })
 
   afterEach(() => {
@@ -559,6 +561,255 @@ describe('wap backend bindings', () => {
 
     expect(fetchHistory).toHaveBeenCalledTimes(2)
     expect(fetchHistory).toHaveBeenLastCalledWith(true)
+  })
+
+  test('history view deletes selected record from detail panel', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+        {
+          id: 2,
+          task_id: 'task-2',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Forest city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-2/0'],
+          thumb_urls: ['/p/thumb/task-2/0'],
+          created_at: '2026-04-22T11:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Cloud city'))
+    })
+
+    expect(await screen.findByText('任务状态')).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除记录' }))
+    })
+
+    const deleteDialog = await screen.findByRole('dialog')
+    expect(within(deleteDialog).getByText('确认删除这条历史记录吗？')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('Cloud city')).toBeInTheDocument()
+    expect(meApi.deleteMyImageTask).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(within(deleteDialog).getByRole('button', { name: '确认删除' }))
+    })
+
+    await waitFor(() => expect(meApi.deleteMyImageTask).toHaveBeenCalledWith('task-1'))
+    await waitFor(() => expect(screen.queryByText('任务状态')).toBeNull())
+    expect(screen.queryByText('Cloud city')).toBeNull()
+    expect(screen.getByText('Forest city')).toBeInTheDocument()
+  })
+
+  test('history view deletes a record from grid without opening detail panel', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除记录 Cloud city' }))
+    })
+
+    const deleteDialog = await screen.findByRole('dialog')
+    expect(within(deleteDialog).getByText('确认删除这条历史记录吗？')).toBeInTheDocument()
+    expect(screen.queryByText('任务状态')).toBeNull()
+    expect(meApi.deleteMyImageTask).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(within(deleteDialog).getByRole('button', { name: '确认删除' }))
+    })
+
+    await waitFor(() => expect(meApi.deleteMyImageTask).toHaveBeenCalledWith('task-1'))
+    expect(screen.queryByText('任务状态')).toBeNull()
+    expect(screen.queryByText('Cloud city')).toBeNull()
+  })
+
+  test('history delete dialog cancel keeps record', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除记录 Cloud city' }))
+    })
+
+    const deleteDialog = await screen.findByRole('dialog')
+
+    await act(async () => {
+      fireEvent.click(within(deleteDialog).getByRole('button', { name: '取消' }))
+    })
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(meApi.deleteMyImageTask).not.toHaveBeenCalled()
+    expect(screen.getByText('Cloud city')).toBeInTheDocument()
+  })
+
+  test('history delete dialog shows warning details and target metadata', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除记录 Cloud city' }))
+    })
+
+    const deleteDialog = await screen.findByRole('dialog')
+
+    expect(within(deleteDialog).getByText('删除历史记录')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('确认删除这条历史记录吗？')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('即将删除')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('图片数量')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('1 张')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('完整尺寸')).toBeInTheDocument()
+    expect(within(deleteDialog).getByText('1024 × 1024')).toBeInTheDocument()
+    expect(within(deleteDialog).getByRole('button', { name: '确认删除' })).toHaveClass('bg-destructive')
   })
 
   test('history view uses wide shell and desktop grid classes', async () => {

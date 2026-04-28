@@ -107,6 +107,7 @@ interface AppState {
   fetchCheckin: () => Promise<meApi.CheckinStatus | null>
   fetchImageModels: () => Promise<meApi.ImageModel[]>
   fetchHistory: (force?: boolean) => Promise<HistoryRecord[]>
+  deleteHistoryRecord: (taskID: string) => Promise<void>
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
   generateImage: (input: { prompt: string; aspectRatio: AspectRatio; quality?: OutputQualityValue; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
@@ -281,6 +282,14 @@ export const useStore = create<AppState>()(
           set({ historyLoading: false })
           throw error
         }
+      },
+
+      async deleteHistoryRecord(taskID) {
+        await meApi.deleteMyImageTask(taskID)
+        set((state) => ({
+          history: state.history.filter((item) => item.task_id !== taskID),
+          historyLoaded: true,
+        }))
       },
 
       async submitCheckin() {

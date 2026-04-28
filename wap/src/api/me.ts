@@ -104,6 +104,10 @@ export function getMyImageTask(taskID: string) {
   return http.get(`/api/me/images/tasks/${taskID}`) as Promise<ImageTask>
 }
 
+export function deleteMyImageTask(taskID: string) {
+  return http.delete(`/api/me/images/tasks/${taskID}`) as Promise<{ deleted: string }>
+}
+
 async function parseError(resp: Response, fallback: string) {
   try {
     const body = await resp.json()

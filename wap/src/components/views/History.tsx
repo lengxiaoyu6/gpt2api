@@ -11,10 +11,20 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
+  Trash2,
   X,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useStore, type HistoryRecord } from '../../store/useStore';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import PageShell from '@/components/PageShell';
 
@@ -264,10 +274,12 @@ async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
 }
 
 export default function HistoryView() {
-  const { user, history, historyLoading, fetchHistory, imageModels } = useStore();
+  const { user, history, historyLoading, fetchHistory, imageModels, deleteHistoryRecord } = useStore();
   const [selectedImage, setSelectedImage] = useState<HistoryRecord | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<HistoryRecord | null>(null);
+  const [deletingTaskID, setDeletingTaskID] = useState<string | null>(null);
   const touchStartXRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -299,6 +311,16 @@ export default function HistoryView() {
   const selectedImageModelLabel = selectedImage
     ? imageModels.find((item) => item.id === selectedImage.model_id)?.slug?.trim() || '未知'
     : '未知';
+  const deleteTargetImageCount = deleteTarget
+    ? Math.max(
+        getOriginalImageUrls(deleteTarget).length,
+        getPreviewImageUrls(deleteTarget).length,
+        deleteTarget.n || 0,
+      )
+    : 0;
+  const deleteTargetImageCountLabel = deleteTargetImageCount > 0 ? `${deleteTargetImageCount} 张` : '未知';
+  const deleteTargetSizeLabel = formatImageSize(deleteTarget?.size);
+  const deleteTargetCreatedAtLabel = deleteTarget ? new Date(deleteTarget.created_at).toLocaleString() : '';
 
   function openImageDetail(item: HistoryRecord) {
     touchStartXRef.current = null;
@@ -310,6 +332,32 @@ export default function HistoryView() {
     touchStartXRef.current = null;
     setPreviewIndex(0);
     setSelectedImage(null);
+  }
+
+  function requestDeleteHistoryRecord(item: HistoryRecord) {
+    setDeleteTarget(item);
+  }
+
+  async function handleConfirmDeleteHistoryRecord() {
+    if (!deleteTarget || deletingTaskID) {
+      return;
+    }
+
+    const item = deleteTarget;
+    setDeletingTaskID(item.task_id);
+
+    try {
+      await deleteHistoryRecord(item.task_id);
+      setDeleteTarget(null);
+      if (selectedImage?.task_id === item.task_id) {
+        closeImageDetail();
+      }
+      toast.success('历史记录已删除');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除记录失败，请稍后重试');
+    } finally {
+      setDeletingTaskID(null);
+    }
   }
 
   function showPreviousPreviewImage() {
@@ -457,6 +505,20 @@ export default function HistoryView() {
                     <span>共 {resultImageCount} 张</span>
                   </div>
                 ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  aria-label={`删除记录 ${item.prompt}`}
+                  disabled={deletingTaskID === item.task_id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    requestDeleteHistoryRecord(item);
+                  }}
+                  className="absolute right-3 top-3 z-10 h-11 w-11 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 backdrop-blur-md hover:bg-black/75 disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
                 <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
                   <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-semibold backdrop-blur-md ${getTaskBadgeClassName(taskStateKind)}`}>
                     <TaskStateIcon
@@ -611,7 +673,7 @@ export default function HistoryView() {
                   </h3>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Button
                     disabled={!selectedOriginalUrl}
                     onClick={() => {
@@ -621,6 +683,18 @@ export default function HistoryView() {
                   >
                     <Download className="w-4 h-4" />
                     下载原图
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={deletingTaskID === selectedImage.task_id}
+                    onClick={() => {
+                      requestDeleteHistoryRecord(selectedImage);
+                    }}
+                    className="rounded-2xl h-12 gap-2 font-bold border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-60"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {deletingTaskID === selectedImage.task_id ? '删除中' : '删除记录'}
                   </Button>
                 </div>
 
@@ -693,6 +767,79 @@ export default function HistoryView() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deletingTaskID) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm overflow-hidden rounded-[28px] border-border/60 bg-background/95 p-0 shadow-2xl backdrop-blur" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/10 text-destructive shadow-sm">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <DialogTitle className="text-xl font-black tracking-tight">删除历史记录</DialogTitle>
+                <DialogDescription className="space-y-1 leading-5">
+                  <span className="block">删除后该记录会从时间轴中移除，生成图片记录也会同步删除。</span>
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {deleteTarget ? (
+            <div className="mx-6 space-y-3 rounded-3xl border border-destructive/15 bg-destructive/[0.03] p-4 text-xs text-muted-foreground ring-1 ring-destructive/5">
+              <div className="flex items-center gap-2 text-destructive">
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="font-bold">即将删除</span>
+              </div>
+              <div className="rounded-2xl border border-border/50 bg-background/80 p-3">
+                <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm font-semibold leading-5 text-foreground">
+                  {deleteTarget.prompt}
+                </div>
+                <div className="mt-2 font-mono text-[11px]">{deleteTargetCreatedAtLabel}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                  <div className="text-[11px] font-medium text-muted-foreground">图片数量</div>
+                  <div className="mt-1 font-mono text-sm font-black text-foreground">{deleteTargetImageCountLabel}</div>
+                </div>
+                <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                  <div className="text-[11px] font-medium text-muted-foreground">完整尺寸</div>
+                  <div className="mt-1 font-mono text-sm font-black text-foreground">{deleteTargetSizeLabel}</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className="mx-0 mb-0 mt-5 flex flex-col gap-3 rounded-b-[28px] border-border/60 bg-secondary/20 px-6 py-4 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(deletingTaskID)}
+              onClick={() => setDeleteTarget(null)}
+              className="h-12 w-full rounded-2xl font-bold sm:flex-1"
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={Boolean(deletingTaskID)}
+              onClick={() => {
+                void handleConfirmDeleteHistoryRecord();
+              }}
+              className="h-12 w-full rounded-2xl bg-destructive text-destructive-foreground shadow-lg shadow-destructive/20 hover:bg-destructive/90 disabled:opacity-60 sm:flex-1"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deletingTaskID ? '删除中' : '确认删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }
