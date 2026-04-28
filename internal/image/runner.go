@@ -884,6 +884,25 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	for _, s := range sseResult.SedimentIDs {
 		fileRefs = append(fileRefs, "sed:"+s)
 	}
+	refSet := referenceUploadFileIDSet(refs)
+	stripReferenceRefs := func(stage string) {
+		if len(refSet) == 0 {
+			return
+		}
+		n0 := len(fileRefs)
+		fileRefs = filterOutReferenceFileIDs(fileRefs, refSet)
+		if n0 != len(fileRefs) {
+			logger.L().Info("image runner stripped reference refs from captured image refs",
+				zap.String("task_id", opt.TaskID),
+				zap.String("stage", stage),
+				zap.Int("before", n0),
+				zap.Int("after", len(fileRefs)))
+		}
+	}
+	// 图生图:ParseImageSSE 用正则扫整段 SSE,会把 user 消息里的参考图和
+	// assistant/tool 的出图一起扫进 FileIDs / SedimentIDs。先剔除参考图,
+	// 再判断 SSE 是否已经够数,避免只看到参考图时跳过轮询。
+	stripReferenceRefs("sse")
 
 	// SSE 已经把期望数量的图带回来了 → 直接下载,跳过 Poll,省时间
 	if len(fileRefs) >= opt.N {
@@ -935,28 +954,11 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 				seen[key] = struct{}{}
 				fileRefs = append(fileRefs, key)
 			}
+			stripReferenceRefs("poll")
 		case chatgpt.PollStatusTimeout:
 			return false, ErrPollTimeout, errors.New("poll timeout without any image")
 		default:
 			return false, ErrUpstream, errors.New("poll error")
-		}
-	}
-
-	// 图生图:ParseImageSSE 用正则扫整段 SSE,会把 user 消息里「参考图」的
-	// file-service:// 指纹和 assistant 的出图一起扫进 FileIDs,且参考图往往先出现,
-	// 导致返回的 /p/img/.../0 实际下载的是上传图而非结果图。
-	// 轮询路径 ExtractImageToolMsgs 只收 async_task_type=image_gen 的 tool,不含参考图;
-	// 这里对合并后的 fileRefs 做一层差集即可。
-	if len(refs) > 0 {
-		refSet := referenceUploadFileIDSet(refs)
-		if len(refSet) > 0 {
-			n0 := len(fileRefs)
-			fileRefs = filterOutReferenceFileIDs(fileRefs, refSet)
-			if n0 != len(fileRefs) {
-				logger.L().Info("image runner stripped reference file_ids from SSE-captured refs",
-					zap.String("task_id", opt.TaskID),
-					zap.Int("before", n0), zap.Int("after", len(fileRefs)))
-			}
 		}
 	}
 
@@ -1034,40 +1036,57 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult)
 	return true, "", nil
 }
 
-// referenceUploadFileIDSet 收集图生图时 UploadFile 返回的 file_id(纯 file-service id,无 sed: 前缀)。
+// referenceUploadFileIDSet 收集图生图时 UploadFile 返回的 file_id。
 func referenceUploadFileIDSet(refs []*chatgpt.UploadedFile) map[string]struct{} {
 	out := make(map[string]struct{})
 	for _, u := range refs {
 		if u == nil {
 			continue
 		}
-		id := strings.TrimSpace(u.FileID)
+		id := normalizeImageFileRefID(u.FileID)
 		if id == "" {
 			continue
 		}
-		out[strings.TrimPrefix(id, "sed:")] = struct{}{}
+		out[id] = struct{}{}
 	}
 	return out
 }
 
-// filterOutReferenceFileIDs 从合并后的 fileRefs 中移除与「用户参考上传」同 id 的 file-service 条目,
-// 保留 sediment(sed:...) —— 参考图只走 file-service,不会以 sed: 形式出现在同一列表里和生成图冲突。
+// filterOutReferenceFileIDs 从合并后的 fileRefs 中移除与用户参考上传同 id 的条目。
 func filterOutReferenceFileIDs(fileRefs []string, refSet map[string]struct{}) []string {
 	if len(refSet) == 0 {
 		return fileRefs
 	}
 	out := make([]string, 0, len(fileRefs))
 	for _, ref := range fileRefs {
-		if strings.HasPrefix(ref, "sed:") {
-			out = append(out, ref)
-			continue
-		}
-		if _, skip := refSet[ref]; skip {
-			continue
+		id := normalizeImageFileRefID(ref)
+		if id != "" {
+			if _, skip := refSet[id]; skip {
+				continue
+			}
 		}
 		out = append(out, ref)
 	}
 	return out
+}
+
+func normalizeImageFileRefID(ref string) string {
+	ref = strings.TrimSpace(ref)
+	for {
+		switch {
+		case strings.HasPrefix(ref, "file-service://"):
+			ref = strings.TrimPrefix(ref, "file-service://")
+		case strings.HasPrefix(ref, "sediment://"):
+			ref = strings.TrimPrefix(ref, "sediment://")
+		case strings.HasPrefix(ref, "sed:"):
+			ref = strings.TrimPrefix(ref, "sed:")
+		default:
+			return strings.TrimSpace(ref)
+		}
+		if ref == "" {
+			return ""
+		}
+	}
 }
 
 func (r *Runner) markAccountFailure(accountID uint64, code string) {

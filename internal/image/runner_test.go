@@ -3,6 +3,7 @@ package image
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,6 +24,15 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+func TestFilterOutReferenceFileIDsRemovesReferenceSedimentRefs(t *testing.T) {
+	refSet := referenceUploadFileIDSet([]*chatgpt.UploadedFile{{FileID: "ref_upload_1"}})
+	got := filterOutReferenceFileIDs([]string{"sed:ref_upload_1", "generated_file_1"}, refSet)
+	want := []string{"generated_file_1"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("file refs = %v, want %v", got, want)
+	}
+}
 
 func TestRunnerRunUsesConfiguredPollMaxWaitWhenUnset(t *testing.T) {
 	r := &Runner{
