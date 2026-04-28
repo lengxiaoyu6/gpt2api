@@ -218,7 +218,12 @@ describe('generate image notice', () => {
     fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
 
     await waitFor(() => {
-      expect(screen.getByText('图生图建议在 PC 端操作，上传和结果对照体验更好')).toBeInTheDocument()
+      const notice = screen.getByText('图生图建议在 PC 端操作，上传和结果对照体验更好')
+      const noticeCard = notice.closest('[data-slot="card"]')
+
+      expect(notice).toBeInTheDocument()
+      expect(noticeCard).not.toBeNull()
+      expect(noticeCard?.className).toContain('lg:hidden')
     })
   })
 

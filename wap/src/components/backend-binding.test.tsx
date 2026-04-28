@@ -712,6 +712,267 @@ describe('wap backend bindings', () => {
     expect(screen.getAllByText('内容审核未通过').length).toBeGreaterThan(0)
   })
 
+  test('history view shows unknown duration when task timing is incomplete', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-processing',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Processing city',
+          n: 1,
+          size: '1024x1024',
+          status: 'processing',
+          credit_cost: 5,
+          image_urls: [],
+          created_at: '2026-04-22T10:00:00Z',
+          started_at: '2026-04-22T10:00:05Z',
+          finished_at: null,
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Processing city'))
+    })
+
+    const durationRow = screen.getByText('生成耗时').closest('div')
+
+    expect(durationRow).not.toBeNull()
+    expect(within(durationRow as HTMLElement).getByText('未知')).toBeInTheDocument()
+  })
+
+  test('history view shows elapsed seconds when task timing is complete', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高清模型', image_price_per_call: 3000 },
+      ],
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 2,
+          task_id: 'task-failed',
+          user_id: 1,
+          model_id: 2,
+          account_id: 1,
+          prompt: 'Failed city',
+          n: 1,
+          size: '1024x1024',
+          status: 'failed',
+          error: '内容审核未通过',
+          credit_cost: 5,
+          image_urls: [],
+          created_at: '2026-04-22T11:00:00Z',
+          started_at: '2026-04-22T11:00:05Z',
+          finished_at: '2026-04-22T11:00:12Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Failed city'))
+    })
+
+    expect(await screen.findByText('生成耗时')).toBeInTheDocument()
+    expect(screen.getByText('7 秒')).toBeInTheDocument()
+  })
+
+  test('history view falls back to created_at when started_at is missing', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 3, slug: 'gpt-image-3', type: 'image', description: '极速模型', image_price_per_call: 600 },
+      ],
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 3,
+          task_id: 'task-created-fallback',
+          user_id: 1,
+          model_id: 3,
+          account_id: 1,
+          prompt: 'Fallback city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-created-fallback/0'],
+          thumb_urls: ['/p/thumb/task-created-fallback/0'],
+          created_at: '2026-04-22T12:00:00Z',
+          started_at: null,
+          finished_at: '2026-04-22T12:00:12Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Fallback city'))
+    })
+
+    const durationRow = (await screen.findByText('生成耗时')).closest('div')
+
+    expect(durationRow).not.toBeNull()
+    expect(within(durationRow as HTMLElement).getByText('12 秒')).toBeInTheDocument()
+  })
+
+  test('history view shows matched model slug in detail panel', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Cloud city'))
+    })
+
+    expect(await screen.findByText('生成模型')).toBeInTheDocument()
+    expect(screen.getByText('gpt-image-1')).toBeInTheDocument()
+  })
+
+  test('history view shows unknown when model slug is missing', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高清模型', image_price_per_call: 3000 },
+      ],
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-unknown-model',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-unknown-model/0'],
+          thumb_urls: ['/p/thumb/task-unknown-model/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Cloud city'))
+    })
+
+    const modelRow = (await screen.findByText('生成模型')).closest('div')
+
+    expect(modelRow).not.toBeNull()
+    expect(within(modelRow as HTMLElement).getByText('未知')).toBeInTheDocument()
+  })
+
   test('history view removes share action and downloads original image', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
     const blob = new Blob(['image-binary'], { type: 'image/png' })

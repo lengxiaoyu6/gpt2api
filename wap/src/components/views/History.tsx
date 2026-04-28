@@ -79,8 +79,10 @@ function getTaskDetailLabel(status?: string) {
 }
 
 function getTaskDurationLabel(item: HistoryRecord) {
-  if (item.started_at && item.finished_at) {
-    const startedAt = new Date(item.started_at).getTime();
+  const startedAtSource = item.started_at || item.created_at;
+
+  if (startedAtSource && item.finished_at) {
+    const startedAt = new Date(startedAtSource).getTime();
     const finishedAt = new Date(item.finished_at).getTime();
 
     if (Number.isFinite(startedAt) && Number.isFinite(finishedAt) && finishedAt >= startedAt) {
@@ -89,15 +91,7 @@ function getTaskDurationLabel(item: HistoryRecord) {
     }
   }
 
-  if (getTaskStateKind(item.status) === 'failed') {
-    return '任务失败';
-  }
-
-  if (item.started_at) {
-    return '生成中';
-  }
-
-  return '等待开始';
+  return '未知';
 }
 
 function getTaskBadgeClassName(kind: TaskStateKind) {
@@ -211,7 +205,7 @@ async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
 }
 
 export default function HistoryView() {
-  const { user, history, historyLoading, fetchHistory } = useStore();
+  const { user, history, historyLoading, fetchHistory, imageModels } = useStore();
   const [selectedImage, setSelectedImage] = useState<HistoryRecord | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [search, setSearch] = useState('');
@@ -238,6 +232,9 @@ export default function HistoryView() {
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
+  const selectedImageModelLabel = selectedImage
+    ? imageModels.find((item) => item.id === selectedImage.model_id)?.slug?.trim() || '未知'
+    : '未知';
 
   function openImageDetail(item: HistoryRecord) {
     touchStartXRef.current = null;
@@ -518,8 +515,8 @@ export default function HistoryView() {
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
                     <span>生成模型</span>
-                    <span className="font-mono text-foreground font-bold uppercase tracking-tighter">
-                      MODEL #{selectedImage.model_id}
+                    <span className="font-mono text-foreground font-bold tracking-tight">
+                      {selectedImageModelLabel}
                     </span>
                   </div>
                 </div>

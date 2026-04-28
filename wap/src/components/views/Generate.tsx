@@ -371,7 +371,7 @@ export default function GenerateView() {
 
           <Card className="space-y-4 rounded-[2rem] border-border/50 bg-secondary/20 p-4 lg:p-5">
             {mode === 'img' && (
-              <Card className="rounded-2xl border-primary/20 bg-primary/8 px-4 py-3">
+              <Card className="rounded-2xl border-primary/20 bg-primary/8 px-4 py-3 lg:hidden">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary">
                     <AlertCircle className="h-4 w-4" />
