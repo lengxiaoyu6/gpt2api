@@ -1,5 +1,8 @@
 import { http } from './http'
 
+export type NullableDateTime = { Time: string; Valid: boolean } | string | null | undefined
+export type NullableString = { String: string; Valid: boolean } | string | null | undefined
+
 export interface ApiKey {
   id: number
   user_id: number
@@ -10,17 +13,17 @@ export interface ApiKey {
   rpm: number
   tpm: number
   enabled: boolean
-  last_used_at?: { Time: string; Valid: boolean } | string | null
+  last_used_at?: NullableDateTime
   last_used_ip?: string
-  expires_at?: { Time: string; Valid: boolean } | string | null
+  expires_at?: NullableDateTime
   created_at: string
   updated_at: string
-  allowed_models?: { String: string; Valid: boolean } | null
-  allowed_ips?: { String: string; Valid: boolean } | null
+  allowed_models?: NullableString
+  allowed_ips?: NullableString
 }
 
 export interface CreatedKey {
-  key: string           // 明文 key,仅此一次
+  key: string
   record: ApiKey
 }
 
@@ -31,24 +34,24 @@ export interface ListPage {
   page_size: number
 }
 
-export function listKeys(page = 1, size = 20): Promise<ListPage> {
-  return http.get('/api/keys', { params: { page, page_size: size } })
+export function listKeys(page = 1, size = 20) {
+  return http.get('/api/keys', { params: { page, page_size: size } }) as Promise<ListPage>
 }
 
-export function createKey(req: Partial<Pick<ApiKey, 'name' | 'quota_limit' | 'rpm' | 'tpm'>> & {
-  expires_at?: string
-  allowed_models?: string[]
-  allowed_ips?: string[]
-}): Promise<CreatedKey> {
-  // 后端 ExpiresAt 是 time.Time,Go 对 zero time 的 JSON 是 "0001-01-01T00:00:00Z"
-  // 前端空值时传 0001-01-01T00:00:00Z 更稳;此处直接不传让后端零值
-  return http.post('/api/keys', req)
+export function createKey(
+  req: Partial<Pick<ApiKey, 'name' | 'quota_limit' | 'rpm' | 'tpm'>> & {
+    expires_at?: string
+    allowed_models?: string[]
+    allowed_ips?: string[]
+  },
+) {
+  return http.post('/api/keys', req) as Promise<CreatedKey>
 }
 
-export function updateKey(id: number, req: Record<string, unknown>): Promise<ApiKey> {
-  return http.patch(`/api/keys/${id}`, req)
+export function updateKey(id: number, req: Record<string, unknown>) {
+  return http.patch(`/api/keys/${id}`, req) as Promise<ApiKey>
 }
 
-export function deleteKey(id: number): Promise<{ deleted: number }> {
-  return http.delete(`/api/keys/${id}`)
+export function deleteKey(id: number) {
+  return http.delete(`/api/keys/${id}`) as Promise<{ deleted: number }>
 }

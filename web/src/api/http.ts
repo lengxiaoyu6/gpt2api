@@ -1,23 +1,13 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosRequestConfig } from 'axios'
-import { ElMessage } from 'element-plus'
 import { localizeApiMessage } from '../utils/api-message'
 
-/**
- * 统一响应结构,后端 `pkg/resp` 约定:
- * {
- *   code: 0,
- *   message: "ok",
- *   data: <T>
- * }
- * 非 0 code 认为是业务错误,会被拦截器统一抛出。
- */
-export interface ApiEnvelope<T = any> {
+export interface ApiEnvelope<T = unknown> {
   code: number
   message: string
   data: T
 }
 
-export class ApiError<T = any> extends Error {
+export class ApiError<T = unknown> extends Error {
   status: number
   code: number
   data?: T
@@ -33,6 +23,9 @@ export class ApiError<T = any> extends Error {
 
 const baseURL = import.meta.env.VITE_API_BASE || ''
 
+export const TOKEN_KEY = 'gpt2api.access'
+export const REFRESH_KEY = 'gpt2api.refresh'
+
 export const http: AxiosInstance = axios.create({
   baseURL,
   timeout: 30_000,
@@ -42,9 +35,7 @@ export const refreshHTTP: AxiosInstance = axios.create({
   timeout: 30_000,
 })
 
-/** access token 持久化 key(Pinia store 也复用) */
-export const TOKEN_KEY = 'gpt2api.access'
-export const REFRESH_KEY = 'gpt2api.refresh'
+let unauthorizedHandler: (() => void) | null = null
 let refreshPromise: Promise<string> | null = null
 
 interface RetryAxiosRequestConfig extends AxiosRequestConfig {
@@ -63,7 +54,11 @@ function ensureAxiosHeaders(headers?: AxiosRequestConfig['headers']) {
   return new AxiosHeaders(headers as any)
 }
 
-function buildApiURL(path: string) {
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler
+}
+
+export function buildApiURL(path: string) {
   if (!baseURL) return path
   if (/^https?:\/\//.test(path)) return path
   return `${baseURL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
@@ -94,15 +89,9 @@ function isAuthEndpoint(url?: string) {
     || value.includes('/api/auth/refresh')
 }
 
-function redirectToLogin(message: string) {
-  const friendly = message || '登录已失效'
+function handleUnauthorized() {
   clearTokens()
-  if (!window.location.pathname.startsWith('/login')) {
-    ElMessage.warning(friendly)
-    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`
-    return
-  }
-  ElMessage.error(friendly)
+  unauthorizedHandler?.()
 }
 
 async function refreshAccessToken() {
@@ -141,25 +130,18 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (response) => {
-    // 下载类接口直接透传 blob
-    const rawContentType = response.headers?.['content-type']
-    const contentType = typeof rawContentType === 'string'
-      ? rawContentType
-      : Array.isArray(rawContentType)
-        ? rawContentType[0] || ''
-        : ''
-    if (response.config.responseType === 'blob' || contentType.startsWith('application/gzip')) {
-      return response
-    }
     const payload = response.data as ApiEnvelope
     if (payload && typeof payload === 'object' && 'code' in payload) {
       if (payload.code === 0) {
-        return payload.data as any
+        return payload.data as unknown
       }
       const reqUrl = (response.config.url || '') as string
-      const msg = localizeApiMessage(payload.message || `请求失败 (code=${payload.code})`, reqUrl)
-      ElMessage.error(msg)
-      return Promise.reject(new ApiError(msg, { status: response.status, code: payload.code, data: payload.data }))
+      const detail = localizeApiMessage(payload.message || `请求失败 code=${payload.code}`, reqUrl)
+      return Promise.reject(new ApiError(detail, {
+        status: response.status,
+        code: payload.code,
+        data: payload.data,
+      }))
     }
     return response.data
   },
@@ -168,44 +150,35 @@ http.interceptors.response.use(
     const payload = error.response?.data
     const originalConfig = error.config as RetryAxiosRequestConfig | undefined
     const reqUrl = (originalConfig?.url || '') as string
-    const msg = localizeApiMessage(payload?.message || error.message || '网络错误', reqUrl)
-    const apiError = new ApiError(msg, {
+    const detail = localizeApiMessage(payload?.message || error.message || '网络异常', reqUrl)
+    const apiError = new ApiError(detail, {
       status,
       code: payload?.code,
       data: payload?.data,
     })
     if (status === 401) {
-      const isLoginEndpoint =
-        reqUrl.includes('/auth/login') || reqUrl.includes('/auth/register')
-      if (isLoginEndpoint) {
-        ElMessage.error(msg || '登录失败')
-      } else {
-        if (originalConfig && !originalConfig._retry && !originalConfig._skipAuthRefresh && !isAuthEndpoint(reqUrl) && readRefreshToken()) {
-          originalConfig._retry = true
-          return refreshAccessToken()
-            .then((accessToken) => {
-              const headers = ensureAxiosHeaders(originalConfig.headers)
-              headers.set('Authorization', `Bearer ${accessToken}`)
-              originalConfig.headers = headers
-              return http(originalConfig)
-            })
-            .catch((refreshError) => {
-              redirectToLogin(msg || '登录已失效')
-              return Promise.reject(refreshError)
-            })
-        }
-        redirectToLogin(msg || '登录已失效')
+      if (originalConfig && !originalConfig._retry && !originalConfig._skipAuthRefresh && !isAuthEndpoint(originalConfig.url) && readRefreshToken()) {
+        originalConfig._retry = true
+        return refreshAccessToken()
+          .then((accessToken) => {
+            const headers = ensureAxiosHeaders(originalConfig.headers)
+            headers.set('Authorization', `Bearer ${accessToken}`)
+            originalConfig.headers = headers
+            return http.request(originalConfig)
+          })
+          .catch((refreshError) => {
+            handleUnauthorized()
+            return Promise.reject(refreshError instanceof Error ? refreshError : apiError)
+          })
       }
-    } else {
-      ElMessage.error(msg)
+      handleUnauthorized()
     }
     return Promise.reject(apiError)
   },
 )
 
-/** 直接传入返回体的辅助类型工具 */
-export function request<T = any>(cfg: AxiosRequestConfig): Promise<T> {
-  return http.request(cfg) as unknown as Promise<T>
+export function request<T = unknown>(config: AxiosRequestConfig) {
+  return http.request(config) as Promise<T>
 }
 
 export async function authorizedFetch(input: string, init: AuthorizedFetchInit = {}) {
@@ -229,7 +202,7 @@ export async function authorizedFetch(input: string, init: AuthorizedFetchInit =
     const retryInit: AuthorizedFetchInit = { ...init, _retry: true, headers: retryHeaders }
     return await fetch(requestURL, retryInit)
   } catch {
-    redirectToLogin('登录已失效')
+    handleUnauthorized()
     return response
   }
 }
