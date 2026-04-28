@@ -1,12 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const root = resolve(process.cwd(), '..')
 
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8')
+}
+
+function exists(path) {
+  return existsSync(resolve(root, path))
 }
 
 test('兑换码后端路由与后台菜单已声明', () => {
@@ -27,9 +31,9 @@ test('兑换码后端路由与后台菜单已声明', () => {
 test('兑换码前端 API 声明用户核销与后台管理方法', () => {
   const apiTs = read('web/src/api/recharge.ts')
 
-  assert.match(apiTs, /export interface RedeemCode\s*\{/)
-  assert.match(apiTs, /export interface RedeemResult\s*\{/)
-  assert.match(apiTs, /export function redeemCode\(code: string\): Promise<RedeemResult> \{/)
+  assert.match(apiTs, /export interface RedeemCode\s*\{/) 
+  assert.match(apiTs, /export interface RedeemResult\s*\{/) 
+  assert.match(apiTs, /export function redeemCode\(code: string\): Promise<RedeemResult> \{/) 
   assert.match(apiTs, /http\.post\('\/api\/recharge\/redeem-codes', \{ code \}\)/)
   assert.match(apiTs, /export function adminListRedeemCodes\(/)
   assert.match(apiTs, /http\.get\('\/api\/admin\/redeem-codes', \{ params \}\)/)
@@ -56,11 +60,7 @@ test('后台兑换码页面包含生成表单与列表展示', () => {
   assert.match(pageVue, /使用时间/)
 })
 
-test('个人账单页包含兑换码输入与核销交互', () => {
-  const pageVue = read('web/src/views/personal/Billing.vue')
-  assert.match(pageVue, /redeemCode\(/)
-  assert.match(pageVue, /await userStore\.fetchMe\(\)/)
-  assert.match(pageVue, /兑换码/)
-  assert.match(pageVue, /立即兑换/)
-  assert.match(pageVue, /到账/)
+test('web 端个人账单页面源码已从后台专用版本裁剪', () => {
+  assert.equal(exists('web/src/views/personal/Billing.vue'), false)
 })
+

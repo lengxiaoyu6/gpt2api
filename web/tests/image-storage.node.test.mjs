@@ -1,12 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const root = resolve(process.cwd(), '..')
 
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8')
+}
+
+function exists(path) {
+  return existsSync(resolve(root, path))
 }
 
 test('系统设置页面包含存储设置页签与下拉枚举渲染', () => {
@@ -21,7 +25,7 @@ test('Sanyue-ImgHub 配置包含专用类型与序列化逻辑', () => {
   const pageVue = read('web/src/views/admin/Settings.vue')
   const apiTs = read('web/src/api/settings.ts')
 
-  assert.match(apiTs, /type: 'string' \| 'bool' \| 'int' \| 'float' \| 'email' \| 'url' \| 'select' \| 'sanyue_img_hub' \| string/)
+  assert.match(apiTs, /type:\s*'string'\s*\|\s*'bool'\s*\|\s*'int'\s*\|\s*'float'\s*\|\s*'email'\s*\|\s*'url'\s*\|\s*'password'\s*\|\s*'select'\s*\|\s*'sanyue_img_hub'\s*\|\s*string/)
   assert.match(pageVue, /function isSanyueImgHub\(it: SettingItem\)/)
   assert.match(pageVue, /parseSanyueImgHubDraft/)
   assert.match(pageVue, /stringifySanyueImgHubDraft/)
@@ -34,7 +38,7 @@ test('Sanyue-ImgHub 配置包含专用类型与序列化逻辑', () => {
   assert.match(pageVue, /huggingface/)
   assert.match(pageVue, /仅在云存储模式下生效/)
   assert.match(pageVue, /type="password"/)
-  assert.match(pageVue, /storage\.cloud_config/) 
+  assert.match(pageVue, /storage\.cloud_config/)
 })
 
 test('图片文件后台具备菜单、权限、路由与接口注册', () => {
@@ -53,24 +57,15 @@ test('图片文件后台具备菜单、权限、路由与接口注册', () => {
   assert.match(routerGo, /admin\.Group\("\/system\/image-files"/)
 })
 
-test('历史任务页面改为优先使用缩略图并展示已过期占位', () => {
-  const pageVue = read('web/src/views/personal/HistoryTasks.vue')
+test('个人图片任务 API 保留缩略图字段，历史任务页面源码已裁剪', () => {
   const apiTs = read('web/src/api/me.ts')
-
   assert.match(apiTs, /thumb_urls: string\[\]/)
-  assert.match(pageVue, /task\.thumb_urls\?\.length \? task\.thumb_urls : task\.image_urls/)
-  assert.match(pageVue, /已过期/)
-  assert.match(pageVue, /openPreview\(previewURLs\(item\.task\), item\.image_index\)/)
+  assert.equal(exists('web/src/views/personal/HistoryTasks.vue'), false)
 })
 
-test('在线体验响应类型包含缩略图并且展示使用缩略图下载使用原图', () => {
+test('在线体验响应类型保留缩略图字段，在线体验页面源码已裁剪', () => {
   const apiTs = read('web/src/api/me.ts')
-  const pageVue = read('web/src/views/personal/OnlinePlay.vue')
-
   assert.match(apiTs, /thumb_url\?: string/)
-  assert.match(pageVue, /function displayImageURL\(img: PlayImageData\)/)
-  assert.match(pageVue, /return img\.thumb_url \|\| img\.url/)
-  assert.match(pageVue, /function resultPreviewURLs\(items: PlayImageData\[\]\)/)
-  assert.match(pageVue, /@click="downloadUrl\(img\.url\)"/)
-  assert.match(pageVue, /@click="downloadUrl\(activeResultImage\.url\)"/)
+  assert.equal(exists('web/src/views/personal/OnlinePlay.vue'), false)
 })
+

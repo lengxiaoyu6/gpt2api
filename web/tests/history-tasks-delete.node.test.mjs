@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const root = resolve(process.cwd(), '..')
@@ -9,12 +9,16 @@ function read(path) {
   return readFileSync(resolve(root, path), 'utf8')
 }
 
+function exists(path) {
+  return existsSync(resolve(root, path))
+}
+
 test('图片任务 DAO 支持软删除并在查询时过滤已删除记录', () => {
   const daoGo = read('internal/image/dao.go')
   assert.match(daoGo, /func \(d \*DAO\) SoftDeleteByUser\(/)
-  assert.match(daoGo, /UPDATE image_tasks\s+SET deleted_at = NOW\(\)\s+WHERE task_id = \? AND user_id = \? AND deleted_at IS NULL/)
+  assert.match(daoGo, /UPDATE image_tasks\s+SET deleted_at = NOW\(\)\s+WHERE task_id = \? AND user_id = \? AND deleted_at IS NULL/s)
   assert.match(daoGo, /WHERE task_id = \? AND deleted_at IS NULL/)
-  assert.match(daoGo, /WHERE user_id = \?\s+AND deleted_at IS NULL/)
+  assert.match(daoGo, /where := "user_id = \? AND deleted_at IS NULL"/)
 })
 
 test('当前用户图片任务接口挂载删除能力', () => {
@@ -29,8 +33,6 @@ test('图片任务表迁移增加 deleted_at 字段', () => {
   assert.match(migration, /ALTER TABLE `image_tasks`\s+ADD COLUMN `deleted_at` DATETIME NULL/)
 })
 
-
-
 test('迁移版本号保持唯一，软删除迁移使用新的版本号', () => {
   const names = readdirSync(resolve(root, 'sql/migrations')).filter((name) => name.endsWith('.sql'))
   const versions = names.map((name) => name.match(/^(\d+)_/)?.[1]).filter(Boolean)
@@ -44,11 +46,7 @@ test('个人中心图片任务 API 暴露删除方法', () => {
   assert.match(apiTs, /http\.delete\(`\/api\/me\/images\/tasks\/\$\{taskID\}`\)/)
 })
 
-test('历史任务页面提供删除入口', () => {
-  const pageVue = read('web/src/views/personal/HistoryTasks.vue')
-  assert.match(pageVue, /async function onDeleteTask\(task: ImageTask\)/)
-  assert.match(pageVue, /await deleteMyImageTask\(task\.task_id\)/)
-  assert.match(pageVue, /删除后将从历史任务列表隐藏/)
-  assert.match(pageVue, /@click\.stop="onDeleteTask\(item\.task\)"/)
-  assert.match(pageVue, /删除中\.\.\./)
+test('历史任务删除能力仍保留在 API 层，前端历史任务页面源码已裁剪', () => {
+  assert.equal(exists('web/src/views/personal/HistoryTasks.vue'), false)
 })
+

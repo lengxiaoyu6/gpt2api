@@ -1,12 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const root = resolve(process.cwd(), '..')
 
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8')
+}
+
+function exists(path) {
+  return existsSync(resolve(root, path))
 }
 
 test('系统设置声明生图页公告键并标记为公开', () => {
@@ -36,11 +40,11 @@ test('后台系统设置页将首页 Showcase 图片渲染为多行输入框', (
   assert.match(settingsVue, /:rows="isTextarea\(it\) \? 3 : undefined"/)
 })
 
-test('Web 生图页读取并展示生图页公告', () => {
-  const playVue = read('web/src/views/personal/OnlinePlay.vue')
-  assert.match(playVue, /useSiteStore/)
-  assert.match(playVue, /site\.image_notice/)
-  assert.match(playVue, /const noticeText = computed/)
-  assert.match(playVue, /v-if="noticeText"/)
-  assert.doesNotMatch(playVue, /title="生图公告"/)
+test('站点公开信息缓存仍包含生图页公告字段，web 端在线体验页面源码已裁剪', () => {
+  const siteTs = read('web/src/stores/site.ts')
+  assert.match(siteTs, /fetchSiteInfo/)
+  assert.match(siteTs, /'site\.image_notice': ''/)
+  assert.match(siteTs, /'site\.showcase_urls': ''/)
+  assert.equal(exists('web/src/views/personal/OnlinePlay.vue'), false)
 })
+
