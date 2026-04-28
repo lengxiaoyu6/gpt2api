@@ -27,6 +27,29 @@ cd "$ROOT"
 
 echo "[build-local] repo  = $ROOT"
 
+ensure_frontend_deps() {
+    local app_dir="$1"
+    local install_needed=0
+
+    pushd "$app_dir" >/dev/null
+    if [ ! -d node_modules ]; then
+        install_needed=1
+    elif [ ! -f node_modules/.package-lock.json ]; then
+        install_needed=1
+    elif [ package.json -nt node_modules/.package-lock.json ]; then
+        install_needed=1
+    elif [ -f package-lock.json ] && [ package-lock.json -nt node_modules/.package-lock.json ]; then
+        install_needed=1
+    elif ! npm ls --depth=0 >/dev/null 2>&1; then
+        install_needed=1
+    fi
+
+    if [ "$install_needed" = "1" ]; then
+        npm install --no-audit --no-fund --loglevel=error
+    fi
+    popd >/dev/null
+}
+
 # ---- step1: 交叉编译 gpt2api ----
 echo "[build-local] step1 = cross-build gpt2api (linux/amd64)"
 mkdir -p deploy/bin
@@ -51,19 +74,15 @@ fi
 
 # ---- step3: 管理端前端 ----
 echo "[build-local] step3 = npm run build (admin)"
+ensure_frontend_deps admin
 pushd admin >/dev/null
-if [ ! -d node_modules ]; then
-    npm install --no-audit --no-fund --loglevel=error
-fi
 npm run build
 popd >/dev/null
 
 # ---- step4: Web 用户端前端 ----
 echo "[build-local] step4 = npm run build (web)"
+ensure_frontend_deps web
 pushd web >/dev/null
-if [ ! -d node_modules ]; then
-    npm install --no-audit --no-fund --loglevel=error
-fi
 npm run build
 popd >/dev/null
 

@@ -28,6 +28,16 @@ test('本地预编译脚本同时构建 admin 与 web', () => {
   assert.match(ps1, /web\/dist\/index\.html/)
 })
 
+test('本地预编译脚本会在锁文件更新后重新安装前端依赖', () => {
+  const sh = read('deploy/build-local.sh')
+  const ps1 = read('deploy/build-local.ps1')
+
+  assert.match(sh, /node_modules\/\.package-lock\.json/)
+  assert.match(sh, /package-lock\.json/)
+  assert.match(ps1, /node_modules\/\.package-lock\.json/)
+  assert.match(ps1, /package-lock\.json/)
+})
+
 test('Nginx 示例同时声明 admin 与 web 用户端域名并透传 Host', () => {
   const nginx = read('deploy/nginx.conf')
   assert.match(nginx, /server_name admin\.domain\.com;/)

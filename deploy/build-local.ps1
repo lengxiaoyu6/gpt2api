@@ -17,6 +17,43 @@ $root = Resolve-Path "$PSScriptRoot/.."
 Set-Location $root
 
 Write-Host "[build-local] repo  = $root"
+
+function Ensure-FrontendDeps {
+    param(
+        [string]$AppDir
+    )
+
+    Push-Location (Join-Path $root $AppDir)
+    try {
+        $stampPath = 'node_modules/.package-lock.json'
+        $installNeeded = $false
+
+        if (-not (Test-Path node_modules)) {
+            $installNeeded = $true
+        } elseif (-not (Test-Path $stampPath)) {
+            $installNeeded = $true
+        } else {
+            $stampTime = (Get-Item $stampPath).LastWriteTimeUtc
+            if ((Get-Item package.json).LastWriteTimeUtc -gt $stampTime) {
+                $installNeeded = $true
+            } elseif ((Test-Path package-lock.json) -and ((Get-Item package-lock.json).LastWriteTimeUtc -gt $stampTime)) {
+                $installNeeded = $true
+            } else {
+                npm ls --depth=0 *> $null
+                if ($LASTEXITCODE -ne 0) {
+                    $installNeeded = $true
+                }
+            }
+        }
+
+        if ($installNeeded) {
+            npm install --no-audit --no-fund --loglevel=error
+            if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+        }
+    } finally {
+        Pop-Location
+    }
+}
 Write-Host "[build-local] step1 = cross-build gpt2api"
 $env:GOOS = "linux"
 $env:GOARCH = "amd64"
@@ -46,12 +83,9 @@ if ($Force -or -not (Test-Path $goosePath)) {
 }
 
 Write-Host "[build-local] step3 = npm run build (admin)"
+Ensure-FrontendDeps "admin"
 Push-Location (Join-Path $root "admin")
 try {
-    if (-not (Test-Path node_modules)) {
-        npm install --no-audit --no-fund --loglevel=error
-        if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-    }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 } finally {
@@ -59,12 +93,9 @@ try {
 }
 
 Write-Host "[build-local] step4 = npm run build (web)"
+Ensure-FrontendDeps "web"
 Push-Location (Join-Path $root "web")
 try {
-    if (-not (Test-Path node_modules)) {
-        npm install --no-audit --no-fund --loglevel=error
-        if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-    }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 } finally {
