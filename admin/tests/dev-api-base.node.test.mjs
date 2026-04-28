@@ -10,6 +10,6 @@ function read(path) {
 }
 
 test('开发环境默认通过 Vite 代理访问后端，避免写死绝对 API 地址触发跨域', () => {
-  const envFile = read('web/.env.development')
+  const envFile = read('admin/.env.development')
   assert.doesNotMatch(envFile, /^VITE_API_BASE=https?:\/\//m)
 })

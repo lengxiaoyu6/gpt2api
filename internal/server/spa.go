@@ -15,8 +15,8 @@ import (
 type siteKind string
 
 const (
-	siteWeb siteKind = "web"
-	siteWAP siteKind = "wap"
+	siteAdmin siteKind = "admin"
+	siteWeb   siteKind = "web"
 )
 
 type siteSettingsReader interface {
@@ -28,13 +28,14 @@ type spaSite struct {
 	indexPath string
 }
 
-// mountSPA 把前端 Vite 产物(web/dist / wap/dist)挂到 `/` 上,并实现 SPA 回退(deep link 刷新)。
+// mountSPA 把前端 Vite 产物(admin/dist / web/dist)挂到 `/` 上,并实现 SPA 回退(deep link 刷新)。
 //
 // 路径选择优先级:
-//  1. 环境变量 GPT2API_WEB_DIR / GPT2API_WAP_DIR
-//  2. 容器默认:/app/web/dist / /app/wap/dist
-//  3. 源码工作目录:./web/dist / ./wap/dist
-//  4. 都不存在则什么都不挂(退化为纯 API)
+//  1. 环境变量 GPT2API_ADMIN_DIR / GPT2API_WEB_DIR
+//  2. 兼容环境变量 GPT2API_WAP_DIR(旧用户端目录变量)
+//  3. 容器默认:/app/admin/dist / /app/web/dist
+//  4. 源码工作目录:./admin/dist / ./web/dist
+//  5. 都不存在则什么都不挂(退化为纯 API)
 //
 // 注意:
 //   - 只有 GET/HEAD 的 NoRoute 请求才会被 fallback 到 index.html。其它方法保持 404。
@@ -59,7 +60,7 @@ func mountSPA(r *gin.Engine, siteSettings siteSettingsReader) bool {
 				return
 			}
 		}
-		site := pickSPASite(sites, chooseSiteByHost(c.Request.Host, wapDomain(siteSettings)))
+		site := pickSPASite(sites, chooseSiteByHost(c.Request.Host, webDomain(siteSettings)))
 		if site == nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -88,19 +89,21 @@ var apiPrefixes = []string{
 
 func resolveSPASites() map[siteKind]*spaSite {
 	sites := map[siteKind]*spaSite{}
-	if site := resolveSiteDir("GPT2API_WEB_DIR", []string{"/app/web/dist", "./web/dist"}); site != nil {
-		sites[siteWeb] = site
+	if site := resolveSiteDir([]string{"GPT2API_ADMIN_DIR"}, []string{"/app/admin/dist", "./admin/dist"}); site != nil {
+		sites[siteAdmin] = site
 	}
-	if site := resolveSiteDir("GPT2API_WAP_DIR", []string{"/app/wap/dist", "./wap/dist"}); site != nil {
-		sites[siteWAP] = site
+	if site := resolveSiteDir([]string{"GPT2API_WEB_DIR", "GPT2API_WAP_DIR"}, []string{"/app/web/dist", "./web/dist", "/app/wap/dist", "./wap/dist"}); site != nil {
+		sites[siteWeb] = site
 	}
 	return sites
 }
 
-func resolveSiteDir(envKey string, candidates []string) *spaSite {
-	if d := os.Getenv(envKey); d != "" {
-		if site := buildSPASite(d); site != nil {
-			return site
+func resolveSiteDir(envKeys []string, candidates []string) *spaSite {
+	for _, envKey := range envKeys {
+		if d := os.Getenv(envKey); d != "" {
+			if site := buildSPASite(d); site != nil {
+				return site
+			}
 		}
 	}
 	for _, d := range candidates {
@@ -127,32 +130,35 @@ func pickSPASite(sites map[siteKind]*spaSite, preferred siteKind) *spaSite {
 	if site := sites[preferred]; site != nil {
 		return site
 	}
-	if preferred != siteWeb {
-		if site := sites[siteWeb]; site != nil {
+	if preferred != siteAdmin {
+		if site := sites[siteAdmin]; site != nil {
 			return site
 		}
 	}
-	if preferred != siteWAP {
-		if site := sites[siteWAP]; site != nil {
+	if preferred != siteWeb {
+		if site := sites[siteWeb]; site != nil {
 			return site
 		}
 	}
 	return nil
 }
 
-func chooseSiteByHost(host string, wapDomain string) siteKind {
-	if normalizedWAP := normalizeHostName(wapDomain); normalizedWAP != "" &&
-		normalizeHostName(host) == normalizedWAP {
-		return siteWAP
+func chooseSiteByHost(host string, webDomain string) siteKind {
+	if normalizedWeb := normalizeHostName(webDomain); normalizedWeb != "" &&
+		normalizeHostName(host) == normalizedWeb {
+		return siteWeb
 	}
-	return siteWeb
+	return siteAdmin
 }
 
-func wapDomain(siteSettings siteSettingsReader) string {
+func webDomain(siteSettings siteSettingsReader) string {
 	if siteSettings == nil {
 		return ""
 	}
-	return siteSettings.GetString(settings.SiteWAPDomain)
+	if v := strings.TrimSpace(siteSettings.GetString(settings.SiteWebDomain)); v != "" {
+		return v
+	}
+	return siteSettings.GetString(settings.SiteLegacyWAPDomain)
 }
 
 func normalizeHostName(raw string) string {

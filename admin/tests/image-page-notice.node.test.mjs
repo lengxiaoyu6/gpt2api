@@ -22,7 +22,7 @@ test('系统设置声明生图页公告键并标记为公开', () => {
 })
 
 test('后台系统设置页为生图页公告使用多行输入框', () => {
-  const settingsVue = read('web/src/views/admin/Settings.vue')
+  const settingsVue = read('admin/src/views/admin/Settings.vue')
   assert.match(settingsVue, /function isTextarea\(it: SettingItem\)/)
   assert.match(settingsVue, /it\.key === 'site\.image_notice'/)
   assert.match(settingsVue, /:type="isTextarea\(it\) \? 'textarea' : inputType\(it\)"/)
@@ -31,7 +31,7 @@ test('后台系统设置页为生图页公告使用多行输入框', () => {
 
 test('后台系统设置页将首页 Showcase 图片渲染为多行输入框', () => {
   const modelGo = read('internal/settings/model.go')
-  const settingsVue = read('web/src/views/admin/Settings.vue')
+  const settingsVue = read('admin/src/views/admin/Settings.vue')
   assert.match(modelGo, /SiteShowcaseURLs\s+=\s+"site\.showcase_urls"/)
   assert.match(modelGo, /Label:\s*"首页 Showcase 图片"/)
   assert.match(modelGo, /Type:\s*"string"/)
@@ -41,10 +41,10 @@ test('后台系统设置页将首页 Showcase 图片渲染为多行输入框', (
 })
 
 test('站点公开信息缓存仍包含生图页公告字段，web 端在线体验页面源码已裁剪', () => {
-  const siteTs = read('web/src/stores/site.ts')
+  const siteTs = read('admin/src/stores/site.ts')
   assert.match(siteTs, /fetchSiteInfo/)
   assert.match(siteTs, /'site\.image_notice': ''/)
   assert.match(siteTs, /'site\.showcase_urls': ''/)
-  assert.equal(exists('web/src/views/personal/OnlinePlay.vue'), false)
+  assert.equal(exists('admin/src/views/personal/OnlinePlay.vue'), false)
 })
 

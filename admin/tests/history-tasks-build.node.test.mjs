@@ -10,6 +10,6 @@ function exists(path) {
 }
 
 test('web 端历史任务页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/HistoryTasks.vue'), false)
+  assert.equal(exists('admin/src/views/personal/HistoryTasks.vue'), false)
 })
 

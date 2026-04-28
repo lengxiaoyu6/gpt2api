@@ -22,7 +22,7 @@ test('个人中心菜单树包含历史任务入口', () => {
 })
 
 test('旧个人中心历史任务路由已经收口到登录页', () => {
-  const routerTs = read('web/src/router/index.ts')
+  const routerTs = read('admin/src/router/index.ts')
   assert.match(routerTs, /path: '\/personal\/:pathMatch\(\.\*\)\*',\s*redirect: '\/login'/)
   assert.doesNotMatch(routerTs, /HistoryTasks\.vue/)
   assert.doesNotMatch(routerTs, /ApiDocs\.vue/)
@@ -44,7 +44,7 @@ test('个人图片任务类型仍保留缩略图与耗时相关字段', () => {
 })
 
 test('web 端历史任务与接口文档页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/HistoryTasks.vue'), false)
-  assert.equal(exists('web/src/views/personal/ApiDocs.vue'), false)
+  assert.equal(exists('admin/src/views/personal/HistoryTasks.vue'), false)
+  assert.equal(exists('admin/src/views/personal/ApiDocs.vue'), false)
 })
 

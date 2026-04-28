@@ -228,10 +228,10 @@ cd gpt2api
 |------|------|---------|
 | 后端二进制(linux/amd64) | `deploy/bin/gpt2api` | `go build ./cmd/server` |
 | 迁移工具(linux/amd64) | `deploy/bin/goose` | `go build github.com/pressly/goose/v3/cmd/goose@v3.20.0` |
-| Web 前端产物 | `web/dist/` | `cd web && npm install && npm run build` |
-| WAP 前端产物 | `wap/dist/` | `cd wap && npm install && npm run build` |
+| 管理端前端产物 | `admin/dist/` | `cd admin && npm install && npm run build` |
+| Web 用户端前端产物 | `web/dist/` | `cd web && npm install && npm run build` |
 
-仓库已经把**这三步打包到一个脚本**,一条命令搞定:
+仓库已经把上述构建步骤打包到一个脚本，一条命令即可完成：
 
 **Linux / macOS / WSL:**
 
@@ -254,21 +254,21 @@ powershell -NoProfile -File deploy\build-local.ps1
 [build-local] done. artifacts:
 -rwxr-xr-x ... deploy/bin/gpt2api       ~32M
 -rwxr-xr-x ... deploy/bin/goose         ~34M
+-rw-r--r-- ... admin/dist/index.html
 -rw-r--r-- ... web/dist/index.html
--rw-r--r-- ... wap/dist/index.html
 ```
 
 > 改完后端代码后**只需重跑 `build-local` 再 `docker compose build server`**;改前端只跑 `npm run build` + `docker compose build server` 即可。  
 > 有同事反馈 `go get` / `npm install` 慢,可以先 `go env -w GOPROXY=https://goproxy.cn,direct` 和 `npm config set registry https://registry.npmmirror.com`。
 
-如果部署结构为 Docker 外层再接 Nginx，推荐保留单个后端容器，由 Nginx 按域名反代到同一个 `server:8080`，并透传 `Host`。后台系统设置中的 `site.wap_domain` 用于登记移动端域名，例如：
+如果部署结构为 Docker 外层再接 Nginx，推荐保留单个后端容器，由 Nginx 按域名反代到同一个 `server:8080`，并透传 `Host`。后台系统设置中的 `site.web_domain` 用于登记 Web 用户端域名，例如：
 
 ```text
-img.domain.com     -> web 站点
-imgwap.domain.com  -> wap 站点
+admin.domain.com  -> admin 站点
+img.domain.com    -> web 用户端站点
 ```
 
-Go 服务会依据 `Host` 在 `web/dist` 与 `wap/dist` 之间选择站点目录。由于访问域名不同，Web 与 WAP 的浏览器登录态、Cookie 与本地存储天然隔离。
+Go 服务会依据 `Host` 在 `admin/dist` 与 `web/dist` 之间选择站点目录。由于访问域名不同，管理端与 Web 用户端的浏览器登录态、Cookie 与本地存储天然隔离。
 
 ### 4. 配置 `.env` 与启动容器
 
@@ -311,30 +311,30 @@ docker compose logs -f server
 >
 > **本项目 *不* 预置任何"默认管理员账号"或"默认密码"。** 部署起来后请按以下步骤走:
 >
-> 1. 浏览器打开 **WAP 站点**，例如已配置的 `http://imgwap.domain.com/`
+> 1. 浏览器打开 **Web 用户端站点**，例如已配置的 `http://img.domain.com/register`
 > 2. 用自己的邮箱 + 自设密码完成第一次注册
 > 3. **这第一个账号会自动拿到 `admin` 角色**(见 `internal/auth/service.go` 的 `Register` Bootstrap 规则)
 > 4. 之后再注册的账号都是普通用户
-> 5. 首位 admin 随后访问 **Web 管理后台 `/login`**，进入系统设置关闭开放注册
+> 5. 首位 admin 随后访问 **管理端 `/login`**，进入系统设置关闭开放注册
 >
 > 如果你在网上看到"Admin123456" / "admin@smoke.test" 这类字样,那是 `scripts/smoke.mjs` 冒烟测试脚本自己创建测试账号时用的参数,**与部署默认凭证无关**。
 
 ### 5. 首次登录
 
-- Web 管理后台地址:`http://<服务器IP>:8080/login`
-- WAP 用户侧站点地址:已配置的 WAP 域名或对应入口
-- `web/` 仅面向管理员；注册、创作与个人资料场景由 `wap/` 承接。
+- 管理端地址:`http://<服务器IP>:8080/login` 或已配置的管理端域名
+- Web 用户端地址:已配置的 `site.web_domain` 域名或对应入口
+- `admin/` 面向管理员；注册、创作与个人资料场景由 `web/` 承接。
 - 忘记管理员密码、或需要把某个普通用户提权为 admin,见「FAQ · 管理员密码找回 / 提权」。
 
 ### 6. 日常更新流程速查
 
 | 场景 | 命令 |
 |------|------|
-| **仅改了前端** | `cd web && npm run build` → `cd ../deploy && docker compose build server && docker compose up -d server` |
+| **仅改了前端** | `cd admin && npm run build`、`cd ../web && npm run build` → `cd ../deploy && docker compose build server && docker compose up -d server` |
 | **仅改了后端** | `bash deploy/build-local.sh`(前端 `npm run build` 无代价也会重跑)→ `cd deploy && docker compose build server && docker compose up -d server` |
 | **拉 main 新版** | `git pull` → `bash deploy/build-local.sh` → `docker compose build server && docker compose up -d server` |
 | **只重启不重建** | `docker compose restart server` |
-| **想回滚上一版** | `docker compose down server` → 恢复 `deploy/bin/gpt2api` + `web/dist` 备份 → `docker compose build server && docker compose up -d server` |
+| **想回滚上一版** | `docker compose down server` → 恢复 `deploy/bin/gpt2api` + `admin/dist` + `web/dist` 备份 → `docker compose build server && docker compose up -d server` |
 
 ### 7. 五分钟跑通第一次生图
 
@@ -616,7 +616,7 @@ scheduler:
 
 ## 九、管理后台功能概览
 
-`web/` 当前为纯管理后台。普通用户注册、创作、账单与资料入口统一放在 `wap/`。
+`admin/` 当前为管理后台。普通用户注册、创作、账单与资料入口统一放在 `web/`。
 
 | 页面 | 路径 | 核心能力 |
 |------|------|---------|
@@ -667,7 +667,7 @@ gpt2api/
 │   └── user/                     # 用户模块
 ├── pkg/                        # 可被外部复用的纯工具包
 ├── sql/migrations/             # Goose 迁移
-├── web/                        # 前端 Vue 3 源码
+├── admin/                      # 管理端 Vue 3 源码
 │   ├── src/
 │   │   ├── api/                  # axios 封装
 │   │   ├── config/               # feature flag(含 ENABLE_CHAT_MODEL)
@@ -676,7 +676,7 @@ gpt2api/
 │   │   ├── views/admin/          # 管理员页面
 │   │   └── router/
 │   └── dist/                     # 管理后台构建产物(Dockerfile 会 COPY 进镜像)
-├── wap/                        # WAP 前端源码
+├── web/                        # Web 用户端 React 源码
 │   ├── src/
 │   └── dist/                     # 用户侧构建产物(Dockerfile 会 COPY 进镜像)
 ├── API_NOTES.md                # chatgpt.com 逆向接口备忘
@@ -708,16 +708,21 @@ make run
 ### 前端
 
 ```bash
-cd web
+cd admin
 npm install
-npm run dev          # http://localhost:5173,自动代理到 :8080
-npm run build        # 构建到 web/dist/,供后端 SPA 路由挂载
+npm run dev          # 管理端开发服务，自动代理到 :8080
+npm run build        # 构建到 admin/dist/，供后端 SPA 路由挂载
+
+cd ../web
+npm install
+npm run dev          # Web 用户端开发服务，自动代理到 :8080
+npm run build        # 构建到 web/dist/，供后端 SPA 路由挂载
 ```
 
 **恢复文字模型 UI**(当前版本默认关闭):
 
 ```ts
-// web/src/config/feature.ts
+// admin/src/config/feature.ts
 export const ENABLE_CHAT_MODEL = true    // ← 改这里,重新 build
 ```
 
@@ -862,7 +867,7 @@ bcrypt 同明文每次生成的 hash 不同都能互相校验,上面的 hash 字
 欢迎 PR / Issue。提交前请:
 
 1. `go vet ./... && go test ./...` 全绿;
-2. `cd web && npm run build` 能通过;
+2. `cd admin && npm run build`、`cd web && npm run build` 能通过;
 3. Commit 用中文或英文均可,但请**明确写清楚动机**(是 fix 还是 feature,涉及哪个模块);
 4. 涉及上游协议改动的 PR,请在 PR 描述里附上 HAR / curl 证据,不凭感觉改指纹。
 

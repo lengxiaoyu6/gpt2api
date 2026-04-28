@@ -1,68 +1,57 @@
 # GPT2API 管理后台前端
 
-基于 Vue 3 + TypeScript + Vite + Element Plus 的后台前端，面向管理员提供统一入口。
+基于 Vue 3 + TypeScript + Vite + Element Plus 的管理端前端，面向管理员提供统一后台入口。
 
-当前 `web/` 仅保留 `/login` 作为公开入口。登录成功后会立即校验管理员身份，普通账号会清空登录态并返回登录页。用户侧注册、创作与个人资料能力由 `wap/` 承接。
+管理端负责账号池、代理池、模型、充值订单、用量统计、公告、系统设置等后台能力。用户注册、创作、历史记录、个人资料、API Key 与充值入口由用户端工程承接。
 
 ## 快速开始
 
 ```bash
-cd web
-npm install        # 或 pnpm install / yarn
-npm run dev        # http://localhost:5173
+cd admin
+npm install
+npm run dev
 ```
 
-开发服务器通过 Vite 代理 `/api`、`/v1`、`/healthz` 到后端(默认 `http://localhost:8080`)。
-改成别的后端:在 `web/.env.development` 里调整 `VITE_API_BASE`。
+开发服务器通过 Vite 代理 `/api`、`/v1`、`/healthz` 到后端，默认后端地址为 `http://localhost:8080`。需要调整后端地址时，修改 `.env.development` 中的 `VITE_API_BASE`。
 
 ## 生产构建
 
 ```bash
-npm run build       # 产物在 web/dist/
-npm run preview     # 本地静态预览
+npm run build
+npm run preview
 ```
 
-生产常见部署方式:把 `web/dist/` 交给 nginx,前端走同源,
-nginx 把 `/api/` 和 `/v1/` 反代到 Go 后端即可。`VITE_API_BASE` 留空表示同源。
+生产构建产物位于 `admin/dist/`。Docker 镜像会将该目录复制到 `/app/admin/dist`，Go 服务根据访问域名返回管理端页面。
 
 ## 目录约定
 
-```
+```text
 src/
-  api/         后端 HTTP 客户端封装(auth/apikey/admin/backup…)
-  router/      路由表 + 权限守卫(meta.perm)
-  stores/      Pinia:user store(持久化 token + 角色 + 权限 + 菜单)
-  layouts/     BasicLayout(侧边栏/顶栏) + BlankLayout(登录等)
+  api/         后端 HTTP 客户端封装
+  router/      路由表与权限守卫
+  stores/      Pinia 状态管理
+  layouts/     后台布局与空白布局
   views/
     auth/      管理员登录
-    admin/     管理员页
-  utils/       金额/字节/时间格式化
-  styles/      全局 scss
-  components/  公共组件(Placeholder 等)
+    admin/     管理员页面
+  utils/       金额、字节、时间格式化
+  styles/      全局样式
+  components/  公共组件
 ```
 
 ## 权限模型
 
-- 登录后 `GET /api/me` 取 `user/role/permissions`,`GET /api/me/menu` 取菜单树。
-- 登录页提交后先执行管理员身份校验，只有 `role=admin` 才进入后台。
-- 路由级:`route.meta.perm = 'foo:bar' | ['a','b']`，守卫里调用 `store.hasPerm()` 做前置校验。
-- `/api/me/menu` 仍由后端返回完整菜单树，前端本地只消费管理员菜单并补充后台首页入口。
-- UI 级:按钮的 `:disabled` / `v-if` 也会参考 `store.hasPerm()`。
-- 真正的权限校验在后端 `middleware.RequirePerm`，前端只负责导航与提示。
+登录后通过 `GET /api/me` 获取用户、角色与权限，通过 `GET /api/me/menu` 获取菜单树。登录页提交后会校验管理员身份，只有 `role=admin` 的账号进入后台。
 
-## 敏感操作(二次确认)
+路由级权限使用 `route.meta.perm` 声明，守卫调用 `store.hasPerm()` 进行前置校验。按钮等界面元素也会参考同一权限判断。真正的权限校验由后端 `middleware.RequirePerm` 执行。
 
-下列操作会要求用户在浏览器里再输入一次管理员密码(通过 `X-Admin-Confirm` 头发送):
+## 敏感操作二次确认
 
-- 重置他人密码 `POST /api/admin/users/:id/reset-password`
-- 删除用户 `DELETE /api/admin/users/:id`
-- 调账 `POST /api/admin/users/:id/credits/adjust`
-- 删除 / 恢复 / 上传备份 `/api/admin/system/backup/*`
+下列操作会要求在浏览器中再次输入管理员密码，并通过 `X-Admin-Confirm` 头发送：
 
-## 路线图
-
-- [ ] Admin:补充更多概览卡片与联动跳转
-- [ ] Admin:完善账号池、代理池、模型、充值订单、用量统计、全局 Keys、系统设置
-- [ ] WAP:继续承接用户侧注册、创作与个人资料场景
-- [ ] i18n(当前只提供简体中文)
-- [ ] 黑暗模式切换(Element Plus dark 已引入 css vars)
+```text
+POST   /api/admin/users/:id/reset-password
+DELETE /api/admin/users/:id
+POST   /api/admin/users/:id/credits/adjust
+/api/admin/system/backup/*
+```

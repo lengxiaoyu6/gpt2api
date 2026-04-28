@@ -145,17 +145,18 @@ type KeyDef struct {
 // ---- key 常量 ----
 const (
 	// 通用
-	SiteName          = "site.name"
-	SiteDescription   = "site.description"
-	SiteLogoURL       = "site.logo_url"
-	SiteFooter        = "site.footer"
-	SiteImageNotice   = "site.image_notice"
-	SiteContactEmail  = "site.contact_email"
-	SiteDocsURL       = "site.docs_url"
-	SiteAPIBaseURL    = "site.api_base_url"
-	SiteWAPDomain     = "site.wap_domain"
-	SiteShowcaseURLs  = "site.showcase_urls"
-	UIDefaultPageSize = "ui.default_page_size"
+	SiteName            = "site.name"
+	SiteDescription     = "site.description"
+	SiteLogoURL         = "site.logo_url"
+	SiteFooter          = "site.footer"
+	SiteImageNotice     = "site.image_notice"
+	SiteContactEmail    = "site.contact_email"
+	SiteDocsURL         = "site.docs_url"
+	SiteAPIBaseURL      = "site.api_base_url"
+	SiteWebDomain       = "site.web_domain"
+	SiteLegacyWAPDomain = "site.wap_domain"
+	SiteShowcaseURLs    = "site.showcase_urls"
+	UIDefaultPageSize   = "ui.default_page_size"
 
 	// 安全与认证
 	AuthAllowRegister        = "auth.allow_register"
@@ -238,7 +239,7 @@ var Defs = []KeyDef{
 	{Key: SiteContactEmail, Type: "email", Category: "site", Default: "", Label: "联系邮箱", Desc: "对外展示的客服邮箱", Public: true},
 	{Key: SiteDocsURL, Type: "url", Category: "site", Default: "", Label: "文档链接", Desc: "留空则前端隐藏「文档」入口", Public: true},
 	{Key: SiteAPIBaseURL, Type: "url", Category: "site", Default: "", Label: "API Base URL", Desc: "展示给用户的 /v1 入口;留空=当前站点地址", Public: true},
-	{Key: SiteWAPDomain, Type: "string", Category: "site", Default: "", Label: "WAP 域名", Desc: "移动端入口域名,如 imgwap.domain.com", Public: true},
+	{Key: SiteWebDomain, Type: "string", Category: "site", Default: "", Label: "Web 端域名", Desc: "用户端 Web 入口域名,如 img.domain.com", Public: true},
 	{Key: SiteShowcaseURLs, Type: "string", Category: "site", Default: "", Label: "首页 Showcase 图片", Desc: "公开首页展示图,每行一个 http 或 https 图片 URL", Public: true},
 	{Key: UIDefaultPageSize, Type: "int", Category: "site", Default: "20", Label: "默认每页条数", Desc: "后台表格默认分页(5~100)"},
 

@@ -8,8 +8,8 @@
 # 产物:
 #   deploy/bin/gpt2api        linux/amd64 可执行(后端)
 #   deploy/bin/goose          linux/amd64 可执行(迁移工具)
-#   web/dist/                 Web 前端产物
-#   wap/dist/                 WAP 前端产物
+#   admin/dist/               管理端前端产物
+#   web/dist/                 Web 用户端前端产物
 #
 # 这套产物 + deploy/Dockerfile 就可以离线构建镜像,无需容器再访问外网。
 
@@ -49,8 +49,17 @@ else
     echo "[build-local] step2 = skip goose (exists). use --force to rebuild"
 fi
 
-# ---- step3: 前端 Web ----
-echo "[build-local] step3 = npm run build (web)"
+# ---- step3: 管理端前端 ----
+echo "[build-local] step3 = npm run build (admin)"
+pushd admin >/dev/null
+if [ ! -d node_modules ]; then
+    npm install --no-audit --no-fund --loglevel=error
+fi
+npm run build
+popd >/dev/null
+
+# ---- step4: Web 用户端前端 ----
+echo "[build-local] step4 = npm run build (web)"
 pushd web >/dev/null
 if [ ! -d node_modules ]; then
     npm install --no-audit --no-fund --loglevel=error
@@ -58,14 +67,5 @@ fi
 npm run build
 popd >/dev/null
 
-# ---- step4: 前端 WAP ----
-echo "[build-local] step4 = npm run build (wap)"
-pushd wap >/dev/null
-if [ ! -d node_modules ]; then
-    npm install --no-audit --no-fund --loglevel=error
-fi
-npm run build
-popd >/dev/null
-
 echo "[build-local] done. artifacts:"
-ls -lh deploy/bin/gpt2api deploy/bin/goose web/dist/index.html wap/dist/index.html
+ls -lh deploy/bin/gpt2api deploy/bin/goose admin/dist/index.html web/dist/index.html

@@ -430,7 +430,7 @@ export const useStore = create<AppState>()(
       },
     }),
     {
-      name: 'wap-backend-storage',
+      name: 'web-backend-storage',
       partialize: (state) => ({
         isDark: state.isDark,
         selectedImageModel: state.selectedImageModel,

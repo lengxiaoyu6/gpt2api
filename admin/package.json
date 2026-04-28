@@ -1,5 +1,5 @@
 {
-  "name": "gpt2api-web",
+  "name": "gpt2api-admin",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,7 +7,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/432539/gpt2api.git",
-    "directory": "web"
+    "directory": "admin"
   },
   "homepage": "https://github.com/432539/gpt2api#readme",
   "bugs": {

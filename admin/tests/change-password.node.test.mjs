@@ -22,7 +22,7 @@ test('个人中心菜单树包含安全中心入口', () => {
 })
 
 test('旧个人中心路由已经收口到登录页，且不再引用安全中心页面源码', () => {
-  const routerTs = read('web/src/router/index.ts')
+  const routerTs = read('admin/src/router/index.ts')
   assert.match(routerTs, /path: '\/personal\/:pathMatch\(\.\*\)\*',\s*redirect: '\/login'/)
   assert.doesNotMatch(routerTs, /Security\.vue/)
   assert.doesNotMatch(routerTs, /views\/personal/)
@@ -35,6 +35,6 @@ test('me API 增加修改密码请求封装', () => {
 })
 
 test('web 端安全中心页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/Security.vue'), false)
+  assert.equal(exists('admin/src/views/personal/Security.vue'), false)
 })
 

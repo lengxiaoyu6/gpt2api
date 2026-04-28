@@ -46,8 +46,8 @@ test('前端模型类型包含图片价格与能力字段', () => {
 })
 
 test('管理端模型类型与页面包含多档图片价格字段', () => {
-  const statsTs = read('web/src/api/stats.ts')
-  const modelsVue = read('web/src/views/admin/Models.vue')
+  const statsTs = read('admin/src/api/stats.ts')
+  const modelsVue = read('admin/src/views/admin/Models.vue')
   assert.match(statsTs, /image_price_per_call_2k\??:\s*number/)
   assert.match(statsTs, /image_price_per_call_4k\??:\s*number/)
   assert.match(statsTs, /supports_multi_image\?:\s*boolean/)
@@ -62,7 +62,7 @@ test('管理端模型类型与页面包含多档图片价格字段', () => {
 })
 
 test('旧个人中心在线体验与接口文档路由已经收口到登录页', () => {
-  const routerTs = read('web/src/router/index.ts')
+  const routerTs = read('admin/src/router/index.ts')
   assert.match(routerTs, /path: '\/personal\/:pathMatch\(\.\*\)\*',\s*redirect: '\/login'/)
   assert.doesNotMatch(routerTs, /OnlinePlay\.vue/)
   assert.doesNotMatch(routerTs, /ApiDocs\.vue/)
@@ -70,10 +70,10 @@ test('旧个人中心在线体验与接口文档路由已经收口到登录页',
 })
 
 test('web 端在线体验页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/OnlinePlay.vue'), false)
+  assert.equal(exists('admin/src/views/personal/OnlinePlay.vue'), false)
 })
 
 test('web 端接口文档页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/ApiDocs.vue'), false)
+  assert.equal(exists('admin/src/views/personal/ApiDocs.vue'), false)
 })
 

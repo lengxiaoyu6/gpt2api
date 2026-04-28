@@ -51,6 +51,9 @@ export default function AnnouncementCenter({ active }: Props) {
         setCurrent(firstUnread)
         setPopupOpen(true)
       }
+    } catch {
+      setItems([])
+      setLoaded(true)
     } finally {
       setLoading(false)
     }

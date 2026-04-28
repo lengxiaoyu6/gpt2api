@@ -10,7 +10,7 @@ function read(path) {
 }
 
 test('开发代理只转发 /p/ 图片签名路径,不会吞掉 /personal 前端路由', () => {
-  const viteConfig = read('web/vite.config.ts')
+  const viteConfig = read('admin/vite.config.ts')
   assert.match(viteConfig, /'\^\/p\/':\s*\{\s*target:\s*apiBase,\s*changeOrigin:\s*true\s*\}/s)
   assert.doesNotMatch(viteConfig, /'\/p':\s*\{/)
 })

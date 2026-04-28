@@ -27,11 +27,11 @@ test('公告后端路由与后台菜单已声明', () => {
 })
 
 test('Web 端声明公告 API、后台路由与个人中心弹窗挂载', () => {
-  const apiTs = read('web/src/api/announcement.ts')
-  const routerTs = read('web/src/router/index.ts')
-  const layoutVue = read('web/src/layouts/BasicLayout.vue')
-  const adminVue = read('web/src/views/admin/Announcements.vue')
-  const centerVue = read('web/src/components/AnnouncementCenter.vue')
+  const apiTs = read('admin/src/api/announcement.ts')
+  const routerTs = read('admin/src/router/index.ts')
+  const layoutVue = read('admin/src/layouts/BasicLayout.vue')
+  const adminVue = read('admin/src/views/admin/Announcements.vue')
+  const centerVue = read('admin/src/components/AnnouncementCenter.vue')
 
   assert.match(apiTs, /listPublicAnnouncements/)
   assert.match(apiTs, /\/api\/public\/announcements/)
@@ -45,10 +45,10 @@ test('Web 端声明公告 API、后台路由与个人中心弹窗挂载', () => 
   assert.match(centerVue, /知道了/)
 })
 
-test('WAP 端声明公告 API、首页公告入口与已读缓存', () => {
-  const apiTs = read('wap/src/api/announcement.ts')
-  const appTsx = read('wap/src/App.tsx')
-  const centerTsx = read('wap/src/components/AnnouncementCenter.tsx')
+test('Web 用户端声明公告 API、首页公告入口与已读缓存', () => {
+  const apiTs = read('web/src/api/announcement.ts')
+  const appTsx = read('web/src/App.tsx')
+  const centerTsx = read('web/src/components/AnnouncementCenter.tsx')
 
   assert.match(apiTs, /listPublicAnnouncements/)
   assert.match(apiTs, /\/api\/public\/announcements/)

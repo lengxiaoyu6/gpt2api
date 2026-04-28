@@ -12,7 +12,7 @@ function read(path) {
 }
 
 async function loadApiMessageModule() {
-  const source = read('web/src/utils/api-message.ts')
+  const source = read('admin/src/utils/api-message.ts')
   const output = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -26,14 +26,14 @@ async function loadApiMessageModule() {
 }
 
 test('web http 请求层接入统一 message 本地化工具', () => {
-  const httpTs = read('web/src/api/http.ts')
+  const httpTs = read('admin/src/api/http.ts')
   assert.match(httpTs, /from '\.\.\/utils\/api-message'/)
   assert.match(httpTs, /localizeApiMessage\(/)
 })
 
 test('web message 本地化工具覆盖核心英文提示与 api 边界', () => {
-  assert.equal(existsSync(resolve(root, 'web/src/utils/api-message.ts')), true)
-  const utilTs = read('web/src/utils/api-message.ts')
+  assert.equal(existsSync(resolve(root, 'admin/src/utils/api-message.ts')), true)
+  const utilTs = read('admin/src/utils/api-message.ts')
   assert.match(utilTs, /invalid email or password/)
   assert.match(utilTs, /not logged in/)
   assert.match(utilTs, /insufficient permission/)

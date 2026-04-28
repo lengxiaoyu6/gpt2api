@@ -14,7 +14,7 @@ function exists(path) {
 }
 
 test('旧个人中心在线体验路由已经收口到登录页', () => {
-  const routerTs = read('web/src/router/index.ts')
+  const routerTs = read('admin/src/router/index.ts')
   assert.match(routerTs, /path: '\/personal\/:pathMatch\(\.\*\)\*',\s*redirect: '\/login'/)
   assert.doesNotMatch(routerTs, /OnlinePlay\.vue/)
   assert.doesNotMatch(routerTs, /views\/personal/)
@@ -28,6 +28,6 @@ test('在线体验相关 API 类型仍保留图生图请求与缩略图字段', 
 })
 
 test('web 端在线体验页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/OnlinePlay.vue'), false)
+  assert.equal(exists('admin/src/views/personal/OnlinePlay.vue'), false)
 })
 

@@ -28,6 +28,10 @@ vi.mock('../api/credit', () => ({
   listMyCreditLogs: vi.fn(),
 }))
 
+vi.mock('../api/announcement', () => ({
+  listPublicAnnouncements: vi.fn(),
+}))
+
 vi.mock('../api/apikey', () => ({
   listKeys: vi.fn(),
   createKey: vi.fn(),
@@ -39,6 +43,7 @@ const siteApi = await import('../api/site')
 const meApi = await import('../api/me')
 const rechargeApi = await import('../api/recharge')
 const creditApi = await import('../api/credit')
+const announcementApi = await import('../api/announcement')
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
 const { default: App } = await import('../App')
@@ -67,7 +72,7 @@ function compactText(text: string | null | undefined) {
   return text?.replace(/\s+/g, '') ?? ''
 }
 
-describe('wap integration', () => {
+describe('web integration', () => {
   beforeEach(() => {
     resetStore()
     vi.clearAllMocks()
@@ -85,6 +90,10 @@ describe('wap integration', () => {
       total: 0,
       limit: 20,
       offset: 0,
+    })
+    vi.mocked(announcementApi.listPublicAnnouncements).mockResolvedValue({
+      items: [],
+      total: 0,
     })
   })
 

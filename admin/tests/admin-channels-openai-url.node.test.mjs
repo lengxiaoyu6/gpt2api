@@ -10,7 +10,7 @@ function read(path) {
 }
 
 test('管理后台要求 OpenAI 渠道填写完整 endpoint URL', () => {
-  const view = read('web/src/views/admin/Channels.vue')
+  const view = read('admin/src/views/admin/Channels.vue')
   assert.match(view, /https:\/\/api\.openai\.com\/v1\/images\/generations/)
   assert.match(view, /https:\/\/api\.openai\.com\/v1\/chat\/completions/)
   assert.match(view, /https:\/\/api\.openai\.com\/v1\/responses/)

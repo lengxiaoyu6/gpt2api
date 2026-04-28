@@ -15,10 +15,10 @@ function exists(path) {
 
 test('签到接口在 me API 中声明', () => {
   const apiTs = read('web/src/api/me.ts')
-  assert.match(apiTs, /export interface MyCheckinStatus/)
-  assert.match(apiTs, /export function getMyCheckinStatus\(\): Promise<MyCheckinStatus> \{/) 
+  assert.match(apiTs, /export interface CheckinStatus/)
+  assert.match(apiTs, /export function getMyCheckinStatus\(\) \{/)
   assert.match(apiTs, /http\.get\('\/api\/me\/checkin'\)/)
-  assert.match(apiTs, /export function checkinToday\(\): Promise<MyCheckinStatus> \{/) 
+  assert.match(apiTs, /export function checkinToday\(\) \{/)
   assert.match(apiTs, /http\.post\('\/api\/me\/checkin'\)/)
 })
 
@@ -37,13 +37,12 @@ test('系统设置声明每日签到奖励键', () => {
 })
 
 test('web 端个人总览签到页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/Dashboard.vue'), false)
+  assert.equal(exists('admin/src/views/personal/Dashboard.vue'), false)
 })
 
 test('积分流水类型映射补充签到与管理员调账，旧个人中心使用记录页面已裁剪', () => {
-  const creditsVue = read('web/src/views/admin/Credits.vue')
+  const creditsVue = read('admin/src/views/admin/Credits.vue')
   assert.match(creditsVue, /checkin:\s*\{\s*label:\s*'签到'/)
   assert.match(creditsVue, /admin_adjust:\s*\{\s*label:\s*'管理员调账'/)
-  assert.equal(exists('web/src/views/personal/Usage.vue'), false)
+  assert.equal(exists('admin/src/views/personal/Usage.vue'), false)
 })
-

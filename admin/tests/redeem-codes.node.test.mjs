@@ -29,7 +29,7 @@ test('兑换码后端路由与后台菜单已声明', () => {
 })
 
 test('兑换码前端 API 声明用户核销与后台管理方法', () => {
-  const apiTs = read('web/src/api/recharge.ts')
+  const apiTs = read('admin/src/api/recharge.ts')
 
   assert.match(apiTs, /export interface RedeemCode\s*\{/) 
   assert.match(apiTs, /export interface RedeemResult\s*\{/) 
@@ -42,7 +42,7 @@ test('兑换码前端 API 声明用户核销与后台管理方法', () => {
 })
 
 test('后台静态路由包含兑换码页面', () => {
-  const routerTs = read('web/src/router/index.ts')
+  const routerTs = read('admin/src/router/index.ts')
   assert.match(routerTs, /path:\s*'redeem-codes'/)
   assert.match(routerTs, /RedeemCodes\.vue/)
   assert.match(routerTs, /title:\s*'兑换码'/)
@@ -50,7 +50,7 @@ test('后台静态路由包含兑换码页面', () => {
 })
 
 test('后台兑换码页面包含生成表单与列表展示', () => {
-  const pageVue = read('web/src/views/admin/RedeemCodes.vue')
+  const pageVue = read('admin/src/views/admin/RedeemCodes.vue')
   assert.match(pageVue, /adminGenerateRedeemCodes/)
   assert.match(pageVue, /adminListRedeemCodes/)
   assert.match(pageVue, /生成兑换码/)
@@ -61,6 +61,6 @@ test('后台兑换码页面包含生成表单与列表展示', () => {
 })
 
 test('web 端个人账单页面源码已从后台专用版本裁剪', () => {
-  assert.equal(exists('web/src/views/personal/Billing.vue'), false)
+  assert.equal(exists('admin/src/views/personal/Billing.vue'), false)
 })
 

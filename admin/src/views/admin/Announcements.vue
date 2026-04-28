@@ -123,7 +123,7 @@ onMounted(load)
       <div class="flex-between announcement-head">
         <div>
           <h2 class="page-title" style="margin: 0">公告管理</h2>
-          <div class="announcement-subtitle">维护多条弹窗公告，启用公告会展示在个人中心与 WAP 首页。</div>
+          <div class="announcement-subtitle">维护多条弹窗公告，启用公告会展示在个人中心与 Web 用户端首页。</div>
         </div>
         <el-button type="primary" @click="openCreate">
           <el-icon><Plus /></el-icon> 新增公告

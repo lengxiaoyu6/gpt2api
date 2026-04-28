@@ -147,7 +147,7 @@ function mockApiKeyRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
-describe('wap backend bindings', () => {
+describe('web backend bindings', () => {
   beforeEach(() => {
     resetStore()
     vi.clearAllMocks()
@@ -928,6 +928,7 @@ describe('wap backend bindings', () => {
             status: 'succeeded',
             credit_cost: 5,
             image_urls: ['/p/img/task-1/0'],
+            thumb_urls: ['/p/thumb/task-1/0'],
             created_at: '2026-04-22T10:00:00Z',
           },
           {
@@ -942,6 +943,7 @@ describe('wap backend bindings', () => {
             status: 'succeeded',
             credit_cost: 5,
             image_urls: ['/p/img/task-2/0'],
+            thumb_urls: ['/p/thumb/task-2/0'],
             created_at: '2026-04-22T11:00:00Z',
           },
         ],
@@ -1074,6 +1076,7 @@ describe('wap backend bindings', () => {
           status: 'processing',
           credit_cost: 5,
           image_urls: [],
+          thumb_urls: [],
           reference_urls: ['/p/ref/task-processing/0'],
           reference_thumb_urls: ['/p/ref-thumb/task-processing/0'],
           created_at: '2026-04-22T10:00:00Z',
@@ -1093,6 +1096,7 @@ describe('wap backend bindings', () => {
           error: '内容审核未通过',
           credit_cost: 5,
           image_urls: [],
+          thumb_urls: [],
           reference_urls: ['/p/ref/task-failed/0'],
           reference_thumb_urls: ['/p/ref-thumb/task-failed/0'],
           created_at: '2026-04-22T11:00:00Z',
@@ -1262,6 +1266,7 @@ describe('wap backend bindings', () => {
           status: 'processing',
           credit_cost: 5,
           image_urls: [],
+          thumb_urls: [],
           created_at: '2026-04-22T10:00:00Z',
           started_at: '2026-04-22T10:00:05Z',
           finished_at: null,
@@ -1316,6 +1321,7 @@ describe('wap backend bindings', () => {
           error: '内容审核未通过',
           credit_cost: 5,
           image_urls: [],
+          thumb_urls: [],
           created_at: '2026-04-22T11:00:00Z',
           started_at: '2026-04-22T11:00:05Z',
           finished_at: '2026-04-22T11:00:12Z',
@@ -1831,6 +1837,7 @@ describe('wap backend bindings', () => {
           status: 'succeeded',
           credit_cost: 5,
           image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
           created_at: '2026-04-22T10:00:00Z',
         },
       ],
@@ -1848,6 +1855,7 @@ describe('wap backend bindings', () => {
           status: 'succeeded',
           credit_cost: 5,
           image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
           created_at: '2026-04-22T10:00:00Z',
         },
       ]),

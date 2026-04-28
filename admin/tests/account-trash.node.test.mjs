@@ -30,7 +30,7 @@ test('账号池路由挂载已删除列表恢复与彻底删除接口', () => {
 })
 
 test('前端 API 暴露已删除列表恢复与彻底删除方法', () => {
-  const apiTs = read('web/src/api/accounts.ts')
+  const apiTs = read('admin/src/api/accounts.ts')
   assert.match(apiTs, /deleted_at\?:\s*\{ Time: string; Valid: boolean \} \| string \| null/)
   assert.match(apiTs, /export function listDeletedAccounts\(/)
   assert.match(apiTs, /export function restoreAccount\(/)
@@ -38,7 +38,7 @@ test('前端 API 暴露已删除列表恢复与彻底删除方法', () => {
 })
 
 test('账号池页面提供已删除标签与恢复清理操作', () => {
-  const pageVue = read('web/src/views/admin/Accounts.vue')
+  const pageVue = read('admin/src/views/admin/Accounts.vue')
   assert.match(pageVue, /label="已删除"/)
   assert.match(pageVue, /恢复/)
   assert.match(pageVue, /彻底删除/)
@@ -46,7 +46,7 @@ test('账号池页面提供已删除标签与恢复清理操作', () => {
 })
 
 test('账号池页面已清除冲突标记并保留额度信息列', () => {
-  const pageVue = read('web/src/views/admin/Accounts.vue')
+  const pageVue = read('admin/src/views/admin/Accounts.vue')
   assert.doesNotMatch(pageVue, /^(<<<<<<<|=======|>>>>>>>) /m)
   assert.match(pageVue, /label="类型"/)
   assert.match(pageVue, /label="凭证"/)

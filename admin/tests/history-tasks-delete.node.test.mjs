@@ -47,6 +47,6 @@ test('个人中心图片任务 API 暴露删除方法', () => {
 })
 
 test('历史任务删除能力仍保留在 API 层，前端历史任务页面源码已裁剪', () => {
-  assert.equal(exists('web/src/views/personal/HistoryTasks.vue'), false)
+  assert.equal(exists('admin/src/views/personal/HistoryTasks.vue'), false)
 })
 

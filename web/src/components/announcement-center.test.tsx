@@ -8,7 +8,7 @@ vi.mock('../api/announcement', () => ({
 const api = await import('../api/announcement')
 const { default: AnnouncementCenter } = await import('./AnnouncementCenter')
 
-describe('wap announcement center', () => {
+describe('web announcement center', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
@@ -86,5 +86,15 @@ describe('wap announcement center', () => {
     expect(screen.queryByRole('button', { name: '知道了' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '公告' }))
     expect(await screen.findByText('新增能力')).toBeInTheDocument()
+  })
+
+  test('keeps announcement request failure inside the component', async () => {
+    vi.mocked(api.listPublicAnnouncements).mockRejectedValue(new Error('公告接口异常'))
+
+    render(<AnnouncementCenter active />)
+
+    await waitFor(() => expect(api.listPublicAnnouncements).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole('button', { name: '公告' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
