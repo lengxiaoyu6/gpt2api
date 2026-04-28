@@ -24,7 +24,7 @@ td.v{color:#222;font-weight:500}
 
 // RenderWelcome 注册欢迎邮件。
 func RenderWelcome(nickname, email, baseURL string) (subject, html string) {
-	subject = "欢迎加入 GPT2API"
+	subject = "欢迎加入 OAI Hub 绘影"
 	if nickname == "" {
 		nickname = email
 	}
@@ -51,7 +51,7 @@ func RenderWelcome(nickname, email, baseURL string) (subject, html string) {
 func RenderRegisterEmailCode(siteName, email, code string, expire time.Duration) (subject, html string) {
 	siteName = strings.TrimSpace(siteName)
 	if siteName == "" {
-		siteName = "GPT2API"
+		siteName = "OAI Hub 绘影"
 	}
 	subject = siteName + " 注册验证码"
 	minutes := int(expire / time.Minute)

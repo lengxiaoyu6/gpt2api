@@ -5,12 +5,38 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import PageShell from '@/components/PageShell';
-import homeHero from '@/assets/home-hero.jpg';
 
 interface HomeViewProps {
   onStartGeneration: () => void;
   siteName?: string;
 }
+
+const HERO_PARTICLES = [
+  { left: '6%', top: '18%', size: 5, delay: 0, duration: 7, color: 'bg-cyan-200/90' },
+  { left: '12%', top: '58%', size: 3, delay: 0.6, duration: 6, color: 'bg-blue-200/80' },
+  { left: '18%', top: '32%', size: 7, delay: 1.1, duration: 8, color: 'bg-primary/80' },
+  { left: '24%', top: '72%', size: 4, delay: 0.4, duration: 6.8, color: 'bg-violet-200/80' },
+  { left: '31%', top: '16%', size: 3, delay: 1.4, duration: 7.6, color: 'bg-white/90' },
+  { left: '36%', top: '46%', size: 6, delay: 0.2, duration: 7.2, color: 'bg-fuchsia-200/85' },
+  { left: '42%', top: '78%', size: 3, delay: 1.8, duration: 6.6, color: 'bg-cyan-100/80' },
+  { left: '47%', top: '26%', size: 4, delay: 0.9, duration: 7.8, color: 'bg-primary/80' },
+  { left: '53%', top: '64%', size: 8, delay: 0.1, duration: 8.2, color: 'bg-blue-200/80' },
+  { left: '58%', top: '12%', size: 3, delay: 1.6, duration: 6.9, color: 'bg-white/85' },
+  { left: '64%', top: '38%', size: 5, delay: 0.5, duration: 7.4, color: 'bg-violet-100/90' },
+  { left: '68%', top: '82%', size: 4, delay: 1.2, duration: 6.4, color: 'bg-cyan-200/80' },
+  { left: '73%', top: '22%', size: 7, delay: 0.3, duration: 8.4, color: 'bg-fuchsia-200/80' },
+  { left: '78%', top: '56%', size: 3, delay: 1.5, duration: 6.7, color: 'bg-white/90' },
+  { left: '84%', top: '14%', size: 4, delay: 0.8, duration: 7.1, color: 'bg-primary/85' },
+  { left: '88%', top: '70%', size: 6, delay: 1.9, duration: 8.1, color: 'bg-blue-100/80' },
+  { left: '92%', top: '34%', size: 3, delay: 0.7, duration: 7.5, color: 'bg-cyan-100/90' },
+  { left: '96%', top: '50%', size: 5, delay: 1.3, duration: 6.5, color: 'bg-violet-200/80' },
+  { left: '9%', top: '84%', size: 3, delay: 2.1, duration: 7.7, color: 'bg-white/80' },
+  { left: '29%', top: '88%', size: 5, delay: 1.7, duration: 8.3, color: 'bg-primary/70' },
+  { left: '51%', top: '90%', size: 3, delay: 2.3, duration: 7.3, color: 'bg-cyan-200/80' },
+  { left: '71%', top: '92%', size: 4, delay: 2.5, duration: 6.9, color: 'bg-fuchsia-100/80' },
+  { left: '86%', top: '88%', size: 3, delay: 2.7, duration: 7.9, color: 'bg-white/75' },
+  { left: '40%', top: '8%', size: 4, delay: 2.9, duration: 8.5, color: 'bg-blue-200/80' },
+];
 
 export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: HomeViewProps) {
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false);
@@ -57,38 +83,140 @@ export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: Ho
   ];
 
   return (
-    <PageShell width="wide" className="space-y-12 lg:space-y-16">
-      <section className="group relative h-[320px] overflow-hidden rounded-3xl lg:min-h-[460px] lg:h-[520px] lg:rounded-[2.5rem] lg:shadow-2xl">
-        <img
-          src={homeHero}
-          alt="Hero"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
+    <PageShell width="wide" className="space-y-10 pt-3 lg:space-y-16 lg:pt-8">
+      <section
+        role="region"
+        aria-label="首页创作横幅"
+        className="group relative h-[280px] overflow-hidden rounded-3xl bg-slate-950 ring-1 ring-white/10 lg:h-[520px] lg:min-h-[460px] lg:rounded-[2.5rem] lg:shadow-2xl lg:shadow-primary/10"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(56,189,248,0.34),transparent_28%),radial-gradient(circle_at_78%_18%,rgba(168,85,247,0.35),transparent_30%),radial-gradient(circle_at_62%_82%,rgba(34,211,238,0.22),transparent_34%),linear-gradient(135deg,rgba(2,6,23,1),rgba(15,23,42,0.96)_46%,rgba(30,41,59,0.92))]" />
+        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
+        <motion.div
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/10"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 42, repeat: Infinity, ease: 'linear' }}
         />
-        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black via-black/40 to-transparent p-8 lg:p-12">
+        <motion.div
+          aria-hidden="true"
+          className="absolute right-[-10%] top-[-18%] h-72 w-72 rounded-full bg-fuchsia-500/25 blur-3xl"
+          animate={{ scale: [1, 1.16, 1], opacity: [0.55, 0.82, 0.55] }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+          aria-hidden="true"
+          className="absolute bottom-[-22%] left-[24%] h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl"
+          animate={{ scale: [1.08, 0.92, 1.08], opacity: [0.45, 0.76, 0.45] }}
+          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <div data-testid="home-hero-particle-field" aria-hidden="true" className="absolute inset-0">
+          <svg className="absolute inset-0 h-full w-full opacity-35" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <path d="M6 18 C22 34 30 10 47 26 S70 18 84 14" fill="none" stroke="rgba(125, 211, 252, 0.45)" strokeWidth="0.22" />
+            <path d="M12 58 C31 46 38 82 53 64 S74 74 92 34" fill="none" stroke="rgba(216, 180, 254, 0.38)" strokeWidth="0.18" />
+            <path d="M18 32 C35 47 53 64 68 82 S82 62 96 50" fill="none" stroke="rgba(255, 255, 255, 0.22)" strokeWidth="0.16" />
+          </svg>
+          {HERO_PARTICLES.map((particle, index) => (
+            <motion.span
+              key={`${particle.left}-${particle.top}`}
+              className={`absolute rounded-full ${particle.color} shadow-[0_0_18px_currentColor]`}
+              style={{
+                left: particle.left,
+                top: particle.top,
+                width: particle.size,
+                height: particle.size,
+              }}
+              animate={{
+                x: [0, index % 2 === 0 ? 18 : -16, 0],
+                y: [0, index % 3 === 0 ? -22 : 18, 0],
+                opacity: [0.35, 1, 0.35],
+                scale: [0.9, 1.35, 0.9],
+              }}
+              transition={{
+                duration: particle.duration,
+                delay: particle.delay,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+          ))}
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/34 to-transparent" />
+        <div
+          data-testid="home-hero-content"
+          className="absolute inset-0 flex flex-col justify-center px-6 py-6 lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center lg:gap-10 lg:p-12"
+        >
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="max-w-2xl space-y-4 lg:space-y-6"
+            className="max-w-2xl space-y-3 lg:space-y-6"
           >
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/30 bg-primary/20 px-3 py-1 text-xs font-bold text-primary-foreground backdrop-blur-md lg:px-4 lg:py-1.5 lg:text-sm">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200/25 bg-white/10 px-3 py-1 text-xs font-bold text-cyan-50 shadow-lg shadow-cyan-500/10 backdrop-blur-md lg:px-4 lg:py-1.5 lg:text-sm">
               <Sparkles className="h-3 w-3 lg:h-4 lg:w-4" />
-              <span>多模型图像引擎实时驱动</span>
+              <span>OAI Hub 绘影</span>
             </div>
-            <h1 className="text-4xl font-extrabold leading-tight tracking-tighter text-white lg:text-6xl lg:leading-[0.95]">
-              想象，<br />正在发生
+            <h1 className="whitespace-nowrap text-[clamp(1.75rem,8vw,3.75rem)] font-black leading-[0.95] tracking-tight text-white lg:text-6xl lg:leading-[0.98]">
+              超越想象&nbsp;
+              <span className="bg-gradient-to-r from-primary via-blue-400 to-indigo-500 bg-clip-text text-transparent">
+                触手可及
+              </span>
             </h1>
-            <p className="max-w-md text-sm leading-relaxed text-gray-300 lg:text-base lg:text-gray-200">
-              将脑海中的构想转换为高质量图像，文生图与图生图都可在同一入口完成。
+            <p className="max-w-md text-sm leading-relaxed text-slate-200/85 lg:text-base">
+              在神经元网络的宏大共鸣中，将您的奇思妙想转化为独一无二的数字艺术杰作。
             </p>
             <Button
               size="lg"
               onClick={onStartGeneration}
-              className="group w-fit rounded-2xl bg-white font-bold text-black shadow-xl hover:bg-gray-200 lg:h-14 lg:px-8 lg:text-base"
+              className="group w-fit rounded-2xl bg-white font-bold text-slate-950 shadow-xl shadow-cyan-500/15 hover:bg-cyan-50 lg:h-14 lg:px-8 lg:text-base"
             >
               立刻开始创作
               <ChevronRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1 lg:h-5 lg:w-5" />
             </Button>
+          </motion.div>
+
+          <motion.div
+            aria-hidden="true"
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ delay: 0.34, duration: 0.5 }}
+            className="hidden rounded-[2rem] border border-white/14 bg-white/[0.08] p-4 shadow-2xl shadow-black/20 backdrop-blur-2xl lg:block"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100">
+                Live Render
+              </span>
+            </div>
+            <div className="relative h-56 overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/70">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(34,211,238,0.32),transparent_34%),radial-gradient(circle_at_36%_64%,rgba(168,85,247,0.26),transparent_28%)]" />
+              <div className="absolute inset-5 grid grid-cols-6 gap-2 opacity-70">
+                {Array.from({ length: 24 }).map((_, index) => (
+                  <motion.span
+                    key={index}
+                    className="rounded-lg border border-white/10 bg-white/10"
+                    animate={{ opacity: [0.28, 0.9, 0.28] }}
+                    transition={{ duration: 2.4, delay: index * 0.08, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                ))}
+              </div>
+              <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-white/10 bg-slate-950/70 p-3 backdrop-blur">
+                <div className="mb-2 flex items-center justify-between text-[11px] font-bold text-slate-200">
+                  <span>Prompt Matrix</span>
+                  <span className="text-cyan-200">96%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-primary to-fuchsia-300"
+                    animate={{ width: ['38%', '96%', '38%'] }}
+                    transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                </div>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>

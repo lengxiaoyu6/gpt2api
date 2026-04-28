@@ -128,7 +128,96 @@ describe('web integration', () => {
 
     render(<App />)
 
-    expect(screen.getByText('8.99')).toBeInTheDocument()
+    expect(screen.getAllByText('8.99 积分').length).toBeGreaterThan(0)
+  })
+
+  test('mobile home header keeps credit balance on one line', async () => {
+    useStore.setState({
+      activeTab: 'home',
+      siteInfo: {
+        'site.name': '星河图像创作平台',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+      },
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    const { container } = render(<App />)
+
+    await waitFor(() => expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(2))
+
+    const mobileHeader = container.querySelector('header')
+    expect(mobileHeader).not.toBeNull()
+    const [brandArea, actionArea] = Array.from(mobileHeader?.children ?? [])
+    const creditText = within(mobileHeader as HTMLElement).getByText('8.99 积分')
+    const announcementButton = within(mobileHeader as HTMLElement).getByRole('button', { name: '公告' })
+
+    expect(brandArea.className).toContain('min-w-0')
+    expect(brandArea.className).toContain('flex-1')
+    expect(actionArea.className).toContain('shrink-0')
+    expect(creditText.className).toContain('whitespace-nowrap')
+    expect(creditText.parentElement?.className).toContain('shrink-0')
+    expect(creditText.parentElement?.className).toContain('whitespace-nowrap')
+    expect(announcementButton.className).toContain('px-2.5')
+    expect(announcementButton.querySelector('span')?.className).toContain('hidden')
+    expect(announcementButton.querySelector('span')?.className).toContain('sm:inline')
+  })
+
+  test('desktop home header keeps credit balance card on one line', async () => {
+    useStore.setState({
+      activeTab: 'home',
+      siteInfo: {
+        'site.name': '星河图像创作平台',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+      },
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+
+    await waitFor(() => expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(2))
+
+    const desktopInfoBar = screen.getByRole('region', { name: '桌面信息栏' })
+    const actionArea = desktopInfoBar.lastElementChild
+    const creditText = within(desktopInfoBar).getByText('8.99 积分')
+    const creditCard = creditText.parentElement
+    const creditIcon = creditCard?.querySelector('.lucide-coins')
+
+    expect(actionArea?.className).toContain('shrink-0')
+    expect(actionArea?.className).toContain('whitespace-nowrap')
+    expect(creditCard?.className).toContain('shrink-0')
+    expect(creditCard?.className).toContain('inline-flex')
+    expect(creditCard?.className).toContain('items-center')
+    expect(creditCard?.className).toContain('gap-2')
+    expect(creditCard?.className).toContain('whitespace-nowrap')
+    expect(creditIcon?.getAttribute('class')).toContain('shrink-0')
+    expect(creditText.className).toContain('whitespace-nowrap')
+    expect(within(desktopInfoBar).queryByText('当前积分')).toBeNull()
   })
 
   test('app exposes named desktop and mobile navigation containers', () => {
@@ -570,9 +659,22 @@ describe('web integration', () => {
   test('home page renders video capability card and reserved entry dialog copy', async () => {
     render(<HomeView onStartGeneration={() => {}} />)
 
-    const heroSection = screen.getByAltText('Hero').closest('section')
+    const heroSection = screen.getByRole('region', { name: '首页创作横幅' })
+    const particleField = screen.getByTestId('home-hero-particle-field')
+    const heroContent = screen.getByTestId('home-hero-content')
     const featureGrid = screen.getByRole('region', { name: '核心功能列表' })
+    const heroTitle = screen.getByRole('heading', { level: 1, name: /超越想象/ })
 
+    expect(screen.queryByAltText('Hero')).toBeNull()
+    expect(particleField.children.length).toBeGreaterThanOrEqual(18)
+    expect(screen.getByText('OAI Hub 绘影')).toBeInTheDocument()
+    expect(heroTitle.querySelector('br')).toBeNull()
+    expect(heroTitle.className).toContain('whitespace-nowrap')
+    expect(heroTitle.className).toContain('text-[clamp(1.75rem,8vw,3.75rem)]')
+    expect(heroTitle.className).toContain('lg:text-6xl')
+    expect(heroTitle.className).not.toContain('text-4xl')
+    expect(heroTitle.className).not.toContain('text-5xl')
+    expect(heroTitle.className).not.toContain('lg:text-8xl')
     expect(screen.getByText('文生图')).toBeInTheDocument()
     expect(screen.getByText('图生图')).toBeInTheDocument()
     expect(screen.getByText('生成视频')).toBeInTheDocument()
@@ -588,8 +690,16 @@ describe('web integration', () => {
     expect(screen.queryByText('极致优化')).toBeNull()
     expect(screen.queryByText('灵感图鉴')).toBeNull()
     expect(screen.queryByText('更多作品')).toBeNull()
-    expect(heroSection?.className).toContain('h-[320px]')
+    expect(heroSection?.parentElement?.className).toContain('pt-3')
+    expect(heroSection?.className).toContain('h-[280px]')
+    expect(heroSection?.className).not.toContain('h-[320px]')
     expect(heroSection?.className).toContain('lg:min-h-[460px]')
+    expect(heroContent.className).toContain('justify-center')
+    expect(heroContent.className).toContain('lg:items-center')
+    expect(heroContent.className).not.toContain('lg:items-end')
+    expect(heroContent.className).toContain('px-6')
+    expect(heroContent.className).toContain('py-6')
+    expect(heroContent.className).not.toContain('p-8')
     expect(featureGrid.className).toContain('lg:grid-cols-3')
     expect(featureGrid.className).toContain('items-stretch')
 

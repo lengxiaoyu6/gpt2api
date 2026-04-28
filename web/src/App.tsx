@@ -167,20 +167,20 @@ export default function App() {
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between border-b border-border/50 bg-background/80 px-4 backdrop-blur-xl lg:hidden">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+        <header className="fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between overflow-hidden border-b border-border/50 bg-background/80 px-3 backdrop-blur-xl sm:px-4 lg:hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Sparkles className="h-5 w-5" />
             </div>
-            <span className="font-bold text-lg tracking-tight">{siteName}</span>
+            <span className="min-w-0 truncate text-base font-bold tracking-tight sm:text-lg">{siteName}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:gap-2">
             <AnnouncementCenter active={activeTab === 'home'} />
             {user ? (
-              <div className="flex items-center gap-2 rounded-full border border-border/50 bg-secondary/50 px-3 py-1.5">
-                <Coins className="h-4 w-4 text-yellow-500" />
-                <span className="font-mono text-sm font-medium">{formatCredit(user.credit_balance)} 积分</span>
+              <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/50 bg-secondary/50 px-2.5 py-1.5 sm:gap-2 sm:px-3">
+                <Coins className="h-4 w-4 shrink-0 text-yellow-500" />
+                <span className="whitespace-nowrap font-mono text-xs font-semibold sm:text-sm sm:font-medium">{formatCredit(user.credit_balance)} 积分</span>
               </div>
             ) : (
               <Button variant="ghost" size="sm" onClick={() => openAuthForTab(activeTab)} className="gap-2">
@@ -202,15 +202,15 @@ export default function App() {
               <p className="mt-1 text-sm text-muted-foreground">{activeTabMeta.description}</p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
               <AnnouncementCenter active={activeTab === 'home'} />
               {user ? (
-                <div className="min-w-[11rem] rounded-[1.5rem] border border-border/60 bg-background/70 px-4 py-3 text-right shadow-sm shadow-black/5">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">当前积分</div>
-                  <div className="mt-1 flex items-center justify-end gap-2 text-sm font-bold">
-                    <Coins className="h-4 w-4 text-yellow-500" />
-                    <span className="font-mono">{formatCredit(user.credit_balance)}</span>
-                  </div>
+                <div
+                  aria-label="当前积分"
+                  className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border/60 bg-background/70 px-4 shadow-sm shadow-black/5"
+                >
+                  <Coins className="h-4 w-4 shrink-0 text-yellow-500" />
+                  <span className="whitespace-nowrap font-mono text-sm font-semibold">{formatCredit(user.credit_balance)} 积分</span>
                 </div>
               ) : (
                 <Button variant="secondary" onClick={() => openAuthForTab(activeTab)} className="h-12 rounded-2xl gap-2 px-5 font-bold">

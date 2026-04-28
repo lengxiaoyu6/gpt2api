@@ -81,13 +81,14 @@ export default function AnnouncementCenter({ active }: Props) {
     <>
       <Button
         type="button"
+        aria-label="公告"
         variant="secondary"
         size="sm"
         onClick={openList}
-        className="h-9 rounded-full border border-border/60 bg-secondary/70 px-3 shadow-sm"
+        className="h-9 rounded-full border border-border/60 bg-secondary/70 px-2.5 shadow-sm sm:px-3"
       >
-        <Bell className="h-4 w-4" />
-        公告
+        <Bell className="h-4 w-4 shrink-0" />
+        <span className="hidden sm:inline">公告</span>
       </Button>
 
       {popupOpen && current && (
