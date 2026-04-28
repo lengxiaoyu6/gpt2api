@@ -663,6 +663,8 @@ describe('wap backend bindings', () => {
           status: 'processing',
           credit_cost: 5,
           image_urls: [],
+          reference_urls: ['/p/ref/task-processing/0'],
+          reference_thumb_urls: ['/p/ref-thumb/task-processing/0'],
           created_at: '2026-04-22T10:00:00Z',
           started_at: '2026-04-22T10:00:05Z',
           finished_at: null,
@@ -680,6 +682,8 @@ describe('wap backend bindings', () => {
           error: '内容审核未通过',
           credit_cost: 5,
           image_urls: [],
+          reference_urls: ['/p/ref/task-failed/0'],
+          reference_thumb_urls: ['/p/ref-thumb/task-failed/0'],
           created_at: '2026-04-22T11:00:00Z',
           started_at: '2026-04-22T11:00:05Z',
           finished_at: '2026-04-22T11:00:12Z',
@@ -698,6 +702,8 @@ describe('wap backend bindings', () => {
     })
     expect(await screen.findByText('任务状态')).toBeInTheDocument()
     expect(screen.getAllByText('处理中').length).toBeGreaterThan(0)
+    expect(screen.getByText('参考图')).toBeInTheDocument()
+    expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', '/p/ref-thumb/task-processing/0')
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '关闭详情' }))
@@ -710,6 +716,107 @@ describe('wap backend bindings', () => {
     await waitFor(() => expect(screen.getAllByText('任务失败').length).toBeGreaterThan(0))
     expect(screen.getByText('失败原因')).toBeInTheDocument()
     expect(screen.getAllByText('内容审核未通过').length).toBeGreaterThan(0)
+    expect(screen.getByText('参考图')).toBeInTheDocument()
+    expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', '/p/ref-thumb/task-failed/0')
+  })
+
+  test('history view renders reference gallery in detail panel without altering result preview', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 11,
+          task_id: 'task-reference-success',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Reference city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-reference-success/0'],
+          thumb_urls: ['/p/thumb/task-reference-success/0'],
+          reference_urls: ['/p/ref/task-reference-success/0', '/p/ref/task-reference-success/1'],
+          reference_thumb_urls: ['/p/ref-thumb/task-reference-success/0', '/p/ref/task-reference-success/1'],
+          created_at: '2026-04-22T12:30:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    expect(screen.getByAltText('Reference city')).toHaveAttribute('src', '/p/thumb/task-reference-success/0')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Reference city'))
+    })
+
+    expect(await screen.findByText('参考图')).toBeInTheDocument()
+    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-reference-success/0')
+    expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', '/p/ref-thumb/task-reference-success/0')
+    expect(screen.getByAltText('参考图 2')).toHaveAttribute('src', '/p/ref/task-reference-success/1')
+  })
+
+  test('history view hides reference gallery when record has no reference images', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 12,
+          task_id: 'task-no-reference',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'No reference city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-no-reference/0'],
+          thumb_urls: ['/p/thumb/task-no-reference/0'],
+          created_at: '2026-04-22T13:30:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('No reference city'))
+    })
+
+    expect(await screen.findByText('任务状态')).toBeInTheDocument()
+    expect(screen.queryByText('参考图')).toBeNull()
   })
 
   test('history view shows unknown duration when task timing is incomplete', async () => {

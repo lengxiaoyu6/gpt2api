@@ -25,13 +25,15 @@ func (d *DAO) Create(ctx context.Context, t *Task) error {
 	res, err := d.db.ExecContext(ctx, `
 INSERT INTO image_tasks
   (task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, storage_mode, status,
-   conversation_id, file_ids, result_urls, thumb_urls, error, estimated_credit, credit_cost,
+   conversation_id, file_ids, result_urls, thumb_urls, reference_count, reference_urls, reference_thumb_urls,
+   error, estimated_credit, credit_cost,
    created_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
 		t.TaskID, t.UserID, t.KeyID, t.ModelID, t.AccountID,
 		t.Prompt, t.N, t.Size, "", NormalizeStorageMode(t.StorageMode),
 		nullEmpty(t.Status, StatusQueued),
 		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs), nullJSON(t.ThumbURLs),
+		t.ReferenceCount, nullJSON(t.ReferenceURLs), nullJSON(t.ReferenceThumbURLs),
 		t.Error, t.EstimatedCredit, t.CreditCost,
 	)
 	if err != nil {
@@ -80,6 +82,24 @@ UPDATE image_tasks
 	return err
 }
 
+// UpdateReferences 更新参考图原图与缩略图地址。
+func (d *DAO) UpdateReferences(ctx context.Context, taskID string, referenceURLs, referenceThumbURLs []string) error {
+	var refB []byte
+	if referenceURLs != nil {
+		refB, _ = json.Marshal(referenceURLs)
+	}
+	var thumbB []byte
+	if referenceThumbURLs != nil {
+		thumbB, _ = json.Marshal(referenceThumbURLs)
+	}
+	_, err := d.db.ExecContext(ctx, `
+UPDATE image_tasks
+   SET reference_urls=?,
+       reference_thumb_urls=?
+ WHERE task_id=?`, nullJSON(refB), nullJSON(thumbB), taskID)
+	return err
+}
+
 // UpdateCost 仅更新 credit_cost(Runner 成功后由网关层调用)。
 func (d *DAO) UpdateCost(ctx context.Context, taskID string, cost int64) error {
 	_, err := d.db.ExecContext(ctx,
@@ -101,7 +121,8 @@ func (d *DAO) Get(ctx context.Context, taskID string) (*Task, error) {
 	var t Task
 	err := d.db.GetContext(ctx, &t, `
 SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
-       storage_mode, conversation_id, file_ids, result_urls, thumb_urls, error, estimated_credit, credit_cost,
+       storage_mode, conversation_id, file_ids, result_urls, thumb_urls, reference_count, reference_urls, reference_thumb_urls,
+       error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE task_id = ? AND deleted_at IS NULL`, taskID)
@@ -164,7 +185,8 @@ func (d *DAO) ListByUserFiltered(ctx context.Context, userID uint64, f UserTaskF
 
 	listSQL := `
 SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upscale, status,
-       storage_mode, conversation_id, file_ids, result_urls, thumb_urls, error, estimated_credit, credit_cost,
+       storage_mode, conversation_id, file_ids, result_urls, thumb_urls, reference_count, reference_urls, reference_thumb_urls,
+       error, estimated_credit, credit_cost,
        created_at, started_at, finished_at
   FROM image_tasks
  WHERE ` + where + `
@@ -231,7 +253,7 @@ func (d *DAO) ListAdmin(ctx context.Context, f AdminTaskFilter, limit, offset in
 	listSQL := `
 SELECT t.id, t.task_id, t.user_id, t.key_id, t.model_id, t.account_id,
        t.prompt, t.n, t.size, t.upscale, t.storage_mode, t.status,
-       t.conversation_id, t.file_ids, t.result_urls, t.thumb_urls, t.error,
+       t.conversation_id, t.file_ids, t.result_urls, t.thumb_urls, t.reference_count, t.reference_urls, t.reference_thumb_urls, t.error,
        t.estimated_credit, t.credit_cost,
        t.created_at, t.started_at, t.finished_at,
        COALESCE(u.email, '') AS user_email
@@ -288,6 +310,24 @@ func (t *Task) DecodeThumbURLs() []string {
 	var out []string
 	if len(t.ThumbURLs) > 0 {
 		_ = json.Unmarshal(t.ThumbURLs, &out)
+	}
+	return out
+}
+
+// DecodeReferenceURLs 把 JSON 列解出字符串数组。
+func (t *Task) DecodeReferenceURLs() []string {
+	var out []string
+	if len(t.ReferenceURLs) > 0 {
+		_ = json.Unmarshal(t.ReferenceURLs, &out)
+	}
+	return out
+}
+
+// DecodeReferenceThumbURLs 把 JSON 列解出字符串数组。
+func (t *Task) DecodeReferenceThumbURLs() []string {
+	var out []string
+	if len(t.ReferenceThumbURLs) > 0 {
+		_ = json.Unmarshal(t.ReferenceThumbURLs, &out)
 	}
 	return out
 }

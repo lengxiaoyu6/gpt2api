@@ -1,9 +1,13 @@
 package imagestore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io/fs"
 	"net/http"
 	"os"
@@ -16,8 +20,10 @@ import (
 )
 
 const (
-	ResourceOriginal = "original"
-	ResourceThumb    = "thumb"
+	ResourceOriginal       = "original"
+	ResourceThumb          = "thumb"
+	ResourceReference      = "reference"
+	ResourceReferenceThumb = "reference_thumb"
 )
 
 type LocalOptions struct {
@@ -90,8 +96,22 @@ func NewLocal(opts LocalOptions) *Local {
 }
 
 func (l *Local) SaveTaskImages(ctx context.Context, taskID string, images []SourceImage) ([]SavedImage, error) {
+	return l.saveTaskImages(ctx, taskID, images, false)
+}
+
+func (l *Local) SaveTaskReferences(ctx context.Context, taskID string, images []SourceImage) ([]SavedImage, error) {
+	return l.saveTaskImages(ctx, taskID, images, true)
+}
+
+func (l *Local) saveTaskImages(ctx context.Context, taskID string, images []SourceImage, reference bool) ([]SavedImage, error) {
 	if err := l.ensureDirs(); err != nil {
 		return nil, err
+	}
+	resource := ResourceOriginal
+	thumbResource := ResourceThumb
+	if reference {
+		resource = ResourceReference
+		thumbResource = ResourceReferenceThumb
 	}
 	saved := make([]SavedImage, 0, len(images))
 	cleanup := make([]string, 0, len(images)*2)
@@ -101,12 +121,15 @@ func (l *Local) SaveTaskImages(ctx context.Context, taskID string, images []Sour
 			return nil, err
 		}
 		ext, _ := normalizeImageType(src.ContentType, src.Data)
+		if reference {
+			ext, _ = normalizeImageTypeWithFileName(src.ContentType, src.FileName, src.Data)
+		}
 		if ext == "" {
 			l.removeFiles(cleanup)
 			return nil, errors.New("unsupported image type")
 		}
-		originalName := fmt.Sprintf("%s_%d.%s", taskID, src.Index, ext)
-		thumbName := fmt.Sprintf("tmp_%s_%d.jpg", taskID, src.Index)
+		originalName := l.originalFileName(taskID, src.Index, resource, ext)
+		thumbName := l.thumbFileName(taskID, src.Index, thumbResource)
 
 		if err := writeAtomic(filepath.Join(l.originalDir, originalName), src.Data); err != nil {
 			l.removeFiles(cleanup)
@@ -116,8 +139,13 @@ func (l *Local) SaveTaskImages(ctx context.Context, taskID string, images []Sour
 
 		thumbData, err := l.buildThumb(src.Data)
 		if err != nil {
-			l.removeFiles(cleanup)
-			return nil, err
+			if reference {
+				thumbData, err = l.buildPlaceholderThumbJPEG()
+			}
+			if err != nil {
+				l.removeFiles(cleanup)
+				return nil, err
+			}
 		}
 		if err := writeAtomic(filepath.Join(l.thumbDir, thumbName), thumbData); err != nil {
 			l.removeFiles(cleanup)
@@ -154,8 +182,32 @@ func (l *Local) FindThumb(taskID string, idx int) (FileInfo, bool, error) {
 	if err := l.ensureDirs(); err != nil {
 		return FileInfo{}, false, err
 	}
-	path := filepath.Join(l.thumbDir, fmt.Sprintf("tmp_%s_%d.jpg", taskID, idx))
+	path := filepath.Join(l.thumbDir, l.thumbFileName(taskID, idx, ResourceThumb))
 	return l.statFile(path, ResourceThumb)
+}
+
+func (l *Local) FindReference(taskID string, idx int) (FileInfo, bool, error) {
+	if err := l.ensureDirs(); err != nil {
+		return FileInfo{}, false, err
+	}
+	pattern := filepath.Join(l.originalDir, l.originalGlob(taskID, idx, ResourceReference))
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return FileInfo{}, false, err
+	}
+	if len(matches) == 0 {
+		return FileInfo{}, false, nil
+	}
+	sort.Strings(matches)
+	return l.statFile(matches[0], ResourceReference)
+}
+
+func (l *Local) FindReferenceThumb(taskID string, idx int) (FileInfo, bool, error) {
+	if err := l.ensureDirs(); err != nil {
+		return FileInfo{}, false, err
+	}
+	path := filepath.Join(l.thumbDir, l.thumbFileName(taskID, idx, ResourceReferenceThumb))
+	return l.statFile(path, ResourceReferenceThumb)
 }
 
 func (l *Local) HasOriginal(taskID string, idx int) (bool, error) {
@@ -165,6 +217,16 @@ func (l *Local) HasOriginal(taskID string, idx int) (bool, error) {
 
 func (l *Local) HasThumb(taskID string, idx int) (bool, error) {
 	_, ok, err := l.FindThumb(taskID, idx)
+	return ok, err
+}
+
+func (l *Local) HasReference(taskID string, idx int) (bool, error) {
+	_, ok, err := l.FindReference(taskID, idx)
+	return ok, err
+}
+
+func (l *Local) HasReferenceThumb(taskID string, idx int) (bool, error) {
+	_, ok, err := l.FindReferenceThumb(taskID, idx)
 	return ok, err
 }
 
@@ -186,6 +248,37 @@ func (l *Local) ReadOriginal(taskID string, idx int) ([]byte, string, bool, erro
 
 func (l *Local) ReadThumb(taskID string, idx int) ([]byte, string, bool, error) {
 	info, ok, err := l.FindThumb(taskID, idx)
+	if err != nil || !ok {
+		return nil, "", ok, err
+	}
+	data, err := os.ReadFile(filepath.Join(l.thumbDir, info.Name))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", false, nil
+		}
+		return nil, "", false, err
+	}
+	return data, "image/jpeg", true, nil
+}
+
+func (l *Local) ReadReference(taskID string, idx int) ([]byte, string, bool, error) {
+	info, ok, err := l.FindReference(taskID, idx)
+	if err != nil || !ok {
+		return nil, "", ok, err
+	}
+	data, err := os.ReadFile(filepath.Join(l.originalDir, info.Name))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", false, nil
+		}
+		return nil, "", false, err
+	}
+	_, ct := normalizeImageTypeWithFileName("", info.Name, data)
+	return data, ct, true, nil
+}
+
+func (l *Local) ReadReferenceThumb(taskID string, idx int) ([]byte, string, bool, error) {
+	info, ok, err := l.FindReferenceThumb(taskID, idx)
 	if err != nil || !ok {
 		return nil, "", ok, err
 	}
@@ -319,6 +412,20 @@ func (l *Local) buildThumb(data []byte) ([]byte, error) {
 	return thumbData, err
 }
 
+func (l *Local) buildPlaceholderThumbJPEG() ([]byte, error) {
+	quality := l.thumbQuality
+	if quality <= 0 {
+		quality = DefaultThumbQuality
+	}
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 240, G: 240, B: 240, A: 255})
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func fitWithin(width, height, maxEdge int) (int, int) {
 	if width <= 0 || height <= 0 {
 		return 1, 1
@@ -356,6 +463,29 @@ func normalizeImageType(contentType string, data []byte) (string, string) {
 	}
 }
 
+func normalizeImageTypeWithFileName(contentType, fileName string, data []byte) (string, string) {
+	if ext, ct := normalizeImageType(contentType, nil); ext != "" {
+		return ext, ct
+	}
+	if ext, ct := normalizeImageType("", data); ext != "" {
+		return ext, ct
+	}
+	return imageTypeFromFileName(fileName)
+}
+
+func imageTypeFromFileName(fileName string) (string, string) {
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(fileName))) {
+	case ".png":
+		return "png", "image/png"
+	case ".jpg", ".jpeg":
+		return "jpg", "image/jpeg"
+	case ".webp":
+		return "webp", "image/webp"
+	default:
+		return "", ""
+	}
+}
+
 func (l *Local) removeFiles(paths []string) {
 	for i := len(paths) - 1; i >= 0; i-- {
 		_ = os.Remove(paths[i])
@@ -378,15 +508,21 @@ func writeAtomic(path string, data []byte) error {
 }
 
 func (l *Local) dirFor(resource string) string {
-	if normalizeResource(resource) == ResourceThumb {
+	switch normalizeResource(resource) {
+	case ResourceThumb, ResourceReferenceThumb:
 		return l.thumbDir
 	}
 	return l.originalDir
 }
 
 func normalizeResource(resource string) string {
-	if resource == ResourceThumb {
+	switch resource {
+	case ResourceThumb:
 		return ResourceThumb
+	case ResourceReference:
+		return ResourceReference
+	case ResourceReferenceThumb:
+		return ResourceReferenceThumb
 	}
 	return ResourceOriginal
 }
@@ -411,11 +547,15 @@ func (l *Local) statFile(path string, resource string) (FileInfo, bool, error) {
 
 func parseFileInfo(name string, resource string) (FileInfo, bool) {
 	raw := name
-	if normalizeResource(resource) == ResourceThumb {
+	normalized := normalizeResource(resource)
+	isThumb := normalized == ResourceThumb || normalized == ResourceReferenceThumb
+	isReference := normalized == ResourceReference || normalized == ResourceReferenceThumb
+	if isThumb {
 		if !strings.HasPrefix(raw, "tmp_") || !strings.HasSuffix(strings.ToLower(raw), ".jpg") {
 			return FileInfo{}, false
 		}
 		raw = strings.TrimPrefix(raw, "tmp_")
+		raw = strings.TrimSuffix(raw, ".jpg")
 	} else {
 		ext := strings.ToLower(filepath.Ext(raw))
 		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" {
@@ -423,8 +563,13 @@ func parseFileInfo(name string, resource string) (FileInfo, bool) {
 		}
 		raw = strings.TrimSuffix(raw, filepath.Ext(raw))
 	}
-	if normalizeResource(resource) == ResourceThumb {
-		raw = strings.TrimSuffix(raw, ".jpg")
+	if isReference {
+		if !strings.HasPrefix(raw, "ref_") {
+			return FileInfo{}, false
+		}
+		raw = strings.TrimPrefix(raw, "ref_")
+	} else if strings.HasPrefix(raw, "ref_") {
+		return FileInfo{}, false
 	}
 	pos := strings.LastIndex(raw, "_")
 	if pos <= 0 || pos >= len(raw)-1 {
@@ -435,6 +580,27 @@ func parseFileInfo(name string, resource string) (FileInfo, bool) {
 		return FileInfo{}, false
 	}
 	return FileInfo{Name: name, TaskID: raw[:pos], Index: idx}, true
+}
+
+func (l *Local) originalGlob(taskID string, idx int, resource string) string {
+	return fmt.Sprintf("%s.*", l.fileStem(taskID, idx, resource))
+}
+
+func (l *Local) originalFileName(taskID string, idx int, resource string, ext string) string {
+	return fmt.Sprintf("%s.%s", l.fileStem(taskID, idx, resource), ext)
+}
+
+func (l *Local) thumbFileName(taskID string, idx int, resource string) string {
+	return fmt.Sprintf("tmp_%s.jpg", l.fileStem(taskID, idx, resource))
+}
+
+func (l *Local) fileStem(taskID string, idx int, resource string) string {
+	prefix := ""
+	switch normalizeResource(resource) {
+	case ResourceReference, ResourceReferenceThumb:
+		prefix = "ref_"
+	}
+	return fmt.Sprintf("%s%s_%d", prefix, taskID, idx)
 }
 
 func dirUsage(dir string) (int64, int, error) {

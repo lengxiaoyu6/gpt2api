@@ -186,6 +186,34 @@ function getOriginalImageUrls(item: HistoryRecord | null) {
   return item?.image_urls || [];
 }
 
+function getReferenceImages(item: HistoryRecord | null) {
+  const referenceUrls = item?.reference_urls || [];
+  const referenceThumbUrls = item?.reference_thumb_urls || [];
+  const count = Math.max(referenceUrls.length, referenceThumbUrls.length);
+
+  if (count === 0) {
+    return [];
+  }
+
+  const images: Array<{ originalUrl: string; previewUrl: string }> = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const originalUrl = referenceUrls[index] || '';
+    const previewUrl = referenceThumbUrls[index] || originalUrl;
+
+    if (!originalUrl && !previewUrl) {
+      continue;
+    }
+
+    images.push({
+      originalUrl: originalUrl || previewUrl,
+      previewUrl: previewUrl || originalUrl,
+    });
+  }
+
+  return images;
+}
+
 async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
   const response = await fetch(imageUrl);
 
@@ -229,6 +257,7 @@ export default function HistoryView() {
   const selectedImageKind = selectedImage ? getTaskStateKind(selectedImage.status) : null;
   const selectedPreviewUrls = getPreviewImageUrls(selectedImage);
   const selectedOriginalUrls = getOriginalImageUrls(selectedImage);
+  const selectedReferenceImages = getReferenceImages(selectedImage);
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
@@ -487,6 +516,32 @@ export default function HistoryView() {
                     下载原图
                   </Button>
                 </div>
+
+                {selectedReferenceImages.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
+                      <span>参考图</span>
+                      <span className="font-mono text-foreground font-bold">{selectedReferenceImages.length} 张</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedReferenceImages.map((item, index) => (
+                        <a
+                          key={`${item.originalUrl}-${index}`}
+                          href={item.originalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="group block overflow-hidden rounded-2xl border border-border/50 bg-secondary/20"
+                        >
+                          <img
+                            src={item.previewUrl}
+                            alt={`参考图 ${index + 1}`}
+                            className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="pt-4 border-t border-border/50 space-y-3">
                   <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">

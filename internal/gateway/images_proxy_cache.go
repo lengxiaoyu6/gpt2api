@@ -147,8 +147,13 @@ func (h *ImagesHandler) readLocalProxyImage(ctx context.Context, task *image.Tas
 	if h == nil || h.LocalImageStore == nil {
 		return nil, "", false, nil
 	}
-	if imageproxy.NormalizeResource(resource) == imageproxy.ResourceThumb {
+	switch imageproxy.NormalizeResource(resource) {
+	case imageproxy.ResourceThumb:
 		return h.LocalImageStore.ReadThumb(task.TaskID, idx)
+	case imageproxy.ResourceReference:
+		return h.LocalImageStore.ReadReference(task.TaskID, idx)
+	case imageproxy.ResourceReferenceThumb:
+		return h.LocalImageStore.ReadReferenceThumb(task.TaskID, idx)
 	}
 	return h.LocalImageStore.ReadOriginal(task.TaskID, idx)
 }

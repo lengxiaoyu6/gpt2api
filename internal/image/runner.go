@@ -100,8 +100,9 @@ func (r *Runner) SetQuotaDecrementor(qd QuotaDecrementor) {
 // ReferenceImage 是图生图/编辑的一张参考图输入。
 // 只需要提供原始字节 + 可选的文件名,Runner 会在运行时调用 chatgpt Client 上传。
 type ReferenceImage struct {
-	Data     []byte
-	FileName string // 可选,未填时按长度 + 嗅探扩展名生成
+	Data        []byte
+	FileName    string // 可选,未填时按长度 + 嗅探扩展名生成
+	ContentType string
 }
 
 // RunOptions 是单次生图的输入。

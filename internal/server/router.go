@@ -439,6 +439,8 @@ func New(d *Deps) *gin.Engine {
 	if d.ImagesH != nil {
 		r.GET("/p/img/:task_id/:idx", d.ImagesH.ImageProxy)
 		r.GET("/p/thumb/:task_id/:idx", d.ImagesH.ThumbProxy)
+		r.GET("/p/ref/:task_id/:idx", d.ImagesH.ReferenceProxy)
+		r.GET("/p/ref-thumb/:task_id/:idx", d.ImagesH.ReferenceThumbProxy)
 	}
 
 	// ---- 前端 SPA(可选;找不到 dist 就跳过) ----

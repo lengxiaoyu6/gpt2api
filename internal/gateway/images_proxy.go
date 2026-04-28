@@ -24,6 +24,8 @@ type ImageAccountResolver interface {
 type localProxyImageStore interface {
 	ReadOriginal(taskID string, idx int) ([]byte, string, bool, error)
 	ReadThumb(taskID string, idx int) ([]byte, string, bool, error)
+	ReadReference(taskID string, idx int) ([]byte, string, bool, error)
+	ReadReferenceThumb(taskID string, idx int) ([]byte, string, bool, error)
 }
 
 // ImageProxyTTL 单条签名 URL 的默认有效期(24h,够前端离线展示一段时间)。
@@ -43,6 +45,14 @@ func (h *ImagesHandler) ImageProxy(c *gin.Context) {
 
 func (h *ImagesHandler) ThumbProxy(c *gin.Context) {
 	h.serveProxyImage(c, imageproxy.ResourceThumb)
+}
+
+func (h *ImagesHandler) ReferenceProxy(c *gin.Context) {
+	h.serveProxyImage(c, imageproxy.ResourceReference)
+}
+
+func (h *ImagesHandler) ReferenceThumbProxy(c *gin.Context) {
+	h.serveProxyImage(c, imageproxy.ResourceReferenceThumb)
 }
 
 func (h *ImagesHandler) serveProxyImage(c *gin.Context, resource string) {

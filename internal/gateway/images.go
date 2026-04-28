@@ -22,7 +22,9 @@ import (
 	"github.com/432539/gpt2api/internal/billing"
 	"github.com/432539/gpt2api/internal/image"
 	"github.com/432539/gpt2api/internal/imageproxy"
+	"github.com/432539/gpt2api/internal/imagestore"
 	modelpkg "github.com/432539/gpt2api/internal/model"
+	"github.com/432539/gpt2api/internal/settings"
 	"github.com/432539/gpt2api/internal/upstream/chatgpt"
 	"github.com/432539/gpt2api/internal/usage"
 	"github.com/432539/gpt2api/pkg/logger"
@@ -71,8 +73,9 @@ type ImagesHandler struct {
 	ImageAccResolver ImageAccountResolver
 	LocalImageStore  localProxyImageStore
 
-	imageProxyCache   *imageProxyCache
-	referenceUploader referenceImageUploader
+	imageProxyCache          *imageProxyCache
+	referenceUploader        referenceImageUploader
+	referenceArchiveUploader referenceArchiveUploader
 }
 
 // ImageGenRequest OpenAI 兼容入参。
@@ -246,6 +249,181 @@ func (h *ImagesHandler) currentStorageMode() string {
 	return image.NormalizeStorageMode(h.Settings.ImageStorageMode())
 }
 
+type referenceTaskArchiver interface {
+	SaveTaskReferences(ctx context.Context, taskID string, images []imagestore.SourceImage) ([]imagestore.SavedImage, error)
+}
+
+type referenceArchiveUploader interface {
+	UploadToChannelWithOptions(ctx context.Context, src imagestore.SourceImage, channel string, serverCompress bool) (string, error)
+}
+
+func referenceSourceImages(refs []image.ReferenceImage) []imagestore.SourceImage {
+	sources := make([]imagestore.SourceImage, 0, len(refs))
+	for i, ref := range refs {
+		sources = append(sources, imagestore.SourceImage{
+			Index:       i,
+			Data:        ref.Data,
+			FileName:    ref.FileName,
+			ContentType: ref.ContentType,
+		})
+	}
+	return sources
+}
+
+func (h *ImagesHandler) archiveTaskReferences(ctx context.Context, taskID, storageMode string, refs []image.ReferenceImage) error {
+	if h == nil || taskID == "" || len(refs) == 0 {
+		return nil
+	}
+	if image.NormalizeStorageMode(storageMode) == image.StorageModeCloud {
+		return h.archiveCloudTaskReferences(ctx, taskID, referenceSourceImages(refs))
+	}
+	if h.LocalImageStore == nil {
+		return nil
+	}
+	store, ok := h.LocalImageStore.(referenceTaskArchiver)
+	if !ok {
+		return nil
+	}
+	sources := referenceSourceImages(refs)
+	if _, err := store.SaveTaskReferences(ctx, taskID, sources); err != nil {
+		return fmt.Errorf("save task references: %w", err)
+	}
+	return nil
+}
+
+func (h *ImagesHandler) archiveCloudTaskReferences(ctx context.Context, taskID string, refs []imagestore.SourceImage) error {
+	uploader, err := h.cloudReferenceArchiveUploader()
+	if err != nil {
+		return err
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	channels := h.cloudReferenceUploadChannels()
+	urls := make([]string, 0, len(refs))
+	thumbURLs := make([]string, 0, len(refs))
+	for _, src := range refs {
+		original := src
+		original.FileName = fmt.Sprintf("%s_ref_%d", taskID, src.Index)
+		uploadedURL, err := h.uploadCloudReferenceImage(ctx, taskID, uploader, original, channels, false)
+		if err != nil {
+			return fmt.Errorf("upload reference image: %w", err)
+		}
+		urls = append(urls, uploadedURL)
+
+		thumb, err := buildCloudReferenceThumbSource(taskID, src)
+		if err != nil {
+			logger.L().Warn("image handler build cloud reference thumbnail failed",
+				zap.String("task_id", taskID),
+				zap.Int("idx", src.Index),
+				zap.String("content_type", src.ContentType),
+				zap.Int("bytes", len(src.Data)),
+				zap.Error(err))
+			thumbURLs = append(thumbURLs, "")
+			continue
+		}
+		thumbURL, err := h.uploadCloudReferenceImage(ctx, taskID, uploader, thumb, channels, false)
+		if err != nil {
+			logger.L().Warn("image handler upload cloud reference thumbnail failed",
+				zap.String("task_id", taskID),
+				zap.Int("idx", src.Index),
+				zap.Int("bytes", len(thumb.Data)),
+				zap.Error(err))
+			thumbURLs = append(thumbURLs, "")
+			continue
+		}
+		thumbURLs = append(thumbURLs, thumbURL)
+	}
+	if h.DAO != nil {
+		if err := h.DAO.UpdateReferences(ctx, taskID, urls, thumbURLs); err != nil {
+			return fmt.Errorf("update task references: %w", err)
+		}
+	}
+	return nil
+}
+
+func (h *ImagesHandler) cloudReferenceArchiveUploader() (referenceArchiveUploader, error) {
+	if h != nil && h.referenceArchiveUploader != nil {
+		return h.referenceArchiveUploader, nil
+	}
+	if h != nil && h.referenceUploader != nil {
+		if uploader, ok := h.referenceUploader.(referenceArchiveUploader); ok {
+			return uploader, nil
+		}
+	}
+	if h == nil || h.Settings == nil {
+		return nil, errors.New("storage.cloud_config 未配置")
+	}
+	snapshot := map[string]string{
+		settings.StorageImageMode:   image.StorageModeCloud,
+		settings.StorageCloudConfig: h.Settings.CloudConfig(),
+	}
+	if err := settings.ValidateStorageSnapshot(snapshot); err != nil {
+		return nil, err
+	}
+	cfg, err := settings.ParseSanyueImgHubConfig(h.Settings.CloudConfig())
+	if err != nil {
+		return nil, err
+	}
+	return imagestore.NewSanyueImgHubUploader(imagestore.SanyueImgHubUploaderOptions{
+		UploadURL:      cfg.UploadURL,
+		AuthCode:       cfg.AuthCode,
+		ServerCompress: cfg.ServerCompress,
+		ReturnFormat:   cfg.ReturnFormat,
+		UploadChannel:  cfg.UploadChannel,
+	}), nil
+}
+
+func (h *ImagesHandler) cloudReferenceUploadChannels() []string {
+	preferred := settings.SanyueUploadChannelTelegram
+	if h != nil && h.Settings != nil {
+		cfg, err := settings.ParseSanyueImgHubConfig(h.Settings.CloudConfig())
+		if err == nil && settings.IsSupportedSanyueUploadChannel(cfg.UploadChannel) {
+			preferred = settings.NormalizeSanyueUploadChannel(cfg.UploadChannel)
+		}
+	}
+	if preferred == settings.SanyueUploadChannelHuggingFace {
+		return []string{settings.SanyueUploadChannelHuggingFace}
+	}
+	return []string{
+		settings.SanyueUploadChannelTelegram,
+		settings.SanyueUploadChannelHuggingFace,
+	}
+}
+
+func (h *ImagesHandler) uploadCloudReferenceImage(ctx context.Context, taskID string, uploader referenceArchiveUploader, src imagestore.SourceImage, channels []string, serverCompress bool) (string, error) {
+	var lastErr error
+	for _, channel := range channels {
+		uploadedURL, err := uploader.UploadToChannelWithOptions(ctx, src, channel, serverCompress)
+		if err == nil {
+			return uploadedURL, nil
+		}
+		lastErr = err
+		logger.L().Warn("image handler cloud reference upload failed",
+			zap.String("task_id", taskID),
+			zap.Int("idx", src.Index),
+			zap.String("channel", channel),
+			zap.Error(err))
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", errors.New("cloud reference upload failed")
+}
+
+func buildCloudReferenceThumbSource(taskID string, src imagestore.SourceImage) (imagestore.SourceImage, error) {
+	thumbData, contentType, err := imagestore.BuildThumbnail(src.Data, imagestore.ThumbnailOptions{})
+	if err != nil {
+		return imagestore.SourceImage{}, err
+	}
+	return imagestore.SourceImage{
+		Index:       src.Index,
+		FileName:    fmt.Sprintf("tmp_%s_ref_%d", taskID, src.Index),
+		Data:        thumbData,
+		ContentType: contentType,
+	}, nil
+}
+
 // ImageGenerations POST /v1/images/generations。
 func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	startAt := time.Now()
@@ -376,6 +554,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 
 	// 5) 落任务
 	taskID := image.GenerateTaskID()
+	taskStorageMode := h.currentStorageMode()
 	task := &image.Task{
 		TaskID:          taskID,
 		UserID:          ak.UserID,
@@ -384,14 +563,21 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		Prompt:          req.Prompt,
 		N:               req.N,
 		Size:            req.Size,
-		StorageMode:     h.currentStorageMode(),
+		StorageMode:     taskStorageMode,
 		Status:          image.StatusDispatched,
+		ReferenceCount:  len(refs),
 		EstimatedCredit: cost,
 	}
 	if h.DAO != nil {
 		if err := h.DAO.Create(c.Request.Context(), task); err != nil {
 			refund("billing_error")
 			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
+			return
+		}
+		if err := h.archiveTaskReferences(c.Request.Context(), taskID, taskStorageMode, refs); err != nil {
+			refund(image.ErrArchive)
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			openAIError(c, http.StatusBadGateway, image.ErrArchive, "参考图归档失败:"+err.Error())
 			return
 		}
 	}
@@ -825,7 +1011,11 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 				fmt.Sprintf("参考图 %q 超过 %dMB 上限", fh.Filename, maxReferenceImageBytes/1024/1024))
 			return
 		}
-		refs = append(refs, image.ReferenceImage{Data: data, FileName: filepath.Base(fh.Filename)})
+		refs = append(refs, image.ReferenceImage{
+			Data:        data,
+			FileName:    filepath.Base(fh.Filename),
+			ContentType: fh.Header.Get("Content-Type"),
+		})
 	}
 
 	// usage 记录
@@ -931,7 +1121,8 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 
 	taskID := image.GenerateTaskID()
 	if h.DAO != nil {
-		_ = h.DAO.Create(c.Request.Context(), &image.Task{
+		taskStorageMode := h.currentStorageMode()
+		if err := h.DAO.Create(c.Request.Context(), &image.Task{
 			TaskID:          taskID,
 			UserID:          ak.UserID,
 			KeyID:           ak.ID,
@@ -939,10 +1130,21 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 			Prompt:          prompt,
 			N:               n,
 			Size:            size,
-			StorageMode:     h.currentStorageMode(),
+			StorageMode:     taskStorageMode,
 			Status:          image.StatusDispatched,
+			ReferenceCount:  len(refs),
 			EstimatedCredit: cost,
-		})
+		}); err != nil {
+			refund("billing_error")
+			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
+			return
+		}
+		if err := h.archiveTaskReferences(c.Request.Context(), taskID, taskStorageMode, refs); err != nil {
+			refund(image.ErrArchive)
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			openAIError(c, http.StatusBadGateway, image.ErrArchive, "参考图归档失败:"+err.Error())
+			return
+		}
 	}
 
 	runCtx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Minute)
@@ -1068,7 +1270,7 @@ func decodeReferenceInputs(ctx context.Context, inputs []string) ([]image.Refere
 		if s == "" {
 			return nil, fmt.Errorf("第 %d 张参考图为空", i+1)
 		}
-		data, name, err := fetchReferenceBytes(ctx, s)
+		data, name, contentType, err := fetchReferenceBytes(ctx, s)
 		if err != nil {
 			return nil, fmt.Errorf("第 %d 张参考图:%w", i+1, err)
 		}
@@ -1078,23 +1280,29 @@ func decodeReferenceInputs(ctx context.Context, inputs []string) ([]image.Refere
 		if len(data) > maxReferenceImageBytes {
 			return nil, fmt.Errorf("第 %d 张参考图超过 %dMB 上限", i+1, maxReferenceImageBytes/1024/1024)
 		}
-		out = append(out, image.ReferenceImage{Data: data, FileName: name})
+		out = append(out, image.ReferenceImage{Data: data, FileName: name, ContentType: contentType})
 	}
 	return out, nil
 }
 
 // fetchReferenceBytes 支持 http(s) / data URL / 裸 base64 三种输入。
-func fetchReferenceBytes(ctx context.Context, s string) ([]byte, string, error) {
+func fetchReferenceBytes(ctx context.Context, s string) ([]byte, string, string, error) {
 	low := strings.ToLower(s)
 	switch {
 	case strings.HasPrefix(low, "data:"):
 		// data:<mime>[;base64],<payload>
 		comma := strings.IndexByte(s, ',')
 		if comma < 0 {
-			return nil, "", errors.New("无效 data URL")
+			return nil, "", "", errors.New("无效 data URL")
 		}
 		meta := s[5:comma]
 		payload := s[comma+1:]
+		contentType := ""
+		if ct, _, ok := strings.Cut(meta, ";"); ok {
+			contentType = strings.TrimSpace(ct)
+		} else {
+			contentType = strings.TrimSpace(meta)
+		}
 		if strings.Contains(strings.ToLower(meta), ";base64") {
 			b, err := base64.StdEncoding.DecodeString(payload)
 			if err != nil {
@@ -1102,43 +1310,43 @@ func fetchReferenceBytes(ctx context.Context, s string) ([]byte, string, error) 
 				if b2, err2 := base64.URLEncoding.DecodeString(payload); err2 == nil {
 					b = b2
 				} else {
-					return nil, "", fmt.Errorf("base64 解码失败:%w", err)
+					return nil, "", "", fmt.Errorf("base64 解码失败:%w", err)
 				}
 			}
-			return b, "", nil
+			return b, "", contentType, nil
 		}
-		return []byte(payload), "", nil
+		return []byte(payload), "", contentType, nil
 	case strings.HasPrefix(low, "http://"), strings.HasPrefix(low, "https://"):
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 		// 15s 基本能覆盖 OSS / CDN / presigned URL
 		hc := &http.Client{Timeout: 15 * time.Second}
 		res, err := hc.Do(req)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 		defer res.Body.Close()
 		if res.StatusCode >= 400 {
-			return nil, "", fmt.Errorf("下载失败 HTTP %d", res.StatusCode)
+			return nil, "", "", fmt.Errorf("下载失败 HTTP %d", res.StatusCode)
 		}
 		body, err := io.ReadAll(io.LimitReader(res.Body, int64(maxReferenceImageBytes)+1))
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 		name := filepath.Base(req.URL.Path)
-		return body, name, nil
+		return body, name, res.Header.Get("Content-Type"), nil
 	default:
 		// 当成裸 base64 处理
 		b, err := base64.StdEncoding.DecodeString(s)
 		if err != nil {
 			if b2, err2 := base64.URLEncoding.DecodeString(s); err2 == nil {
-				return b2, "", nil
+				return b2, "", "", nil
 			}
-			return nil, "", fmt.Errorf("既非 URL 也非可解析的 base64:%w", err)
+			return nil, "", "", fmt.Errorf("既非 URL 也非可解析的 base64:%w", err)
 		}
-		return b, "", nil
+		return b, "", "", nil
 	}
 }
 

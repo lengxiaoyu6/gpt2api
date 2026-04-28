@@ -70,6 +70,9 @@ type Task struct {
 	FileIDs         []byte     `db:"file_ids" json:"-"`
 	ResultURLs      []byte     `db:"result_urls" json:"-"`
 	ThumbURLs       []byte     `db:"thumb_urls" json:"-"`
+	ReferenceCount  int        `db:"reference_count" json:"reference_count"`
+	ReferenceURLs   []byte     `db:"reference_urls" json:"-"`
+	ReferenceThumbURLs []byte  `db:"reference_thumb_urls" json:"-"`
 	Error           string     `db:"error" json:"error"`
 	EstimatedCredit int64      `db:"estimated_credit" json:"estimated_credit"`
 	CreditCost      int64      `db:"credit_cost" json:"credit_cost"`

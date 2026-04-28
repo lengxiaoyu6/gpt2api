@@ -10,8 +10,10 @@ import (
 )
 
 type proxyLocalStoreStub struct {
-	readOriginalCalls int
-	readThumbCalls    int
+	readOriginalCalls      int
+	readThumbCalls         int
+	readReferenceCalls     int
+	readReferenceThumbCalls int
 }
 
 func (s *proxyLocalStoreStub) ReadOriginal(taskID string, idx int) ([]byte, string, bool, error) {
@@ -22,6 +24,16 @@ func (s *proxyLocalStoreStub) ReadOriginal(taskID string, idx int) ([]byte, stri
 func (s *proxyLocalStoreStub) ReadThumb(taskID string, idx int) ([]byte, string, bool, error) {
 	s.readThumbCalls++
 	return []byte("thumb-bytes"), "image/jpeg", true, nil
+}
+
+func (s *proxyLocalStoreStub) ReadReference(taskID string, idx int) ([]byte, string, bool, error) {
+	s.readReferenceCalls++
+	return []byte("reference-bytes"), "image/png", true, nil
+}
+
+func (s *proxyLocalStoreStub) ReadReferenceThumb(taskID string, idx int) ([]byte, string, bool, error) {
+	s.readReferenceThumbCalls++
+	return []byte("reference-thumb-bytes"), "image/jpeg", true, nil
 }
 
 func TestLoadProxyImageSeparatesOriginalAndThumbCache(t *testing.T) {
@@ -66,5 +78,40 @@ func TestLoadProxyImageSeparatesOriginalAndThumbCache(t *testing.T) {
 	}
 	if store.readThumbCalls != 1 {
 		t.Fatalf("read thumb calls = %d", store.readThumbCalls)
+	}
+
+	ref1, refCT1, err := h.loadProxyImage(context.Background(), task, 0, imageproxy.ResourceReference)
+	if err != nil {
+		t.Fatalf("load reference: %v", err)
+	}
+	ref2, refCT2, err := h.loadProxyImage(context.Background(), task, 0, imageproxy.ResourceReference)
+	if err != nil {
+		t.Fatalf("load reference cached: %v", err)
+	}
+	refThumb1, refThumbCT1, err := h.loadProxyImage(context.Background(), task, 0, imageproxy.ResourceReferenceThumb)
+	if err != nil {
+		t.Fatalf("load reference thumb: %v", err)
+	}
+	refThumb2, refThumbCT2, err := h.loadProxyImage(context.Background(), task, 0, imageproxy.ResourceReferenceThumb)
+	if err != nil {
+		t.Fatalf("load reference thumb cached: %v", err)
+	}
+	if string(ref1) != "reference-bytes" || string(ref2) != "reference-bytes" {
+		t.Fatalf("unexpected reference bytes: %q %q", string(ref1), string(ref2))
+	}
+	if refCT1 != "image/png" || refCT2 != "image/png" {
+		t.Fatalf("unexpected reference content types: %q %q", refCT1, refCT2)
+	}
+	if string(refThumb1) != "reference-thumb-bytes" || string(refThumb2) != "reference-thumb-bytes" {
+		t.Fatalf("unexpected reference thumb bytes: %q %q", string(refThumb1), string(refThumb2))
+	}
+	if refThumbCT1 != "image/jpeg" || refThumbCT2 != "image/jpeg" {
+		t.Fatalf("unexpected reference thumb content types: %q %q", refThumbCT1, refThumbCT2)
+	}
+	if store.readReferenceCalls != 1 {
+		t.Fatalf("read reference calls = %d", store.readReferenceCalls)
+	}
+	if store.readReferenceThumbCalls != 1 {
+		t.Fatalf("read reference thumb calls = %d", store.readReferenceThumbCalls)
 	}
 }

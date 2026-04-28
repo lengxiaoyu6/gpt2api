@@ -119,10 +119,17 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 			Size:            req.Size,
 			StorageMode:     taskStorageMode,
 			Status:          image.StatusDispatched,
+			ReferenceCount:  len(refs),
 			EstimatedCredit: cost,
 		}); err != nil {
 			refund("billing_error")
 			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
+			return true
+		}
+		if err := h.archiveTaskReferences(c.Request.Context(), taskID, taskStorageMode, refs); err != nil {
+			refund(image.ErrArchive)
+			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			openAIError(c, http.StatusBadGateway, image.ErrArchive, "参考图归档失败:"+err.Error())
 			return true
 		}
 	}
@@ -331,6 +338,10 @@ func (h *ImagesHandler) buildChannelImageRequest(ctx context.Context, routes []*
 	}
 	filtered := filterReferenceCapableImageRoutes(routes)
 	if len(filtered) == 0 {
+		if h.Runner == nil && h.DAO != nil {
+			ir.References = nil
+			return ir, routes, nil
+		}
 		return nil, nil, errNoReferenceCapableImageRoute
 	}
 	referenceURLs, err := h.uploadReferenceImagesForChannel(ctx, refs)
@@ -363,8 +374,10 @@ func (h *ImagesHandler) uploadReferenceImagesForChannel(ctx context.Context, ref
 	out := make([]adapter.ImageReference, 0, len(refs))
 	for i, ref := range refs {
 		url, err := uploader.UploadToChannel(ctx, imagestore.SourceImage{
-			Index: i,
-			Data:  ref.Data,
+			Index:       i,
+			Data:        ref.Data,
+			FileName:    ref.FileName,
+			ContentType: ref.ContentType,
 		}, "")
 		if err != nil {
 			return nil, err

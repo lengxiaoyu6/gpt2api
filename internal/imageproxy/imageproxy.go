@@ -24,8 +24,10 @@ func init() {
 const DefaultTTL = 24 * time.Hour
 
 const (
-	ResourceOriginal = "original"
-	ResourceThumb    = "thumb"
+	ResourceOriginal       = "original"
+	ResourceThumb          = "thumb"
+	ResourceReference      = "reference"
+	ResourceReferenceThumb = "reference_thumb"
 )
 
 // BuildURL 生成图片代理地址。返回站内绝对路径。
@@ -54,15 +56,25 @@ func computeSig(taskID string, idx int, resource string, expMs int64) string {
 }
 
 func resourcePath(resource string) string {
-	if NormalizeResource(resource) == ResourceThumb {
+	switch NormalizeResource(resource) {
+	case ResourceThumb:
 		return "/p/thumb"
+	case ResourceReference:
+		return "/p/ref"
+	case ResourceReferenceThumb:
+		return "/p/ref-thumb"
 	}
 	return "/p/img"
 }
 
 func NormalizeResource(resource string) string {
-	if resource == ResourceThumb {
+	switch resource {
+	case ResourceThumb:
 		return ResourceThumb
+	case ResourceReference:
+		return ResourceReference
+	case ResourceReferenceThumb:
+		return ResourceReferenceThumb
 	}
 	return ResourceOriginal
 }

@@ -17,6 +17,8 @@ import (
 type historyImageStore interface {
 	HasOriginal(taskID string, idx int) (bool, error)
 	HasThumb(taskID string, idx int) (bool, error)
+	HasReference(taskID string, idx int) (bool, error)
+	HasReferenceThumb(taskID string, idx int) (bool, error)
 }
 
 // MeHandler 面向当前用户的图片任务查询与软删除接口(JWT 鉴权)。
@@ -38,29 +40,32 @@ func NewMeHandler(dao *DAO, files ...historyImageStore) *MeHandler {
 
 // taskView 是对外返回的视图结构,解码 JSON 列 + 隐藏内部字段。
 type taskView struct {
-	ID             uint64     `json:"id"`
-	TaskID         string     `json:"task_id"`
-	UserID         uint64     `json:"user_id"`
-	ModelID        uint64     `json:"model_id"`
-	AccountID      uint64     `json:"account_id"`
-	Prompt         string     `json:"prompt"`
-	N              int        `json:"n"`
-	Size           string     `json:"size"`
-	Upscale        string     `json:"upscale,omitempty"`
-	Status         string     `json:"status"`
-	ConversationID string     `json:"conversation_id,omitempty"`
-	Error          string     `json:"error,omitempty"`
-	CreditCost     int64      `json:"credit_cost"`
-	ImageURLs      []string   `json:"image_urls"`
-	ThumbURLs      []string   `json:"thumb_urls"`
-	FileIDs        []string   `json:"file_ids,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	ID                 uint64     `json:"id"`
+	TaskID             string     `json:"task_id"`
+	UserID             uint64     `json:"user_id"`
+	ModelID            uint64     `json:"model_id"`
+	AccountID          uint64     `json:"account_id"`
+	Prompt             string     `json:"prompt"`
+	N                  int        `json:"n"`
+	Size               string     `json:"size"`
+	Upscale            string     `json:"upscale,omitempty"`
+	Status             string     `json:"status"`
+	ConversationID     string     `json:"conversation_id,omitempty"`
+	Error              string     `json:"error,omitempty"`
+	CreditCost         int64      `json:"credit_cost"`
+	ImageURLs          []string   `json:"image_urls"`
+	ThumbURLs          []string   `json:"thumb_urls"`
+	ReferenceURLs      []string   `json:"reference_urls"`
+	ReferenceThumbURLs []string   `json:"reference_thumb_urls"`
+	FileIDs            []string   `json:"file_ids,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	FinishedAt         *time.Time `json:"finished_at,omitempty"`
 }
 
 func toView(t *Task, files historyImageStore) taskView {
 	urls, thumbs := buildHistoryImageURLs(t, files)
+	referenceURLs, referenceThumbURLs := buildHistoryReferenceURLs(t, files)
 	fids := t.DecodeFileIDs()
 	for i, id := range fids {
 		fids[i] = strings.TrimPrefix(id, "sed:")
@@ -85,7 +90,8 @@ func toView(t *Task, files historyImageStore) taskView {
 		AccountID: t.AccountID, Prompt: t.Prompt, N: t.N, Size: t.Size,
 		Upscale: t.Upscale,
 		Status:  t.Status, ConversationID: t.ConversationID, Error: t.Error,
-		CreditCost: t.CreditCost, ImageURLs: urls, ThumbURLs: thumbs, FileIDs: fids,
+		CreditCost: t.CreditCost, ImageURLs: urls, ThumbURLs: thumbs,
+		ReferenceURLs: referenceURLs, ReferenceThumbURLs: referenceThumbURLs, FileIDs: fids,
 		CreatedAt: t.CreatedAt, StartedAt: t.StartedAt, FinishedAt: t.FinishedAt,
 	}
 }
@@ -139,14 +145,66 @@ func buildHistoryImageURLs(t *Task, files historyImageStore) ([]string, []string
 	return images, thumbs
 }
 
+func buildHistoryReferenceURLs(t *Task, files historyImageStore) ([]string, []string) {
+	count := t.ReferenceCount
+	storedURLs := t.DecodeReferenceURLs()
+	storedThumbURLs := t.DecodeReferenceThumbURLs()
+	if len(storedURLs) > count {
+		count = len(storedURLs)
+	}
+	if len(storedThumbURLs) > count {
+		count = len(storedThumbURLs)
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	if NormalizeStorageMode(t.StorageMode) == StorageModeCloud {
+		references := make([]string, count)
+		thumbs := make([]string, count)
+		for i := 0; i < count; i++ {
+			if i < len(storedURLs) {
+				references[i] = strings.TrimSpace(storedURLs[i])
+			}
+			if i < len(storedThumbURLs) {
+				thumbs[i] = strings.TrimSpace(storedThumbURLs[i])
+			}
+			if thumbs[i] == "" {
+				thumbs[i] = references[i]
+			}
+		}
+		return references, thumbs
+	}
+	references := make([]string, count)
+	thumbs := make([]string, count)
+	for i := 0; i < count; i++ {
+		references[i] = imageproxy.BuildURL(t.TaskID, i, imageproxy.ResourceReference, imageproxy.DefaultTTL)
+		thumbs[i] = references[i]
+		if files == nil {
+			continue
+		}
+		ok, err := files.HasReference(t.TaskID, i)
+		if err != nil || !ok {
+			references[i] = ""
+			thumbs[i] = ""
+			continue
+		}
+		ok, err = files.HasReferenceThumb(t.TaskID, i)
+		if err == nil && ok {
+			thumbs[i] = imageproxy.BuildURL(t.TaskID, i, imageproxy.ResourceReferenceThumb, imageproxy.DefaultTTL)
+		}
+	}
+	return references, thumbs
+}
+
 func fileKey(taskID string, idx int) string { return fmt.Sprintf("%s:%d", taskID, idx) }
 
 // GET /api/me/images/tasks
 // 查询参数:
-//   limit(默认 20,上限 100), offset
-//   status            = queued | dispatched | running | success | failed
-//   keyword           = prompt 模糊匹配
-//   start_at, end_at  = 时间区间;支持 RFC3339、"2006-01-02 15:04:05"、"2006-01-02"
+//
+//	limit(默认 20,上限 100), offset
+//	status            = queued | dispatched | running | success | failed
+//	keyword           = prompt 模糊匹配
+//	start_at, end_at  = 时间区间;支持 RFC3339、"2006-01-02 15:04:05"、"2006-01-02"
 func (h *MeHandler) List(c *gin.Context) {
 	uid := middleware.UserID(c)
 	if uid == 0 {

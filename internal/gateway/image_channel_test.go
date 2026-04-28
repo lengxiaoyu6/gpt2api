@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image/color"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -29,6 +31,7 @@ import (
 	"github.com/432539/gpt2api/pkg/crypto"
 
 	sqlite3 "github.com/mattn/go-sqlite3"
+	stdimage "image"
 )
 
 type imageAdapterStub struct {
@@ -71,18 +74,26 @@ func (s *referenceCapableImageAdapterStub) SupportsImageReferences() bool {
 }
 
 type referenceUploaderStub struct {
-	mu      sync.Mutex
-	calls   int
-	sources []imagestore.SourceImage
-	urls    []string
-	err     error
+	mu       sync.Mutex
+	calls    int
+	sources  []imagestore.SourceImage
+	channels []string
+	compress []bool
+	urls     []string
+	err      error
 }
 
 func (s *referenceUploaderStub) UploadToChannel(ctx context.Context, src imagestore.SourceImage, channel string) (string, error) {
+	return s.UploadToChannelWithOptions(ctx, src, channel, false)
+}
+
+func (s *referenceUploaderStub) UploadToChannelWithOptions(ctx context.Context, src imagestore.SourceImage, channel string, serverCompress bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
 	s.sources = append(s.sources, src)
+	s.channels = append(s.channels, channel)
+	s.compress = append(s.compress, serverCompress)
 	if s.err != nil {
 		return "", s.err
 	}
@@ -579,12 +590,24 @@ func TestImageGenerationsRecordsChannelURLResultWhenRunnerMissing(t *testing.T) 
 	)
 	h.DAO = image.NewDAO(taskDB)
 	h.Runner = nil
+	h.referenceArchiveUploader = &referenceUploaderStub{
+		urls: []string{
+			"https://cdn.example.com/ref-1.png",
+			"https://cdn.example.com/ref-1-thumb.jpg",
+			"https://cdn.example.com/ref-2.png",
+			"https://cdn.example.com/ref-2-thumb.jpg",
+		},
+	}
 
 	reqBody, err := json.Marshal(ImageGenRequest{
 		Model:  "gpt-image-1",
 		Prompt: "生成图片",
 		N:      1,
 		Size:   "1024x1024",
+		ReferenceImages: []string{
+			dataURLForTest(mustChannelPNG(t, color.RGBA{R: 255, A: 255})),
+			dataURLForTest(mustChannelPNG(t, color.RGBA{G: 255, A: 255})),
+		},
 	})
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
@@ -609,15 +632,18 @@ func TestImageGenerationsRecordsChannelURLResultWhenRunnerMissing(t *testing.T) 
 	}
 
 	var stored struct {
-		TaskID      string `db:"task_id"`
-		UserID      uint64 `db:"user_id"`
-		KeyID       uint64 `db:"key_id"`
-		Prompt      string `db:"prompt"`
-		Status      string `db:"status"`
-		StorageMode string `db:"storage_mode"`
-		ResultURLs  string `db:"result_urls"`
+		TaskID             string `db:"task_id"`
+		UserID             uint64 `db:"user_id"`
+		KeyID              uint64 `db:"key_id"`
+		Prompt             string `db:"prompt"`
+		Status             string `db:"status"`
+		StorageMode        string `db:"storage_mode"`
+		ResultURLs         string `db:"result_urls"`
+		ReferenceURLs      string `db:"reference_urls"`
+		ReferenceThumbURLs string `db:"reference_thumb_urls"`
+		ReferenceCount     int    `db:"reference_count"`
 	}
-	if err := taskDB.Get(&stored, `SELECT task_id, user_id, key_id, prompt, status, storage_mode, result_urls FROM image_tasks WHERE task_id = ?`, resp.TaskID); err != nil {
+	if err := taskDB.Get(&stored, `SELECT task_id, user_id, key_id, prompt, status, storage_mode, result_urls, reference_urls, reference_thumb_urls, reference_count FROM image_tasks WHERE task_id = ?`, resp.TaskID); err != nil {
 		t.Fatalf("select stored task: %v", err)
 	}
 	if stored.UserID != ak.UserID || stored.KeyID != ak.ID {
@@ -634,6 +660,15 @@ func TestImageGenerationsRecordsChannelURLResultWhenRunnerMissing(t *testing.T) 
 	}
 	if stored.ResultURLs != `["`+upstreamURL+`"]` {
 		t.Fatalf("stored result_urls = %q", stored.ResultURLs)
+	}
+	if stored.ReferenceCount != 2 {
+		t.Fatalf("stored reference_count = %d", stored.ReferenceCount)
+	}
+	if stored.ReferenceURLs != `["https://cdn.example.com/ref-1.png","https://cdn.example.com/ref-2.png"]` {
+		t.Fatalf("stored reference_urls = %q", stored.ReferenceURLs)
+	}
+	if stored.ReferenceThumbURLs != `["https://cdn.example.com/ref-1-thumb.jpg","https://cdn.example.com/ref-2-thumb.jpg"]` {
+		t.Fatalf("stored reference_thumb_urls = %q", stored.ReferenceThumbURLs)
 	}
 }
 
@@ -756,6 +791,18 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/responses", "gpt-image-1", "gpt-5.4"),
 		uploader,
 	)
+	taskDB := newImageTaskSQLiteDB(t)
+	h.DAO = image.NewDAO(taskDB)
+	h.referenceArchiveUploader = &referenceUploaderStub{
+		urls: []string{
+			"https://cdn.example.com/archive-ref-1.png",
+			"https://cdn.example.com/archive-ref-1-thumb.jpg",
+			"https://cdn.example.com/archive-ref-2.png",
+			"https://cdn.example.com/archive-ref-2-thumb.jpg",
+			"https://cdn.example.com/archive-ref-3.png",
+			"https://cdn.example.com/archive-ref-3-thumb.jpg",
+		},
+	}
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -768,9 +815,12 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 	if err := writer.WriteField("size", "1024x1024"); err != nil {
 		t.Fatalf("write size field: %v", err)
 	}
-	writeMultipartFile(t, writer, "image", "first.png", []byte("first-file"))
-	writeMultipartFile(t, writer, "image[]", "second.png", []byte("second-file"))
-	writeMultipartFile(t, writer, "image[]", "third.png", []byte("third-file"))
+	firstPNG := mustChannelPNG(t, color.RGBA{R: 255, A: 255})
+	secondPNG := mustChannelPNG(t, color.RGBA{G: 255, A: 255})
+	thirdPNG := mustChannelPNG(t, color.RGBA{B: 255, A: 255})
+	writeMultipartFile(t, writer, "image", "first.png", firstPNG)
+	writeMultipartFile(t, writer, "image[]", "second.png", secondPNG)
+	writeMultipartFile(t, writer, "image[]", "third.png", thirdPNG)
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close multipart writer: %v", err)
 	}
@@ -787,14 +837,14 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 	if uploader.calls != 3 {
 		t.Fatalf("uploader.calls = %d, want 3", uploader.calls)
 	}
-	if string(uploader.sources[0].Data) != "first-file" {
-		t.Fatalf("uploader.sources[0] = %q", string(uploader.sources[0].Data))
+	if !bytes.Equal(uploader.sources[0].Data, firstPNG) {
+		t.Fatalf("uploader.sources[0] bytes mismatch")
 	}
-	if string(uploader.sources[1].Data) != "second-file" {
-		t.Fatalf("uploader.sources[1] = %q", string(uploader.sources[1].Data))
+	if !bytes.Equal(uploader.sources[1].Data, secondPNG) {
+		t.Fatalf("uploader.sources[1] bytes mismatch")
 	}
-	if string(uploader.sources[2].Data) != "third-file" {
-		t.Fatalf("uploader.sources[2] = %q", string(uploader.sources[2].Data))
+	if !bytes.Equal(uploader.sources[2].Data, thirdPNG) {
+		t.Fatalf("uploader.sources[2] bytes mismatch")
 	}
 
 	content := mustResponsesContent(t, payload)
@@ -818,11 +868,31 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode handler response: %v", err)
 	}
+	if resp.TaskID == "" {
+		t.Fatalf("task_id should be returned for channel edit tasks")
+	}
 	if len(resp.Data) != 1 {
 		t.Fatalf("len(resp.Data) = %d, want 1", len(resp.Data))
 	}
 	if got := resp.Data[0].URL; got != "data:image/png;base64,bXVsdGktcmVmLWZpbmFs" {
 		t.Fatalf("resp.Data[0].URL = %q", got)
+	}
+	var stored struct {
+		ReferenceCount     int    `db:"reference_count"`
+		ReferenceURLs      string `db:"reference_urls"`
+		ReferenceThumbURLs string `db:"reference_thumb_urls"`
+	}
+	if err := taskDB.Get(&stored, `SELECT reference_count, reference_urls, reference_thumb_urls FROM image_tasks WHERE task_id = ?`, resp.TaskID); err != nil {
+		t.Fatalf("select stored task: %v", err)
+	}
+	if stored.ReferenceCount != 3 {
+		t.Fatalf("stored reference_count = %d", stored.ReferenceCount)
+	}
+	if stored.ReferenceURLs != `["https://cdn.example.com/archive-ref-1.png","https://cdn.example.com/archive-ref-2.png","https://cdn.example.com/archive-ref-3.png"]` {
+		t.Fatalf("stored reference_urls = %q", stored.ReferenceURLs)
+	}
+	if stored.ReferenceThumbURLs != `["https://cdn.example.com/archive-ref-1-thumb.jpg","https://cdn.example.com/archive-ref-2-thumb.jpg","https://cdn.example.com/archive-ref-3-thumb.jpg"]` {
+		t.Fatalf("stored reference_thumb_urls = %q", stored.ReferenceThumbURLs)
 	}
 }
 
@@ -1059,6 +1129,22 @@ func writeMultipartFile(t *testing.T, writer *multipart.Writer, field, name stri
 	}
 }
 
+func mustChannelPNG(t *testing.T, c color.RGBA) []byte {
+	t.Helper()
+
+	img := stdimage.NewRGBA(stdimage.Rect(0, 0, 8, 8))
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			img.SetRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	return buf.Bytes()
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && (s == sub || containsIndex(s, sub) >= 0))
 }
@@ -1107,6 +1193,9 @@ func newImageTaskSQLiteDB(t *testing.T) *sqlx.DB {
 		file_ids TEXT NULL,
 		result_urls TEXT NULL,
 		thumb_urls TEXT NULL,
+		reference_count INTEGER NOT NULL DEFAULT 0,
+		reference_urls TEXT NULL,
+		reference_thumb_urls TEXT NULL,
 		error TEXT NOT NULL DEFAULT '',
 		estimated_credit INTEGER NOT NULL DEFAULT 0,
 		credit_cost INTEGER NOT NULL DEFAULT 0,

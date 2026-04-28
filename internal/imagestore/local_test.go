@@ -112,6 +112,117 @@ func TestLocalStoreDefaultThumbKeepsOriginalSize(t *testing.T) {
 	}
 }
 
+func TestLocalStoreSaveFindAndReadTaskReferences(t *testing.T) {
+	store := NewLocal(LocalOptions{RootDir: t.TempDir()})
+
+	saved, err := store.SaveTaskReferences(context.Background(), "img_ref_123", []SourceImage{
+		{Index: 0, Data: mustPNGBytes(t, 120, 80), ContentType: "image/png"},
+		{Index: 1, Data: mustJPEGBytes(t, 90, 60), ContentType: "image/jpeg"},
+	})
+	if err != nil {
+		t.Fatalf("save task references: %v", err)
+	}
+	if len(saved) != 2 {
+		t.Fatalf("saved count = %d", len(saved))
+	}
+	if saved[0].OriginalName != "ref_img_ref_123_0.png" {
+		t.Fatalf("reference original name 0 = %s", saved[0].OriginalName)
+	}
+	if saved[1].ThumbName != "tmp_ref_img_ref_123_1.jpg" {
+		t.Fatalf("reference thumb name 1 = %s", saved[1].ThumbName)
+	}
+
+	reference, ok, err := store.FindReference("img_ref_123", 0)
+	if err != nil {
+		t.Fatalf("find reference: %v", err)
+	}
+	if !ok || reference.Name != "ref_img_ref_123_0.png" {
+		t.Fatalf("unexpected reference lookup: ok=%v info=%#v", ok, reference)
+	}
+	referenceThumb, ok, err := store.FindReferenceThumb("img_ref_123", 1)
+	if err != nil {
+		t.Fatalf("find reference thumb: %v", err)
+	}
+	if !ok || referenceThumb.Name != "tmp_ref_img_ref_123_1.jpg" {
+		t.Fatalf("unexpected reference thumb lookup: ok=%v info=%#v", ok, referenceThumb)
+	}
+
+	refData, refContentType, ok, err := store.ReadReference("img_ref_123", 0)
+	if err != nil {
+		t.Fatalf("read reference: %v", err)
+	}
+	if !ok || len(refData) == 0 {
+		t.Fatalf("unexpected reference bytes: ok=%v len=%d", ok, len(refData))
+	}
+	if refContentType != "image/png" {
+		t.Fatalf("reference content type = %s", refContentType)
+	}
+
+	refThumbData, refThumbContentType, ok, err := store.ReadReferenceThumb("img_ref_123", 1)
+	if err != nil {
+		t.Fatalf("read reference thumb: %v", err)
+	}
+	if !ok || len(refThumbData) == 0 {
+		t.Fatalf("unexpected reference thumb bytes: ok=%v len=%d", ok, len(refThumbData))
+	}
+	if refThumbContentType != "image/jpeg" {
+		t.Fatalf("reference thumb content type = %s", refThumbContentType)
+	}
+}
+
+func TestLocalStoreSaveTaskReferencesAcceptsFilenameFallbackAndPlaceholderThumb(t *testing.T) {
+	store := NewLocal(LocalOptions{RootDir: t.TempDir()})
+
+	saved, err := store.SaveTaskReferences(context.Background(), "img_ref_placeholder", []SourceImage{
+		{
+			Index:       0,
+			FileName:    "reference.png",
+			Data:        []byte("not-a-real-image"),
+			ContentType: "application/octet-stream",
+		},
+	})
+	if err != nil {
+		t.Fatalf("save task references: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("saved count = %d", len(saved))
+	}
+	if saved[0].OriginalName != "ref_img_ref_placeholder_0.png" {
+		t.Fatalf("reference original name = %s", saved[0].OriginalName)
+	}
+	if saved[0].ThumbName != "tmp_ref_img_ref_placeholder_0.jpg" {
+		t.Fatalf("reference thumb name = %s", saved[0].ThumbName)
+	}
+
+	refData, refContentType, ok, err := store.ReadReference("img_ref_placeholder", 0)
+	if err != nil {
+		t.Fatalf("read reference: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected reference exists")
+	}
+	if string(refData) != "not-a-real-image" {
+		t.Fatalf("reference data = %q", string(refData))
+	}
+	if refContentType != "image/png" {
+		t.Fatalf("reference content type = %s", refContentType)
+	}
+
+	refThumbData, refThumbContentType, ok, err := store.ReadReferenceThumb("img_ref_placeholder", 0)
+	if err != nil {
+		t.Fatalf("read reference thumb: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected reference thumb exists")
+	}
+	if refThumbContentType != "image/jpeg" {
+		t.Fatalf("reference thumb content type = %s", refThumbContentType)
+	}
+	if _, _, err := image.Decode(bytes.NewReader(refThumbData)); err != nil {
+		t.Fatalf("decode reference thumb: %v", err)
+	}
+}
+
 func mustPNGBytes(t *testing.T, w, h int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))

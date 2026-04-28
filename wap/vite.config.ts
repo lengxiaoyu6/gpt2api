@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
         },
-        '/p/img': {
+        '/p/': {
           target: proxyTarget,
           changeOrigin: true,
         },
