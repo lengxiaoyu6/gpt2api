@@ -96,6 +96,35 @@ function getTaskDurationLabel(item: HistoryRecord) {
   return '未知';
 }
 
+function parseImageSize(size?: string | null) {
+  const raw = size?.trim() || '';
+  const matched = raw.match(/^(\d+)\s*x\s*(\d+)$/i);
+
+  if (!matched) {
+    return null;
+  }
+
+  const width = Number(matched[1]);
+  const height = Number(matched[2]);
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return { width, height };
+}
+
+function formatImageSize(size?: string | null) {
+  const raw = size?.trim() || '';
+  const parsed = parseImageSize(raw);
+
+  if (parsed) {
+    return `${parsed.width} × ${parsed.height}`;
+  }
+
+  return raw || '未知';
+}
+
 function getTaskBadgeClassName(kind: TaskStateKind) {
   if (kind === 'failed') {
     return 'border-rose-400/30 bg-rose-500/15 text-rose-100';
@@ -262,6 +291,8 @@ export default function HistoryView() {
   const selectedReferenceImages = getReferenceImages(selectedImage);
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
+  const selectedDisplayUrl = selectedOriginalUrl || selectedPreviewUrl;
+  const selectedImageSizeLabel = formatImageSize(selectedImage?.size);
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
   const isFirstPreviewImage = previewIndex === 0;
   const isLastPreviewImage = previewIndex >= selectedPreviewUrls.length - 1;
@@ -476,18 +507,18 @@ export default function HistoryView() {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg bg-card rounded-3xl overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-[calc(100vw-2rem)] max-w-lg shrink-0 bg-card rounded-3xl overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div
-                className="relative aspect-square"
+                className="relative flex h-[min(68vh,32rem)] min-h-[16rem] w-full items-center justify-center overflow-hidden bg-black"
                 onTouchStart={handlePreviewTouchStart}
                 onTouchEnd={handlePreviewTouchEnd}
                 onTouchCancel={() => {
                   touchStartXRef.current = null;
                 }}
               >
-                {selectedPreviewUrl ? (
-                  <img src={selectedPreviewUrl} className="w-full h-full object-cover" alt="Detail" />
+                {selectedDisplayUrl ? (
+                  <img src={selectedDisplayUrl} className="h-full w-full object-contain" alt="Detail" />
                 ) : (
                   <div className={`flex h-full w-full flex-col items-center justify-center gap-4 px-6 ${getTaskPanelClassName(selectedImageKind)}`}>
                     <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur-sm ${getTaskBadgeClassName(selectedImageKind)}`}>
@@ -642,6 +673,12 @@ export default function HistoryView() {
                     <span>生成耗时</span>
                     <span className="font-mono text-foreground font-bold">
                       {getTaskDurationLabel(selectedImage)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
+                    <span>完整尺寸</span>
+                    <span className="font-mono text-foreground font-bold">
+                      {selectedImageSizeLabel}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">

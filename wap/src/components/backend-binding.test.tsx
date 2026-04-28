@@ -403,6 +403,117 @@ describe('wap backend bindings', () => {
     expect(screen.getByAltText('Cloud city')).toHaveAttribute('src', '/p/thumb/task-1/0')
   })
 
+  test('history view displays original image size in detail panel', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 31,
+          task_id: 'task-portrait',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Portrait city',
+          n: 1,
+          size: '720x1280',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-portrait/0'],
+          thumb_urls: ['/p/thumb/task-portrait/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    expect(screen.getByAltText('Portrait city')).toHaveAttribute('src', '/p/thumb/task-portrait/0')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Portrait city'))
+    })
+
+    const detailImage = await screen.findByAltText('Detail')
+    const sizeRow = screen.getByText('完整尺寸').closest('div')
+
+    expect(detailImage).toHaveAttribute('src', '/p/img/task-portrait/0')
+    expect(detailImage.className).toContain('object-contain')
+    expect(detailImage.className).not.toContain('object-cover')
+    expect(findAncestorWithClass(detailImage, 'aspect-square')).toBeNull()
+    expect(sizeRow).not.toBeNull()
+    expect(within(sizeRow as HTMLElement).getByText('720 × 1280')).toBeInTheDocument()
+  })
+
+  test('history detail card keeps fixed width for wide images', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 32,
+          task_id: 'task-wide',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Wide city',
+          n: 1,
+          size: '3840x2160',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-wide/0'],
+          thumb_urls: ['/p/thumb/task-wide/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Wide city'))
+    })
+
+    const detailImage = await screen.findByAltText('Detail')
+    const detailCard = findAncestorWithClass(detailImage, 'bg-card')
+    const imageFrame = detailImage.parentElement as HTMLElement
+
+    expect(detailCard).not.toBeNull()
+    expect(detailCard?.className).toContain('w-[calc(100vw-2rem)]')
+    expect(detailCard?.className).toContain('max-w-lg')
+    expect(detailCard?.className).toContain('shrink-0')
+    expect(imageFrame.className).toContain('h-[min(68vh,32rem)]')
+    expect(imageFrame.className).toContain('w-full')
+    expect(imageFrame.style.aspectRatio).toBe('')
+  })
+
   test('history view refresh button forces server reload', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
     useStore.setState({
@@ -767,7 +878,7 @@ describe('wap backend bindings', () => {
     })
 
     expect(await screen.findByText('参考图')).toBeInTheDocument()
-    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-reference-success/0')
+    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-reference-success/0')
     expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', '/p/ref-thumb/task-reference-success/0')
     expect(screen.getByAltText('参考图 2')).toHaveAttribute('src', '/p/ref/task-reference-success/1')
   })
@@ -1149,7 +1260,7 @@ describe('wap backend bindings', () => {
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: '分享链接' })).toBeNull()
-      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-1/0')
+      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-1/0')
 
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
@@ -1231,7 +1342,7 @@ describe('wap backend bindings', () => {
       })
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
-      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/0')
+      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-2/0')
       expect(screen.getByText('第 1 张 / 共 2 张')).toBeInTheDocument()
 
       await act(async () => {
@@ -1244,7 +1355,7 @@ describe('wap backend bindings', () => {
         })
       })
 
-      await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/1'))
+      await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-2/1'))
       expect(screen.getByText('第 2 张 / 共 2 张')).toBeInTheDocument()
 
       await act(async () => {
@@ -1315,7 +1426,7 @@ describe('wap backend bindings', () => {
       fireEvent.click(screen.getByRole('button', { name: '下一张' }))
     })
 
-    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-visible-multi/1')
+    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-visible-multi/1')
     expect(screen.getByText('第 2 张 / 共 3 张')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '上一张' })).toBeEnabled()
     expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
