@@ -141,6 +141,44 @@ describe('web integration', () => {
     expect(screen.queryByRole('button', { name: '生成' })).toBeNull()
   })
 
+  test('app resets document scroll after switching tabs', () => {
+    const observedCalls: string[] = []
+    const scrollTo = vi.fn()
+    Object.defineProperty(window, 'scrollTo', {
+      configurable: true,
+      writable: true,
+      value: scrollTo.mockImplementation(() => {
+        observedCalls.push('scroll')
+      }),
+    })
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      setActiveTab: vi.fn((tab) => {
+        observedCalls.push(`set:${tab}`)
+        useStore.setState({ activeTab: tab })
+      }),
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+    scrollTo.mockClear()
+    observedCalls.length = 0
+
+    fireEvent.click(screen.getByRole('button', { name: '生图' }))
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' })
+    expect(observedCalls).toEqual(['set:generate', 'scroll'])
+  })
+
   test('home footer uses site name from site info', () => {
     useStore.setState({
       siteInfo: {
@@ -538,14 +576,22 @@ describe('web integration', () => {
     expect(screen.getByText('文生图')).toBeInTheDocument()
     expect(screen.getByText('图生图')).toBeInTheDocument()
     expect(screen.getByText('生成视频')).toBeInTheDocument()
+    expect(screen.getByText('选择功能入口，文生图与图生图将进入统一创作台，视频入口保留预告弹窗。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '文生图，开始生成' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '图生图，上传参考图' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '生成视频，查看预告' })).toBeInTheDocument()
+    expect(screen.getByText('3 个功能')).toBeInTheDocument()
+    expect(screen.getByText('开始生成')).toBeInTheDocument()
+    expect(screen.getByText('上传参考图')).toBeInTheDocument()
+    expect(screen.getByText('查看预告')).toBeInTheDocument()
     expect(screen.getByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.queryByText('极致优化')).toBeNull()
     expect(screen.queryByText('灵感图鉴')).toBeNull()
     expect(screen.queryByText('更多作品')).toBeNull()
     expect(heroSection?.className).toContain('h-[320px]')
     expect(heroSection?.className).toContain('lg:min-h-[460px]')
     expect(featureGrid.className).toContain('lg:grid-cols-3')
+    expect(featureGrid.className).toContain('items-stretch')
 
     fireEvent.click(screen.getByText('生成视频'))
 

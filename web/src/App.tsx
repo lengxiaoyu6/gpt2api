@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useLayoutEffect } from 'react';
 import { Home as HomeIcon, Wand2, History as HistoryIcon, User as UserIcon, LogIn, LogOut, Sparkles, Coins } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
@@ -33,6 +33,10 @@ const TAB_META: Record<TabKey, { title: string; description: string }> = {
   },
 };
 
+const resetDocumentScroll = () => {
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+};
+
 export default function App() {
   const {
     user,
@@ -58,6 +62,10 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [isDark]);
+
+  useLayoutEffect(() => {
+    resetDocumentScroll();
+  }, [activeTab]);
 
   const handleTabChange = (tab: TabKey) => {
     if ((tab === 'generate' || tab === 'history' || tab === 'profile') && !user) {
@@ -215,21 +223,18 @@ export default function App() {
         </div>
 
         <main className="flex flex-1 flex-col pt-16 pb-[calc(4rem+env(safe-area-inset-bottom))] lg:px-6 lg:pt-0 lg:pb-10 xl:px-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className={cn('w-full', activeTab === 'profile' && 'flex flex-1 flex-col')}
-            >
-              {activeTab === 'home' && <HomeView siteName={siteName} onStartGeneration={() => handleTabChange('generate')} />}
-              {activeTab === 'generate' && <GenerateView />}
-              {activeTab === 'history' && <HistoryView />}
-              {activeTab === 'profile' && <ProfileView siteName={siteName} />}
-            </motion.div>
-          </AnimatePresence>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className={cn('w-full', activeTab === 'profile' && 'flex flex-1 flex-col')}
+          >
+            {activeTab === 'home' && <HomeView siteName={siteName} onStartGeneration={() => handleTabChange('generate')} />}
+            {activeTab === 'generate' && <GenerateView />}
+            {activeTab === 'history' && <HistoryView />}
+            {activeTab === 'profile' && <ProfileView siteName={siteName} />}
+          </motion.div>
         </main>
       </div>
 

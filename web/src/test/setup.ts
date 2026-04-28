@@ -14,6 +14,12 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 })
 
+Object.defineProperty(window, 'scrollTo', {
+  configurable: true,
+  writable: true,
+  value: () => {},
+})
+
 Object.defineProperty(globalThis.URL, 'createObjectURL', {
   writable: true,
   value: () => 'blob:preview',
