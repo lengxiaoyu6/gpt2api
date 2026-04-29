@@ -88,7 +88,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const store = useUserStore()
-  const title = (to.meta.title as string) || 'GPT2API 后台'
+  const title = (to.meta.title as string) || 'OAI Hub 后台'
   document.title = title
 
   if (to.path === '/login' && store.isLoggedIn) {

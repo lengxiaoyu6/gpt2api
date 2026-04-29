@@ -77,7 +77,7 @@ describe('web integration', () => {
     resetStore()
     vi.clearAllMocks()
     vi.mocked(siteApi.fetchSiteInfo).mockResolvedValue({
-      'site.name': 'GPT2API',
+      'site.name': 'OAI Hub',
       'auth.allow_register': 'true',
     })
     vi.mocked(meApi.listMyImageTasks).mockResolvedValue({
@@ -271,7 +271,7 @@ describe('web integration', () => {
   test('home footer uses site name from site info', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': '星河图像',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -282,16 +282,16 @@ describe('web integration', () => {
 
     render(<App />)
 
-    expect(screen.getAllByText('星河图像')).toHaveLength(2)
-    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
-    expect(screen.queryByText('GPT2API • Creative Studio')).toBeNull()
+    expect(screen.getAllByText('OAI Hub')).toHaveLength(2)
+    expect(screen.getByText('© OAI Hub')).toBeInTheDocument()
+    expect(screen.queryByText('OAI Hub • Creative Studio')).toBeNull()
   })
 
   test('profile footer uses site name from site info', () => {
     useStore.setState({
       activeTab: 'profile',
       siteInfo: {
-        'site.name': '星河图像',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',

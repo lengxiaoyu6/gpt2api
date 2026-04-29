@@ -13,7 +13,7 @@ import { fetchSiteInfo } from '@/api/settings'
  */
 export const useSiteStore = defineStore('site', () => {
   const info = ref<Record<string, string>>({
-    'site.name': 'GPT2API',
+    'site.name': 'OAI Hub',
     'site.description': '面向开发者与小规模业务的 GPT-image 中转 API 平台',
     'site.logo_url': '',
     'site.footer': '',
@@ -39,7 +39,7 @@ export const useSiteStore = defineStore('site', () => {
   }
 
   function applyDocumentTitle() {
-    const n = info.value['site.name'] || 'GPT2API'
+    const n = info.value['site.name'] || 'OAI Hub'
     document.title = n
   }
 

@@ -48,7 +48,7 @@ describe('generate image notice', () => {
   test('generate page renders image notice from site info', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -77,7 +77,7 @@ describe('generate image notice', () => {
   test('generate page shows the original ratio grid and quality labels without resolution text', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -119,7 +119,7 @@ describe('generate image notice', () => {
   test('generate page updates price by selected output quality', async () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -159,7 +159,7 @@ describe('generate image notice', () => {
   test('generate page hides output size and count controls when model disables them', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -197,7 +197,7 @@ describe('generate image notice', () => {
   test('generate page shows pc experience hint in image-to-image mode', async () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -232,7 +232,7 @@ describe('generate image notice', () => {
   test('generate page omits idle inspiration placeholder at bottom', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -257,7 +257,7 @@ describe('generate image notice', () => {
   test('generate page renders named workbench regions and desktop result placeholder', () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -283,7 +283,7 @@ describe('generate image notice', () => {
   test('generate prompt textarea keeps fixed rows and internal scroll', async () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -358,7 +358,7 @@ describe('generate image notice', () => {
 
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -406,7 +406,7 @@ describe('generate image notice', () => {
   test('image-to-image upload can be cancelled after selecting a source image', async () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',
@@ -451,7 +451,7 @@ describe('generate image notice', () => {
     })
     useStore.setState({
       siteInfo: {
-        'site.name': 'GPT2API',
+        'site.name': 'OAI Hub',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',

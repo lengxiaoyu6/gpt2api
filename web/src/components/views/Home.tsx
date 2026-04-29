@@ -38,7 +38,7 @@ const HERO_PARTICLES = [
   { left: '40%', top: '8%', size: 4, delay: 2.9, duration: 8.5, color: 'bg-blue-200/80' },
 ];
 
-export default function HomeView({ onStartGeneration, siteName = 'GPT2API' }: HomeViewProps) {
+export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: HomeViewProps) {
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false);
 
   const handleFeatureKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, onClick: () => void) => {

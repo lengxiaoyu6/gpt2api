@@ -46,7 +46,7 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
 
   const canRegister = allowRegister(siteInfo);
   const needsEmailVerify = requireEmailVerify(siteInfo);
-  const siteName = siteInfo['site.name'] || 'GPT2API';
+  const siteName = siteInfo['site.name'] || 'OAI Hub';
   const showEmailCodeField = !isLogin && needsEmailVerify;
   const emailCodeButtonDisabled = sendingEmailCode || countdownSec > 0;
   const emailCodeButtonText = countdownSec > 0

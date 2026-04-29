@@ -16,7 +16,7 @@ export interface HistoryRecord extends meApi.ImageTask {}
 const HISTORY_PAGE_LIMIT = 20
 
 const defaultSiteInfo: Record<string, string> = {
-  'site.name': 'GPT2API',
+  'site.name': 'OAI Hub',
   'site.description': 'AI 创作平台',
   'site.logo_url': '',
   'site.footer': '',
@@ -40,7 +40,7 @@ export function requireEmailVerify(siteInfo: Record<string, string>) {
 }
 
 function applySiteInfo(siteInfo: Record<string, string>) {
-  const siteName = siteInfo['site.name'] || 'GPT2API'
+  const siteName = siteInfo['site.name'] || 'OAI Hub'
   document.title = siteName
   const logo = siteInfo['site.logo_url']
   if (!logo) return

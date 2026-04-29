@@ -32,7 +32,7 @@ interface ProfileViewProps {
 
 type ProfileSection = 'profile' | 'creditLogs' | 'apiKeys';
 
-export default function ProfileView({ siteName = 'GPT2API' }: ProfileViewProps) {
+export default function ProfileView({ siteName = 'OAI Hub' }: ProfileViewProps) {
   const { user, history, checkin, submitCheckin, fetchMe, fetchHistory, logout, forceRelogin } = useStore();
   const [submitting, setSubmitting] = useState(false);
   const [membershipDialogOpen, setMembershipDialogOpen] = useState(false);

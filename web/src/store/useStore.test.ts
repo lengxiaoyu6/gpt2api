@@ -63,7 +63,7 @@ describe('useStore backend integration', () => {
     resetStore()
     vi.clearAllMocks()
     vi.mocked(siteApi.fetchSiteInfo).mockResolvedValue({
-      'site.name': 'GPT2API',
+      'site.name': 'OAI Hub',
       'auth.allow_register': 'true',
     })
     vi.mocked(meApi.listMyModels).mockResolvedValue({
@@ -145,7 +145,7 @@ describe('useStore backend integration', () => {
 
     await state.bootstrapApp()
 
-    expect(useStore.getState().siteInfo['site.name']).toBe('GPT2API')
+    expect(useStore.getState().siteInfo['site.name']).toBe('OAI Hub')
     expect(useStore.getState().siteInfo['auth.require_email_verify']).toBe('false')
     expect((useStore.getState() as any).user).toBeNull()
     expect((useStore.getState() as any).bootstrapStatus).toBe('ready')

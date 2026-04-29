@@ -82,7 +82,7 @@ export default function App() {
     { id: 'profile', icon: UserIcon, label: '我的' },
   ];
 
-  const siteName = siteInfo['site.name'] || 'GPT2API';
+  const siteName = siteInfo['site.name'] || 'OAI Hub';
   const activeTabMeta = TAB_META[activeTab];
 
   return (
