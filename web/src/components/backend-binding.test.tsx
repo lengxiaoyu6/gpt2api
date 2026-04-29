@@ -505,6 +505,7 @@ describe('web backend bindings', () => {
 
     const detailImage = await screen.findByAltText('Detail')
     const sizeRow = screen.getByText('完整尺寸').closest('div')
+    const downloadButton = screen.getByRole('button', { name: '下载原图' })
 
     expect(detailImage).toHaveAttribute('src', '/p/thumb/task-portrait/0')
     expect(detailImage.className).toContain('object-contain')
@@ -512,6 +513,7 @@ describe('web backend bindings', () => {
     expect(findAncestorWithClass(detailImage, 'aspect-square')).toBeNull()
     expect(sizeRow).not.toBeNull()
     expect(within(sizeRow as HTMLElement).getByText('720 × 1280')).toBeInTheDocument()
+    expect((sizeRow as HTMLElement).compareDocumentPosition(downloadButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   test('history detail card keeps fixed width for wide images', async () => {
@@ -565,7 +567,9 @@ describe('web backend bindings', () => {
     expect(detailCard?.className).toContain('w-[calc(100vw-2rem)]')
     expect(detailCard?.className).toContain('max-w-lg')
     expect(detailCard?.className).toContain('shrink-0')
-    expect(imageFrame.className).toContain('h-[min(68vh,32rem)]')
+    expect(imageFrame.className).toContain('h-[min(44vh,22rem)]')
+    expect(imageFrame.className).toContain('sm:h-[min(56vh,28rem)]')
+    expect(imageFrame.className).toContain('lg:h-[min(68vh,32rem)]')
     expect(imageFrame.className).toContain('w-full')
     expect(imageFrame.style.aspectRatio).toBe('')
   })

@@ -622,7 +622,7 @@ export default function HistoryView() {
               className="w-[calc(100vw-2rem)] max-w-lg shrink-0 bg-card rounded-3xl overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div
-                className="relative flex h-[min(68vh,32rem)] min-h-[16rem] w-full items-center justify-center overflow-hidden bg-black"
+                className="relative flex h-[min(44vh,22rem)] min-h-[14rem] w-full items-center justify-center overflow-hidden bg-black sm:h-[min(56vh,28rem)] lg:h-[min(68vh,32rem)]"
                 onTouchStart={handlePreviewTouchStart}
                 onTouchEnd={handlePreviewTouchEnd}
                 onTouchCancel={() => {
@@ -712,15 +712,22 @@ export default function HistoryView() {
                   <X className="w-4 h-4" />
                 </Button>
               </div>
-              <div className="p-6 space-gap-6 flex flex-col gap-6">
-                <div className="min-w-0 space-y-2">
+              <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-6">
+                <div className="min-w-0 space-y-1.5">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-widest">
                     <Calendar className="w-3 h-3" />
                     <span>创建于 {new Date(selectedImage.created_at).toLocaleString()}</span>
                   </div>
-                  <h3 className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-lg font-bold leading-tight">
+                  <h3 className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-base font-bold leading-6 sm:max-h-32 sm:text-lg sm:leading-tight">
                     {selectedImage.prompt}
                   </h3>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/50 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
+                  <span>完整尺寸</span>
+                  <span className="font-mono text-foreground font-bold">
+                    {selectedImageSizeLabel}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -803,12 +810,6 @@ export default function HistoryView() {
                     <span>生成耗时</span>
                     <span className="font-mono text-foreground font-bold">
                       {getTaskDurationLabel(selectedImage)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
-                    <span>完整尺寸</span>
-                    <span className="font-mono text-foreground font-bold">
-                      {selectedImageSizeLabel}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
