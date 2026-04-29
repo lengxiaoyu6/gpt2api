@@ -66,6 +66,8 @@ var menuTree = []Menu{
 				Perms: []Permission{PermGroupWrite}},
 			{Key: "admin.usage", Title: "用量统计", Icon: "DataAnalysis", Path: "/admin/usage",
 				Perms: []Permission{PermUsageReadAll}},
+			{Key: "admin.request-logs", Title: "请求记录", Icon: "Tickets", Path: "/admin/request-logs",
+				Perms: []Permission{PermUsageReadAll}},
 			{Key: "admin.keys", Title: "全局 Keys", Icon: "Key", Path: "/admin/keys",
 				Perms: []Permission{PermKeyReadAll}},
 			{Key: "admin.image-tasks", Title: "生成记录", Icon: "Picture", Path: "/admin/image-tasks",

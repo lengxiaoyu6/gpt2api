@@ -105,10 +105,57 @@ export interface StatsResp {
 export function getUsageStats(params: {
   days?: number; top_n?: number;
   user_id?: number; model_id?: number;
+  key_id?: number; account_id?: number;
   type?: string; status?: string;
   since?: string; until?: string;
 } = {}): Promise<StatsResp> {
   return http.get('/api/admin/usage/stats', { params })
+}
+
+export interface UsageLogItem {
+  id: number
+  user_id: number
+  key_id: number
+  model_id: number
+  model_slug: string
+  account_id: number
+  request_id: string
+  type: 'chat' | 'image' | string
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  image_count: number
+  credit_cost: number
+  duration_ms: number
+  status: string
+  error_code: string
+  ip: string
+  created_at: string
+}
+
+export interface UsageLogFilter {
+  user_id?: number
+  key_id?: number
+  model_id?: number
+  account_id?: number
+  type?: string
+  status?: string
+  since?: string
+  until?: string
+  limit?: number
+  offset?: number
+}
+
+export interface UsageLogPage {
+  items: UsageLogItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export function listUsageLogs(params: UsageLogFilter = {}): Promise<UsageLogPage> {
+  return http.get('/api/admin/usage/logs', { params })
 }
 
 // ---------- admin keys ----------

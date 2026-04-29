@@ -53,6 +53,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户分组', perm: 'group:write' } },
       { path: 'usage', component: () => import('@/views/admin/UsageStats.vue'),
         meta: { title: '用量统计', perm: 'usage:read_all' } },
+      { path: 'request-logs', component: () => import('@/views/admin/RequestLogs.vue'),
+        meta: { title: '请求记录', perm: 'usage:read_all' } },
       { path: 'image-tasks', component: () => import('@/views/admin/ImageTasks.vue'),
         meta: { title: '图片任务', perm: 'usage:read_all' } },
       { path: 'keys', component: () => import('@/views/admin/AdminKeys.vue'),

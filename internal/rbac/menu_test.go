@@ -25,3 +25,27 @@ func TestMenuForRoleIncludesPersonalSecurity(t *testing.T) {
 	}
 	t.Fatal("personal.security not found in user menu")
 }
+
+func TestMenuForRoleIncludesAdminRequestLogs(t *testing.T) {
+	menus := MenuForRole("admin")
+	for _, menu := range menus {
+		if menu.Key != "admin" {
+			continue
+		}
+		for _, child := range menu.Children {
+			if child.Key == "admin.request-logs" {
+				if child.Title != "请求记录" {
+					t.Fatalf("title = %q", child.Title)
+				}
+				if child.Path != "/admin/request-logs" {
+					t.Fatalf("path = %q", child.Path)
+				}
+				if len(child.Perms) != 1 || child.Perms[0] != PermUsageReadAll {
+					t.Fatalf("perms = %#v", child.Perms)
+				}
+				return
+			}
+		}
+	}
+	t.Fatal("admin.request-logs not found in admin menu")
+}
