@@ -32,13 +32,22 @@ services:
     image: redis:7-alpine
     container_name: gpt2api-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+        fi
+        exec redis-server --appendonly yes
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", 'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping; else redis-cli ping; fi']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -66,6 +75,7 @@ services:
       # 通过 GPT2API_* 覆盖 config.yaml 中的任一字段
       GPT2API_MYSQL_DSN: "${MYSQL_USER:-gpt2api}:${MYSQL_PASSWORD:-gpt2api}@tcp(mysql:3306)/${MYSQL_DATABASE:-gpt2api}?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_unicode_ci"
       GPT2API_REDIS_ADDR: "redis:6379"
+      GPT2API_REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
       GPT2API_BACKUP_DIR: /app/data/backups
       GPT2API_BACKUP_RETENTION: ${BACKUP_RETENTION:-30}
       GPT2API_BACKUP_ALLOW_RESTORE: ${BACKUP_ALLOW_RESTORE:-false}

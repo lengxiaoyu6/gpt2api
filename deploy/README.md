@@ -76,14 +76,16 @@ docker compose logs -f server  # 观察迁移 + 启动日志
 | 只改了 `.env` | `docker compose up -d`(环境变量变化 compose 会自动感知并重建容器) |
 | 想秒重启 | `docker compose restart server` |
 
-默认暴露端口:
+默认发布端口:
 
 
 | 服务     | 端口     | 说明                   |
 | ------ | ------ | -------------------- |
 | server | `8080` | OpenAI 兼容网关 + 后台 API |
 | mysql  | `3306` | 业务数据库                |
-| redis  | `6379` | 锁 / 限流 / 缓存          |
+| redis  | `6379` | Compose 内部端口,供 server 访问 |
+
+Redis 默认不发布宿主机端口,server 通过 Compose 内部网络访问 `redis:6379`。如需进入 Redis 排查,使用 `docker compose exec redis redis-cli`;如果 `.env` 设置了 `REDIS_PASSWORD`,则使用 `docker compose exec redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning`。
 
 
 ## 目录与数据卷
@@ -105,6 +107,7 @@ docker compose logs -f server  # 观察迁移 + 启动日志
 - `JWT_SECRET`:至少 32 字符随机串
 - `CRYPTO_AES_KEY`:**严格** 64 位 hex(32 字节 AES-256 key)
 - `MYSQL_ROOT_PASSWORD` / `MYSQL_PASSWORD`
+- `REDIS_PASSWORD`:建议设置随机字符串,server 会通过 `GPT2API_REDIS_PASSWORD` 自动使用
 
 后端对高危操作的保护:
 
