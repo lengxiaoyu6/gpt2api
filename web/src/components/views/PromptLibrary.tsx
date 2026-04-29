@@ -1,5 +1,5 @@
 import React from 'react'
-import { BookOpen, Copy, Loader2, Search, Send, Tags } from 'lucide-react'
+import { BookOpen, Copy, Loader2, Search, Send, Tags, X, ZoomIn } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { listMyPromptCategories, listMyPrompts, type PromptLibraryItem } from '@/api/prompt'
@@ -12,6 +12,11 @@ import { useStore } from '@/store/useStore'
 
 interface Props {
   pageSize?: number
+}
+
+type ImageDimensions = {
+  width: number
+  height: number
 }
 
 function buildListParams(keyword: string, category: string, limit: number, offset: number) {
@@ -29,6 +34,44 @@ function previewContent(value: string) {
   return `${text.slice(0, 120)}…`
 }
 
+type PromptPreviewFields = {
+  preview_image_url?: string | null
+  preview_url?: string | null
+  previewImageUrl?: string | null
+  preview?: string | null
+  image_url?: string | null
+  imageUrl?: string | null
+}
+
+function getPromptPreviewImageURL(item: PromptLibraryItem | null) {
+  if (!item) return ''
+  const source = item as PromptPreviewFields
+  const value = [
+    source.preview_image_url,
+    source.preview_url,
+    source.previewImageUrl,
+    source.preview,
+    source.image_url,
+    source.imageUrl,
+  ].find((candidate) => typeof candidate === 'string' && candidate.trim())
+  return value?.trim() || ''
+}
+
+function normalizeImageDimensions(width: number, height: number): ImageDimensions | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null
+  }
+  return {
+    width: Math.round(width),
+    height: Math.round(height),
+  }
+}
+
+function formatImageDimensions(size: ImageDimensions | null) {
+  if (!size) return '读取中'
+  return `${size.width} × ${size.height} px`
+}
+
 export default function PromptLibraryView({ pageSize = 20 }: Props) {
   const { setActiveTab, setPendingPrompt } = useStore()
   const [items, setItems] = React.useState<PromptLibraryItem[]>([])
@@ -40,6 +83,8 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
   const [category, setCategory] = React.useState('')
   const [categories, setCategories] = React.useState<string[]>([])
   const [selected, setSelected] = React.useState<PromptLibraryItem | null>(null)
+  const [selectedPreviewSize, setSelectedPreviewSize] = React.useState<ImageDimensions | null>(null)
+  const [previewZoomOpen, setPreviewZoomOpen] = React.useState(false)
 
   const loadPage = React.useCallback(async (offset: number, append: boolean, nextKeyword = keyword, nextCategory = category) => {
     setLoading(true)
@@ -123,6 +168,17 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
 
   const hasMore = items.length < total
   const empty = loaded && !loading && items.length === 0
+  const selectedPreviewImageURL = getPromptPreviewImageURL(selected)
+  const selectedPreviewSizeLabel = formatImageDimensions(selectedPreviewSize)
+
+  React.useEffect(() => {
+    setSelectedPreviewSize(null)
+    setPreviewZoomOpen(false)
+  }, [selected?.id, selectedPreviewImageURL])
+
+  const handleSelectedPreviewLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    setSelectedPreviewSize(normalizeImageDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight))
+  }
 
   return (
     <PageShell width="wide" className="space-y-5 lg:space-y-7">
@@ -195,42 +251,45 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
 
       {items.length > 0 ? (
         <section aria-label="Prompt 卡片列表" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-label={`查看 Prompt：${item.title}`}
-              onClick={() => setSelected(item)}
-              className="group flex min-h-64 flex-col rounded-[1.75rem] border border-border/60 bg-card/70 p-5 text-left shadow-sm shadow-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_22px_54px_-36px_rgba(15,23,42,0.55)] focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-            >
-              {item.preview_image_url ? (
-                <div className="-mx-1 -mt-1 mb-4 overflow-hidden rounded-[1.35rem] border border-border/60 bg-secondary/30">
-                  <img
-                    src={item.preview_image_url}
-                    alt={`${item.title}预览图`}
-                    loading="lazy"
-                    className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                  />
+          {items.map((item) => {
+            const previewImageURL = getPromptPreviewImageURL(item)
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={`查看 Prompt：${item.title}`}
+                onClick={() => setSelected(item)}
+                className="group flex min-h-64 flex-col rounded-[1.75rem] border border-border/60 bg-card/70 p-5 text-left shadow-sm shadow-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_22px_54px_-36px_rgba(15,23,42,0.55)] focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+              >
+                {previewImageURL ? (
+                  <div className="-mx-1 -mt-1 mb-4 overflow-hidden rounded-[1.35rem] border border-border/60 bg-secondary/30">
+                    <img
+                      src={previewImageURL}
+                      alt={`${item.title}预览图`}
+                      loading="lazy"
+                      className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                    />
+                  </div>
+                ) : null}
+                <div className="flex items-start justify-between gap-3">
+                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">{item.category || '通用'}</span>
+                  <span className="text-xs font-medium text-muted-foreground">#{item.id}</span>
                 </div>
-              ) : null}
-              <div className="flex items-start justify-between gap-3">
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">{item.category || '通用'}</span>
-                <span className="text-xs font-medium text-muted-foreground">#{item.id}</span>
-              </div>
-              <h2 className="mt-4 text-lg font-black tracking-tight text-foreground group-hover:text-primary">{item.title}</h2>
-              <p className="mt-3 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
-                {previewContent(item.content)}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {(item.tags || []).slice(0, 4).map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/65 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-                    <Tags className="h-3 w-3" />
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </button>
-          ))}
+                <h2 className="mt-4 text-lg font-black tracking-tight text-foreground group-hover:text-primary">{item.title}</h2>
+                <p className="mt-3 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                  {previewContent(item.content)}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(item.tags || []).slice(0, 4).map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/65 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                      <Tags className="h-3 w-3" />
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            )
+          })}
         </section>
       ) : null}
 
@@ -283,14 +342,24 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 prompt-scrollbar">
-                {selected.preview_image_url ? (
-                  <div className="mb-4 overflow-hidden rounded-2xl border border-border/60 bg-secondary/30">
-                    <img
-                      src={selected.preview_image_url}
-                      alt={`${selected.title}预览图`}
-                      loading="lazy"
-                      className="max-h-[420px] w-full object-cover"
-                    />
+                {selectedPreviewImageURL ? (
+                  <div className="mb-4 space-y-3">
+                    <button
+                      type="button"
+                      aria-label={`放大查看预览图：${selected.title}`}
+                      onClick={() => setPreviewZoomOpen(true)}
+                      className="group block w-full rounded-[1.75rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    >
+                      <div className="mx-auto flex w-full max-w-md items-center justify-center overflow-hidden rounded-[1.6rem] border border-border/60 bg-secondary/35 shadow-sm shadow-black/5">
+                        <img
+                          src={selectedPreviewImageURL}
+                          alt={`${selected.title}预览图`}
+                          loading="lazy"
+                          onLoad={handleSelectedPreviewLoad}
+                          className="max-h-[240px] w-full object-contain transition duration-300 group-hover:scale-[1.01]"
+                        />
+                      </div>
+                    </button>
                   </div>
                 ) : null}
                 <div className="whitespace-pre-wrap break-words rounded-2xl border border-border/60 bg-background/80 p-4 text-sm leading-7 text-foreground">
@@ -307,6 +376,48 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                   <Send className="h-4 w-4" />
                   带入生图页
                 </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewZoomOpen} onOpenChange={setPreviewZoomOpen}>
+        <DialogContent
+          showCloseButton={false}
+          className="inset-0 top-0 left-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-border/20 bg-slate-950/96 p-0 text-white shadow-none sm:inset-auto sm:top-1/2 sm:left-1/2 sm:h-auto sm:w-full sm:max-w-5xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:gap-4 sm:rounded-[2rem] sm:shadow-[0_28px_90px_-36px_rgba(0,0,0,0.85)]"
+        >
+          {selected && selectedPreviewImageURL ? (
+            <div className="flex h-full min-h-0 flex-col sm:max-h-[92vh]">
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6 sm:py-4">
+                <div className="min-w-0 space-y-1">
+                  <DialogTitle className="text-sm font-bold leading-5 text-white sm:truncate sm:text-base">{selected.title}预览图放大查看</DialogTitle>
+                  <DialogDescription className="space-y-1 text-sm text-white/65">
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      完整尺寸
+                    </span>
+                    <span className="block font-mono text-sm font-bold text-white">{selectedPreviewSizeLabel}</span>
+                  </DialogDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  aria-label="关闭预览图放大查看"
+                  onClick={() => setPreviewZoomOpen(false)}
+                  className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/15"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-black/50 px-3 py-3 sm:flex sm:min-h-[20rem] sm:items-center sm:justify-center sm:p-6">
+                <img
+                  src={selectedPreviewImageURL}
+                  alt={`${selected.title}预览图放大查看`}
+                  loading="lazy"
+                  onLoad={handleSelectedPreviewLoad}
+                  className="mx-auto block max-h-full w-auto max-w-full object-contain sm:max-h-[78vh]"
+                />
               </div>
             </div>
           ) : null}

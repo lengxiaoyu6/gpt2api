@@ -78,6 +78,69 @@ describe('web prompt library page', () => {
     expect(useStore.getState().consumePendingPrompt()).toBe('')
   })
 
+  test('shows preview image size and opens zoom viewer from prompt detail dialog', async () => {
+    render(<PromptLibraryView />)
+
+    expect(await screen.findByText('电影感城市夜景')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '查看 Prompt：电影感城市夜景' }))
+
+    const dialog = await screen.findByRole('dialog', { name: '电影感城市夜景' })
+    const previewButton = within(dialog).getByRole('button', { name: '放大查看预览图：电影感城市夜景' })
+    const previewImage = within(previewButton).getByRole('img', { name: '电影感城市夜景预览图' })
+
+    Object.defineProperty(previewImage, 'naturalWidth', { configurable: true, value: 2048 })
+    Object.defineProperty(previewImage, 'naturalHeight', { configurable: true, value: 1536 })
+    fireEvent.load(previewImage)
+
+    expect(within(dialog).getByText('完整尺寸')).toBeInTheDocument()
+    expect(within(dialog).getByText('2048 × 1536 px')).toBeInTheDocument()
+    expect(previewImage.className).toContain('max-h-[240px]')
+
+    fireEvent.click(previewButton)
+
+    const zoomDialog = await screen.findByRole('dialog', { name: '电影感城市夜景预览图放大查看' })
+    const zoomedImage = within(zoomDialog).getByRole('img', { name: '电影感城市夜景预览图放大查看' })
+    expect(zoomedImage).toHaveAttribute('src', 'https://cdn.example.test/prompts/city.webp')
+    expect(within(zoomDialog).getByText('2048 × 1536 px')).toBeInTheDocument()
+    expect(zoomDialog.className).toContain('h-[100dvh]')
+    expect(zoomDialog.className).toContain('w-screen')
+    expect(zoomDialog.className).toContain('rounded-none')
+    expect(zoomedImage.className).toContain('max-h-full')
+    expect(zoomedImage.parentElement?.className).toContain('overflow-auto')
+  })
+
+  test('renders inspiration preview image from compatible preview url fields', async () => {
+    vi.mocked(api.listMyPrompts).mockResolvedValueOnce({
+      items: [
+        {
+          id: 9,
+          title: '水彩花园灵感图',
+          content: '水彩花园，柔和光线',
+          category: '插画',
+          preview_url: 'https://cdn.example.test/prompts/garden.webp',
+          tags: ['水彩'],
+          enabled: true,
+          sort_order: 9,
+          created_at: '2026-04-29T09:00:00Z',
+          updated_at: '2026-04-29T09:00:00Z',
+        } as any,
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    render(<PromptLibraryView />)
+
+    expect(await screen.findByText('水彩花园灵感图')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '水彩花园灵感图预览图' })).toHaveAttribute('src', 'https://cdn.example.test/prompts/garden.webp')
+
+    fireEvent.click(screen.getByRole('button', { name: '查看 Prompt：水彩花园灵感图' }))
+
+    const dialog = await screen.findByRole('dialog', { name: '水彩花园灵感图' })
+    expect(within(dialog).getByRole('img', { name: '水彩花园灵感图预览图' })).toHaveAttribute('src', 'https://cdn.example.test/prompts/garden.webp')
+  })
+
   test('supports keyword category query and loading next page', async () => {
     vi.mocked(api.listMyPrompts)
       .mockResolvedValueOnce({
