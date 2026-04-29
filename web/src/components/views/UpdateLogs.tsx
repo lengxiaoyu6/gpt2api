@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowLeft, CalendarDays, FileClock, Loader2, Sparkles } from 'lucide-react'
+import { CalendarDays, FileClock, Loader2 } from 'lucide-react'
 
 import { listPublicUpdateLogs, type UpdateLog } from '@/api/update-log'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   pageSize?: number
-  onBackHome?: () => void
 }
 
 function formatDate(value: string | null) {
@@ -25,7 +24,7 @@ function getDisplayDate(item: UpdateLog) {
   return formatDate(item.published_at || item.created_at)
 }
 
-export default function UpdateLogsView({ pageSize = 20, onBackHome }: Props) {
+export default function UpdateLogsView({ pageSize = 20 }: Props) {
   const [items, setItems] = React.useState<UpdateLog[]>([])
   const [total, setTotal] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
@@ -52,14 +51,6 @@ export default function UpdateLogsView({ pageSize = 20, onBackHome }: Props) {
   React.useEffect(() => {
     void loadPage(0, false)
   }, [loadPage])
-
-  const handleBackHome = () => {
-    if (onBackHome) {
-      onBackHome()
-      return
-    }
-    window.history.back()
-  }
 
   const loadMore = () => {
     if (loading) return

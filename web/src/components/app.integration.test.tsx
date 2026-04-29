@@ -268,13 +268,13 @@ describe('web integration', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '更新日志' })[0])
 
     expect(useStore.getState().activeTab).toBe('updateLogs')
-    expect(await screen.findByRole('heading', { name: '系统更新日志' })).toBeInTheDocument()
+    expect(await screen.findByText('更新日志使用时间线页面展示')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '系统更新日志' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: '系统更新日志时间线' })).toBeInTheDocument()
-    expect(screen.getByText('更新日志使用时间线页面展示')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: '系统更新日志' })).toBeNull()
     expect(updateLogApi.listPublicUpdateLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
 
-    fireEvent.click(screen.getByRole('button', { name: '返回首页' }))
+    fireEvent.click(screen.getAllByRole('button', { name: '前往首页' })[0])
     expect(useStore.getState().activeTab).toBe('home')
   })
 

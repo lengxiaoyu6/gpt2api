@@ -278,7 +278,7 @@ export default function App() {
             {activeTab === 'generate' && <GenerateView />}
             {activeTab === 'history' && <HistoryView />}
             {activeTab === 'profile' && <ProfileView siteName={siteName} />}
-            {activeTab === 'updateLogs' && <UpdateLogsView onBackHome={() => handleTabChange('home')} />}
+            {activeTab === 'updateLogs' && <UpdateLogsView />}
           </motion.div>
         </main>
       </div>

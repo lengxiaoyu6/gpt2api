@@ -39,7 +39,8 @@ describe('web update log timeline page', () => {
 
     render(<UpdateLogsView />)
 
-    expect(await screen.findByRole('heading', { name: '系统更新日志' })).toBeInTheDocument()
+    expect(await screen.findByText('新增系统更新日志页面')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '系统更新日志' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: '系统更新日志时间线' })).toBeInTheDocument()
     const timeline = screen.getByRole('list', { name: '更新日志时间线' })
     const entries = within(timeline).getAllByRole('listitem')
@@ -47,7 +48,6 @@ describe('web update log timeline page', () => {
     expect(entries).toHaveLength(1)
     expect(within(entries[0]).getByText('v1.2.0')).toBeInTheDocument()
     expect(within(entries[0]).queryByText('系统更新')).not.toBeInTheDocument()
-    expect(within(entries[0]).getByText('新增系统更新日志页面')).toBeInTheDocument()
     expect(api.listPublicUpdateLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
   })
 
@@ -90,13 +90,13 @@ describe('web update log timeline page', () => {
     expect(await screen.findByText('暂无更新日志')).toBeInTheDocument()
   })
 
-  test('calls back-home action from page header', () => {
+  test('does not render a separate page title or return button', async () => {
     vi.mocked(api.listPublicUpdateLogs).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
-    const backHome = vi.fn()
 
-    render(<UpdateLogsView onBackHome={backHome} />)
-    fireEvent.click(screen.getByRole('button', { name: '返回首页' }))
+    render(<UpdateLogsView />)
 
-    expect(backHome).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(api.listPublicUpdateLogs).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('heading', { name: '系统更新日志' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '返回首页' })).not.toBeInTheDocument()
   })
 })
