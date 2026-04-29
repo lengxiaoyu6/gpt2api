@@ -314,7 +314,7 @@ export default function HistoryView() {
   const selectedReferenceImages = getReferenceImages(selectedImage);
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
-  const selectedDisplayUrl = selectedOriginalUrl || selectedPreviewUrl;
+  const selectedDisplayUrl = selectedPreviewUrl || selectedOriginalUrl;
   const selectedImageSizeLabel = formatImageSize(selectedImage?.size);
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
   const isFirstPreviewImage = previewIndex === 0;

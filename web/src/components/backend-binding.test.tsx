@@ -459,7 +459,7 @@ describe('web backend bindings', () => {
     expect(shell?.className).not.toContain(' fade-in ')
   })
 
-  test('history view displays original image size in detail panel', async () => {
+  test('history view displays thumbnail image in detail panel while keeping original size metadata', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
 
     useStore.setState({
@@ -506,7 +506,7 @@ describe('web backend bindings', () => {
     const detailImage = await screen.findByAltText('Detail')
     const sizeRow = screen.getByText('完整尺寸').closest('div')
 
-    expect(detailImage).toHaveAttribute('src', '/p/img/task-portrait/0')
+    expect(detailImage).toHaveAttribute('src', '/p/thumb/task-portrait/0')
     expect(detailImage.className).toContain('object-contain')
     expect(detailImage.className).not.toContain('object-cover')
     expect(findAncestorWithClass(detailImage, 'aspect-square')).toBeNull()
@@ -1249,7 +1249,7 @@ describe('web backend bindings', () => {
     })
 
     expect(await screen.findByText('参考图')).toBeInTheDocument()
-    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-reference-success/0')
+    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-reference-success/0')
     expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', '/p/ref-thumb/task-reference-success/0')
     expect(screen.getByAltText('参考图 2')).toHaveAttribute('src', '/p/ref/task-reference-success/1')
   })
@@ -1633,7 +1633,7 @@ describe('web backend bindings', () => {
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: '分享链接' })).toBeNull()
-      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-1/0')
+      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-1/0')
 
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
@@ -1715,7 +1715,7 @@ describe('web backend bindings', () => {
       })
 
       expect(await screen.findByText('任务状态')).toBeInTheDocument()
-      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-2/0')
+      expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/0')
       expect(screen.getByText('第 1 张 / 共 2 张')).toBeInTheDocument()
 
       await act(async () => {
@@ -1728,7 +1728,7 @@ describe('web backend bindings', () => {
         })
       })
 
-      await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-2/1'))
+      await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/1'))
       expect(screen.getByText('第 2 张 / 共 2 张')).toBeInTheDocument()
 
       await act(async () => {
@@ -1799,7 +1799,7 @@ describe('web backend bindings', () => {
       fireEvent.click(screen.getByRole('button', { name: '下一张' }))
     })
 
-    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/img/task-visible-multi/1')
+    expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-visible-multi/1')
     expect(screen.getByText('第 2 张 / 共 3 张')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '上一张' })).toBeEnabled()
     expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
