@@ -105,6 +105,7 @@ export default function GenerateView() {
     siteInfo,
     selectedImageModel,
     setSelectedImageModel,
+    consumePendingPrompt,
   } = useStore();
   const [mode, setMode] = useState<'txt' | 'img'>('txt');
   const [prompt, setPrompt] = useState('');
@@ -135,6 +136,14 @@ export default function GenerateView() {
   const currentQualityPrice = resolveImageUnitPrice(currentModel, activeOutputQuality, supportsOutputSize);
   const effectiveImageCount = supportsMultiImage ? imageCount : 1;
   const totalPrice = currentQualityPrice * effectiveImageCount;
+
+  useEffect(() => {
+    const nextPrompt = consumePendingPrompt();
+    if (nextPrompt) {
+      setMode('txt');
+      setPrompt(nextPrompt);
+    }
+  }, [consumePendingPrompt]);
 
   useEffect(() => {
     sourceImagesRef.current = sourceImages;

@@ -17,6 +17,7 @@ import (
 	"github.com/432539/gpt2api/internal/imagestore"
 	"github.com/432539/gpt2api/internal/middleware"
 	"github.com/432539/gpt2api/internal/model"
+	"github.com/432539/gpt2api/internal/promptlib"
 	"github.com/432539/gpt2api/internal/proxy"
 	"github.com/432539/gpt2api/internal/rbac"
 	"github.com/432539/gpt2api/internal/recharge"
@@ -71,6 +72,7 @@ type Deps struct {
 
 	AnnouncementH *announcement.Handler
 	UpdateLogH    *updatelog.Handler
+	PromptH       *promptlib.Handler
 	SettingsH     *settings.Handler
 	SettingsSvc   *settings.Service
 }
@@ -156,6 +158,13 @@ func New(d *Deps) *gin.Engine {
 					ig.GET("/tasks", d.MeImageH.List)
 					ig.GET("/tasks/:id", d.MeImageH.Get)
 					ig.DELETE("/tasks/:id", d.MeImageH.Delete)
+				}
+			}
+			if d.PromptH != nil {
+				prompts := authed.Group("/me/prompts", middleware.RequirePerm(rbac.PermSelfImage))
+				{
+					prompts.GET("", d.PromptH.ListMe)
+					prompts.GET("/categories", d.PromptH.Categories)
 				}
 			}
 			if d.AdminModelH != nil {
@@ -397,6 +406,16 @@ func New(d *Deps) *gin.Engine {
 					ug.POST("", d.UpdateLogH.Create)
 					ug.PUT("/:id", d.UpdateLogH.Update)
 					ug.DELETE("/:id", d.UpdateLogH.Delete)
+				}
+			}
+
+			if d.PromptH != nil {
+				pg := admin.Group("/prompts", middleware.RequirePerm(rbac.PermSystemSetting))
+				{
+					pg.GET("", d.PromptH.ListAdmin)
+					pg.POST("", d.PromptH.Create)
+					pg.PUT("/:id", d.PromptH.Update)
+					pg.DELETE("/:id", d.PromptH.Delete)
 				}
 			}
 

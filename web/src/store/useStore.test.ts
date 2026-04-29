@@ -156,6 +156,17 @@ describe('useStore backend integration', () => {
     expect(useStore.getState().siteInfo['auth.require_email_verify']).toBe('false')
   })
 
+  test('pending prompt can be stored once and consumed by generate page', () => {
+    const state = useStore.getState() as any
+
+    state.setPendingPrompt('赛博朋克城市，雨夜霓虹，高细节')
+
+    expect((useStore.getState() as any).pendingPrompt).toBe('赛博朋克城市，雨夜霓虹，高细节')
+    expect(state.consumePendingPrompt()).toBe('赛博朋克城市，雨夜霓虹，高细节')
+    expect((useStore.getState() as any).pendingPrompt).toBe('')
+    expect(state.consumePendingPrompt()).toBe('')
+  })
+
   test('openAuthForTab records pending protected tab and opens overlay', () => {
     const state = useStore.getState() as any
 

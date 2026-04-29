@@ -69,6 +69,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '公告管理', perm: 'system:setting' } },
       { path: 'update-logs', component: () => import('@/views/admin/UpdateLogs.vue'),
         meta: { title: '系统更新日志', perm: 'system:setting' } },
+      { path: 'prompts', component: () => import('@/views/admin/Prompts.vue'),
+        meta: { title: 'Prompt库', perm: 'system:setting' } },
       { path: 'settings', component: () => import('@/views/admin/Settings.vue'),
         meta: { title: '系统设置', perm: 'system:setting' } },
     ],

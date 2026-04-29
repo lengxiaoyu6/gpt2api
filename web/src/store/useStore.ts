@@ -7,7 +7,7 @@ import * as meApi from '../api/me'
 import * as siteApi from '../api/site'
 import { resolveOutputSize, type AspectRatio, type OutputQualityValue } from '../features/image/options'
 
-export type TabKey = 'home' | 'generate' | 'history' | 'profile' | 'updateLogs'
+export type TabKey = 'home' | 'generate' | 'history' | 'profile' | 'updateLogs' | 'promptLibrary'
 export type BootstrapStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type { AspectRatio, OutputQualityValue } from '../features/image/options'
 
@@ -26,7 +26,7 @@ const defaultSiteInfo: Record<string, string> = {
 }
 
 function isProtectedTab(tab: TabKey) {
-  return tab === 'generate' || tab === 'history' || tab === 'profile'
+  return tab === 'generate' || tab === 'history' || tab === 'profile' || tab === 'promptLibrary'
 }
 
 export function allowRegister(siteInfo: Record<string, string>) {
@@ -100,6 +100,7 @@ interface AppState {
   isDark: boolean
   activeTab: TabKey
   pendingTab: TabKey
+  pendingPrompt: string
   authOverlayOpen: boolean
 
   bootstrapApp: () => Promise<void>
@@ -120,6 +121,8 @@ interface AppState {
   openAuthForTab: (tab: TabKey) => void
   closeAuth: () => void
   setActiveTab: (tab: TabKey) => void
+  setPendingPrompt: (prompt: string) => void
+  consumePendingPrompt: () => string
   toggleTheme: () => void
   handleUnauthorized: () => void
 }
@@ -168,6 +171,7 @@ export const useStore = create<AppState>()(
       isDark: true,
       activeTab: 'home',
       pendingTab: 'home',
+      pendingPrompt: '',
       authOverlayOpen: false,
 
       async fetchSiteInfo() {
@@ -233,6 +237,7 @@ export const useStore = create<AppState>()(
           authOverlayOpen: false,
           activeTab: 'home',
           pendingTab: 'home',
+          pendingPrompt: '',
           bootstrapStatus: 'ready',
         })
       },
@@ -255,6 +260,7 @@ export const useStore = create<AppState>()(
           authOverlayOpen: true,
           activeTab: 'home',
           pendingTab: tab,
+          pendingPrompt: '',
           bootstrapStatus: 'ready',
         })
       },
@@ -402,6 +408,18 @@ export const useStore = create<AppState>()(
         set({ activeTab: tab })
       },
 
+      setPendingPrompt(prompt) {
+        set({ pendingPrompt: prompt })
+      },
+
+      consumePendingPrompt() {
+        const prompt = get().pendingPrompt
+        if (prompt) {
+          set({ pendingPrompt: '' })
+        }
+        return prompt
+      },
+
       toggleTheme() {
         set((state) => ({ isDark: !state.isDark }))
       },
@@ -421,6 +439,7 @@ export const useStore = create<AppState>()(
           historyHasMore: false,
           historyOffset: 0,
           historyLimit: HISTORY_PAGE_LIMIT,
+          pendingPrompt: '',
           activeTab: isProtectedTab(activeTab) ? 'home' : activeTab,
           pendingTab: isProtectedTab(activeTab) ? activeTab : 'home',
           authOverlayOpen: true,

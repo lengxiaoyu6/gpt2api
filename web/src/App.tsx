@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect } from 'react';
-import { Home as HomeIcon, Wand2, History as HistoryIcon, User as UserIcon, LogIn, LogOut, Sparkles, Coins } from 'lucide-react';
+import { Home as HomeIcon, Wand2, History as HistoryIcon, User as UserIcon, LogIn, LogOut, Sparkles, Coins, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
 import { useStore, type TabKey } from './store/useStore';
@@ -9,6 +9,7 @@ import GenerateView from './components/views/Generate';
 import HistoryView from './components/views/History';
 import ProfileView from './components/views/Profile';
 import UpdateLogsView from './components/views/UpdateLogs';
+import PromptLibraryView from './components/views/PromptLibrary';
 import AuthOverlay from './components/AuthOverlay';
 import AnnouncementCenter from './components/AnnouncementCenter';
 import UpdateLogCenter from './components/UpdateLogCenter';
@@ -36,6 +37,10 @@ const TAB_META: Record<TabKey, { title: string; description: string }> = {
   updateLogs: {
     title: '系统更新日志',
     description: '查看站点功能调整、体验优化与发布时间线。',
+  },
+  promptLibrary: {
+    title: '灵感库',
+    description: '浏览后台精选 Prompt 并带入创作台。',
   },
 };
 
@@ -108,7 +113,7 @@ export default function App() {
   }, [activeTab]);
 
   const handleTabChange = (tab: TabKey) => {
-    if ((tab === 'generate' || tab === 'history' || tab === 'profile') && !user) {
+    if ((tab === 'generate' || tab === 'history' || tab === 'profile' || tab === 'promptLibrary') && !user) {
       openAuthForTab(tab);
       return;
     }
@@ -118,6 +123,7 @@ export default function App() {
   const navItems: ReadonlyArray<{ id: TabKey; icon: React.ComponentType<{ className?: string }>; label: string }> = [
     { id: 'home', icon: HomeIcon, label: '首页' },
     { id: 'generate', icon: Wand2, label: '生图' },
+    { id: 'promptLibrary', icon: BookOpen, label: '灵感库' },
     { id: 'history', icon: HistoryIcon, label: '记录' },
     { id: 'profile', icon: UserIcon, label: '我的' },
   ];
@@ -276,6 +282,7 @@ export default function App() {
           >
             {activeTab === 'home' && <HomeView siteName={siteName} onStartGeneration={() => handleTabChange('generate')} />}
             {activeTab === 'generate' && <GenerateView />}
+            {activeTab === 'promptLibrary' && <PromptLibraryView />}
             {activeTab === 'history' && <HistoryView />}
             {activeTab === 'profile' && <ProfileView siteName={siteName} />}
             {activeTab === 'updateLogs' && <UpdateLogsView />}

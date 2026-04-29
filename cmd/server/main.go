@@ -28,6 +28,7 @@ import (
 	"github.com/432539/gpt2api/internal/imageproxy"
 	"github.com/432539/gpt2api/internal/imagestore"
 	modelpkg "github.com/432539/gpt2api/internal/model"
+	"github.com/432539/gpt2api/internal/promptlib"
 	"github.com/432539/gpt2api/internal/proxy"
 	gwratelimit "github.com/432539/gpt2api/internal/ratelimit"
 	"github.com/432539/gpt2api/internal/recharge"
@@ -253,6 +254,9 @@ func main() {
 	updateLogDAO := updatelog.NewDAO(sqldb)
 	updateLogSvc := updatelog.NewService(updateLogDAO)
 	updateLogH := updatelog.NewHandler(updateLogSvc)
+	promptDAO := promptlib.NewDAO(sqldb)
+	promptSvc := promptlib.NewService(promptDAO)
+	promptH := promptlib.NewHandler(promptSvc)
 
 	// 代理池健康探测器:由 settings 提供热更参数,注入到 Handler
 	proxyH := proxy.NewHandler(proxySvc)
@@ -326,6 +330,7 @@ func main() {
 
 		AnnouncementH: announcementH,
 		UpdateLogH:    updateLogH,
+		PromptH:       promptH,
 		SettingsH:     settingsH,
 		SettingsSvc:   settingsSvc,
 	}

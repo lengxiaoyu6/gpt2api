@@ -82,6 +82,8 @@ var menuTree = []Menu{
 				Perms: []Permission{PermSystemSetting}},
 			{Key: "admin.update-logs", Title: "系统更新日志", Icon: "DocumentChecked", Path: "/admin/update-logs",
 				Perms: []Permission{PermSystemSetting}},
+			{Key: "admin.prompts", Title: "Prompt库", Icon: "Collection", Path: "/admin/prompts",
+				Perms: []Permission{PermSystemSetting}},
 			{Key: "admin.settings", Title: "系统设置", Icon: "Tools", Path: "/admin/settings",
 				Perms: []Permission{PermSystemSetting}},
 		},
