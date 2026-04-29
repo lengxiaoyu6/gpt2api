@@ -1564,23 +1564,19 @@ describe('web backend bindings', () => {
     expect(within(modelRow as HTMLElement).getByText('未知')).toBeInTheDocument()
   })
 
-  test('history view removes share action and downloads original image', async () => {
+  test('history view shows loading while downloading original image and prevents duplicate clicks', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
     const blob = new Blob(['image-binary'], { type: 'image/png' })
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(blob),
-      headers: {
-        get: vi.fn((name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null)),
-      },
-    })
+    const fetchMock = vi.fn()
     const createObjectURL = vi.fn().mockReturnValue('blob:task-1')
     const revokeObjectURL = vi.fn()
     const clickedDownloads: string[] = []
     const clickedHrefs: string[] = []
+    const clickedTargets: string[] = []
+    const originalAnchorClick = HTMLAnchorElement.prototype.click
     const originalCreateObjectURL = URL.createObjectURL
     const originalRevokeObjectURL = URL.revokeObjectURL
-    const originalAnchorClick = HTMLAnchorElement.prototype.click
+    let resolveFetch: ((value: { ok: boolean; blob: () => Promise<Blob> }) => void) | null = null
 
     useStore.setState({
       user: {
@@ -1614,12 +1610,19 @@ describe('web backend bindings', () => {
       ],
     })
 
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
     vi.stubGlobal('fetch', fetchMock)
     URL.createObjectURL = createObjectURL
     URL.revokeObjectURL = revokeObjectURL
     HTMLAnchorElement.prototype.click = vi.fn(function (this: HTMLAnchorElement) {
       clickedDownloads.push(this.download)
       clickedHrefs.push(this.href)
+      clickedTargets.push(this.target)
     }) as unknown as typeof HTMLAnchorElement.prototype.click
 
     try {
@@ -1639,11 +1642,121 @@ describe('web backend bindings', () => {
         fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
       })
 
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/p/img/task-1/0'))
-      expect(createObjectURL).toHaveBeenCalledWith(blob)
+      expect(String(fetchMock.mock.calls[0]?.[0] || '')).toContain('/p/img/task-1/0?dl=1')
+      expect(screen.getByRole('button', { name: '下载中' })).toBeDisabled()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '下载中' }))
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        resolveFetch?.({
+          ok: true,
+          blob: vi.fn().mockResolvedValue(blob),
+        })
+      })
+
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(blob))
       expect(clickedHrefs).toEqual(['blob:task-1'])
       expect(clickedDownloads[0]).toContain('task-1')
+      expect(clickedTargets).toEqual([''])
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:task-1')
+      await waitFor(() => expect(screen.getByRole('button', { name: '下载原图' })).toBeEnabled())
+    } finally {
+      HTMLAnchorElement.prototype.click = originalAnchorClick
+      URL.createObjectURL = originalCreateObjectURL
+      URL.revokeObjectURL = originalRevokeObjectURL
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('history view appends download flag to signed original image url', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    const blob = new Blob(['image-binary'], { type: 'image/png' })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+      headers: {
+        get: vi.fn((name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null)),
+      },
+    })
+    const createObjectURL = vi.fn().mockReturnValue('blob:task-download-fallback')
+    const revokeObjectURL = vi.fn()
+    const clickedTargets: string[] = []
+    const clickedDownloads: string[] = []
+    const clickedHrefs: string[] = []
+    const originalAnchorClick = HTMLAnchorElement.prototype.click
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 11,
+          task_id: 'task-download-fallback',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Fallback city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-download-fallback/0?exp=123&sig=abc'],
+          thumb_urls: ['/p/thumb/task-download-fallback/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    URL.createObjectURL = createObjectURL
+    URL.revokeObjectURL = revokeObjectURL
+    HTMLAnchorElement.prototype.click = vi.fn(function (this: HTMLAnchorElement) {
+      clickedTargets.push(this.target)
+      clickedDownloads.push(this.download)
+      clickedHrefs.push(this.href)
+    }) as unknown as typeof HTMLAnchorElement.prototype.click
+
+    try {
+      render(<HistoryView />)
+
+      await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Fallback city'))
+      })
+
+      expect(await screen.findByText('任务状态')).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
+      })
+
+      await waitFor(() =>
+        expect(String(fetchMock.mock.calls[0]?.[0] || '')).toContain(
+          '/p/img/task-download-fallback/0?exp=123&sig=abc&dl=1',
+        ),
+      )
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(blob))
+      expect(clickedHrefs[0]).toContain('blob:task-download-fallback')
+      expect(clickedDownloads[0]).toContain('task-download-fallback')
+      expect(clickedTargets).toEqual([''])
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:task-download-fallback')
+      await waitFor(() => expect(screen.getByRole('button', { name: '下载原图' })).toBeEnabled())
     } finally {
       HTMLAnchorElement.prototype.click = originalAnchorClick
       URL.createObjectURL = originalCreateObjectURL
@@ -1654,18 +1767,8 @@ describe('web backend bindings', () => {
 
   test('history view supports swiping multi-image preview', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
-    const blob = new Blob(['image-binary'], { type: 'image/png' })
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(blob),
-      headers: {
-        get: vi.fn((name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null)),
-      },
-    })
-    const createObjectURL = vi.fn().mockReturnValue('blob:task-2')
-    const revokeObjectURL = vi.fn()
-    const originalCreateObjectURL = URL.createObjectURL
-    const originalRevokeObjectURL = URL.revokeObjectURL
+    const clickedDownloads: string[] = []
+    const clickedHrefs: string[] = []
     const originalAnchorClick = HTMLAnchorElement.prototype.click
 
     useStore.setState({
@@ -1700,10 +1803,10 @@ describe('web backend bindings', () => {
       ],
     })
 
-    vi.stubGlobal('fetch', fetchMock)
-    URL.createObjectURL = createObjectURL
-    URL.revokeObjectURL = revokeObjectURL
-    HTMLAnchorElement.prototype.click = vi.fn() as unknown as typeof HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = vi.fn(function (this: HTMLAnchorElement) {
+      clickedDownloads.push(this.download)
+      clickedHrefs.push(this.href)
+    }) as unknown as typeof HTMLAnchorElement.prototype.click
 
     try {
       render(<HistoryView />)
@@ -1731,18 +1834,37 @@ describe('web backend bindings', () => {
       await waitFor(() => expect(screen.getByAltText('Detail')).toHaveAttribute('src', '/p/thumb/task-2/1'))
       expect(screen.getByText('第 2 张 / 共 2 张')).toBeInTheDocument()
 
+      const blob = new Blob(['image-binary'], { type: 'image/png' })
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(blob),
+        headers: {
+          get: vi.fn((name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null)),
+        },
+      })
+      const createObjectURL = vi.fn().mockReturnValue('blob:task-2')
+      const revokeObjectURL = vi.fn()
+      const originalCreateObjectURL = URL.createObjectURL
+      const originalRevokeObjectURL = URL.revokeObjectURL
+      vi.stubGlobal('fetch', fetchMock)
+      URL.createObjectURL = createObjectURL
+      URL.revokeObjectURL = revokeObjectURL
+
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: '下载原图' }))
       })
 
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/p/img/task-2/1'))
-      expect(createObjectURL).toHaveBeenCalledWith(blob)
+      await waitFor(() => expect(String(fetchMock.mock.calls[0]?.[0] || '')).toContain('/p/img/task-2/1?dl=1'))
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(blob))
+      expect(clickedHrefs[0]).toContain('blob:task-2')
+      expect(clickedDownloads[0]).toContain('task-2')
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:task-2')
-    } finally {
-      HTMLAnchorElement.prototype.click = originalAnchorClick
+      await waitFor(() => expect(screen.getByRole('button', { name: '下载原图' })).toBeEnabled())
       URL.createObjectURL = originalCreateObjectURL
       URL.revokeObjectURL = originalRevokeObjectURL
       vi.unstubAllGlobals()
+    } finally {
+      HTMLAnchorElement.prototype.click = originalAnchorClick
     }
   })
 

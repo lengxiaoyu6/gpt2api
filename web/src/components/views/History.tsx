@@ -201,15 +201,11 @@ function getDownloadFileName(item: HistoryRecord, imageUrl: string, contentType?
   return `${taskId}${suffix}.${extension}`;
 }
 
-function triggerLinkDownload(href: string, fileName: string, openInNewTab = false) {
+function triggerLinkDownload(href: string, fileName: string) {
   const anchor = document.createElement('a');
   anchor.href = href;
   anchor.download = fileName;
   anchor.rel = 'noopener';
-
-  if (openInNewTab) {
-    anchor.target = '_blank';
-  }
 
   document.body.appendChild(anchor);
   anchor.click();
@@ -255,21 +251,20 @@ function getReferenceImages(item: HistoryRecord | null) {
   return images;
 }
 
-async function downloadOriginalImage(item: HistoryRecord, imageUrl: string) {
-  const response = await fetch(imageUrl);
+function buildDownloadImageURL(imageUrl: string) {
+  const raw = imageUrl.trim();
 
-  if (!response.ok) {
-    throw new Error('下载图片失败');
+  if (!raw) {
+    return '';
   }
 
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const fileName = getDownloadFileName(item, imageUrl, blob.type || response.headers.get('content-type'));
-
   try {
-    triggerLinkDownload(objectUrl, fileName);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
+    const url = new URL(raw, window.location.origin);
+    url.searchParams.set('dl', '1');
+    return url.toString();
+  } catch {
+    const separator = raw.includes('?') ? '&' : '?';
+    return `${raw}${separator}dl=1`;
   }
 }
 
@@ -280,6 +275,7 @@ export default function HistoryView() {
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<HistoryRecord | null>(null);
   const [deletingTaskID, setDeletingTaskID] = useState<string | null>(null);
+  const [downloadingOriginal, setDownloadingOriginal] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -423,16 +419,37 @@ export default function HistoryView() {
   }
 
   async function handleDownloadOriginal() {
-    if (!selectedImage || !selectedOriginalUrl) {
+    if (!selectedImage || !selectedOriginalUrl || downloadingOriginal) {
       return;
     }
 
-    const fallbackFileName = getDownloadFileName(selectedImage, selectedOriginalUrl);
+    setDownloadingOriginal(true);
+    const downloadUrl = buildDownloadImageURL(selectedOriginalUrl);
 
     try {
-      await downloadOriginalImage(selectedImage, selectedOriginalUrl);
-    } catch {
-      triggerLinkDownload(selectedOriginalUrl, fallbackFileName, true);
+      const response = await fetch(downloadUrl);
+
+      if (!response.ok) {
+        throw new Error('下载图片失败');
+      }
+
+      const blob = await response.blob();
+      const fileName = getDownloadFileName(
+        selectedImage,
+        selectedOriginalUrl,
+        blob.type || response.headers.get('content-type'),
+      );
+      const objectUrl = URL.createObjectURL(blob);
+
+      try {
+        triggerLinkDownload(objectUrl, fileName);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '下载图片失败，请稍后重试');
+    } finally {
+      setDownloadingOriginal(false);
     }
   }
 
@@ -708,14 +725,18 @@ export default function HistoryView() {
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Button
-                    disabled={!selectedOriginalUrl}
+                    disabled={!selectedOriginalUrl || downloadingOriginal}
                     onClick={() => {
                       void handleDownloadOriginal();
                     }}
                     className="rounded-2xl h-12 gap-2 font-bold shadow-lg shadow-primary/20 disabled:shadow-none"
                   >
-                    <Download className="w-4 h-4" />
-                    下载原图
+                    {downloadingOriginal ? (
+                      <LoaderCircle className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    {downloadingOriginal ? '下载中' : '下载原图'}
                   </Button>
                   <Button
                     type="button"

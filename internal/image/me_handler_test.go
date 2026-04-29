@@ -2,6 +2,7 @@ package image
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -184,9 +185,9 @@ func TestBuildHistoryReferenceURLsReturnsCloudRemoteURLsWithThumbFallback(t *tes
 	}
 }
 
-func TestToViewPreservesCloudRemoteURLs(t *testing.T) {
+func TestToViewUsesProxyURLsForCloudOriginalsAndKeepsThumbsRemote(t *testing.T) {
 	SetProxyURLBuilder(func(taskID string, idx int) string {
-		return "/p/img/" + taskID + "/proxy"
+		return "/p/img/" + taskID + "/" + strconv.Itoa(idx) + "?exp=123&sig=abc"
 	})
 
 	task := &Task{
@@ -214,8 +215,8 @@ func TestToViewPreservesCloudRemoteURLs(t *testing.T) {
 			fileKey("img_hist_cloud_view", 0): true,
 		},
 	})
-	if len(view.ImageURLs) != 1 || view.ImageURLs[0] != "https://cdn.example.com/original.png" {
-		t.Fatalf("cloud image urls should stay remote, got %#v", view.ImageURLs)
+	if len(view.ImageURLs) != 1 || view.ImageURLs[0] != "/p/img/img_hist_cloud_view/0?exp=123&sig=abc" {
+		t.Fatalf("cloud image urls should use proxy, got %#v", view.ImageURLs)
 	}
 	if len(view.ThumbURLs) != 1 || view.ThumbURLs[0] != "https://cdn.example.com/thumb.jpg" {
 		t.Fatalf("cloud thumb urls should stay remote, got %#v", view.ThumbURLs)

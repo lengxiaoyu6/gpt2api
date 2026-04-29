@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -109,10 +111,22 @@ func (h *ImagesHandler) serveProxyImage(c *gin.Context, resource string) {
 		ct = "image/png"
 	}
 	c.Header("Cache-Control", "private, max-age=1800")
+	if c.Query("dl") == "1" || c.Query("download") == "1" {
+		writeDownloadImage(c, http.StatusOK, ct, buildDownloadFileName(taskID, idx, ct), body)
+		return
+	}
 	writeInlineImage(c, http.StatusOK, ct, body)
 }
 
 func writeInlineImage(c *gin.Context, status int, contentType string, body []byte) {
+	writeImageResponse(c, status, contentType, "", body, false)
+}
+
+func writeDownloadImage(c *gin.Context, status int, contentType, fileName string, body []byte) {
+	writeImageResponse(c, status, contentType, fileName, body, true)
+}
+
+func writeImageResponse(c *gin.Context, status int, contentType, fileName string, body []byte, download bool) {
 	ct := strings.TrimSpace(contentType)
 	if ct == "" && len(body) > 0 {
 		ct = http.DetectContentType(body)
@@ -120,6 +134,25 @@ func writeInlineImage(c *gin.Context, status int, contentType string, body []byt
 	if ct == "" {
 		ct = "image/png"
 	}
-	c.Header("Content-Disposition", "inline")
+	if download {
+		if fileName == "" {
+			c.Header("Content-Disposition", "attachment")
+		} else {
+			c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fileName))
+		}
+	} else {
+		c.Header("Content-Disposition", "inline")
+	}
 	c.Data(status, ct, body)
+}
+
+func buildDownloadFileName(taskID string, idx int, contentType string) string {
+	ext := "png"
+	mediaType := strings.TrimSpace(strings.Split(contentType, ";")[0])
+	if mediaType != "" {
+		if exts, err := mime.ExtensionsByType(mediaType); err == nil && len(exts) > 0 {
+			ext = strings.TrimPrefix(exts[0], ".")
+		}
+	}
+	return fmt.Sprintf("%s-%d.%s", taskID, idx+1, ext)
 }

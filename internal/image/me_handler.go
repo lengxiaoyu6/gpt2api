@@ -70,12 +70,11 @@ func toView(t *Task, files historyImageStore) taskView {
 	for i, id := range fids {
 		fids[i] = strings.TrimPrefix(id, "sed:")
 	}
-	// 关键:对外暴露的图片 URL 一律改成本地代理地址,避免:
-	//   1) chatgpt.com estuary 防盗链 → 浏览器 403
-	//   2) 上游 15 分钟签名过期 → 历史图片 404
-	// 代理收到请求后会再走一次 ImageDownloadURL 现取签名,
-	// 所以历史任务的旧 URL 即便已失效也照样能回放。
-	if NormalizeStorageMode(t.StorageMode) != StorageModeCloud && len(urls) > 0 {
+	// 关键:对外暴露的原图 URL 一律改成站内签名代理地址,避免:
+	//   1) 上游防盗链或跨域响应导致浏览器把下载操作当成普通打开
+	//   2) 上游短时效签名过期后,历史记录里的原图无法继续访问
+	// 缩略图继续保留各自存储地址,让列表与详情预览优先走更轻量的资源。
+	if len(urls) > 0 {
 		urls = BuildProxyURLs(t.TaskID, urls)
 	} else if NormalizeStorageMode(t.StorageMode) != StorageModeCloud && len(fids) > 0 {
 		// 极少数老数据 result_urls 为空但 file_ids 完整:
