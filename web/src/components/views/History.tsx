@@ -460,8 +460,8 @@ export default function HistoryView() {
           <h1 className="text-2xl font-black tracking-tight lg:text-3xl">时间轴</h1>
           <p className="text-xs text-muted-foreground font-medium lg:text-sm">存档所有创意瞬间</p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:w-auto">
-          <div className="relative flex-1 sm:min-w-[18rem] lg:min-w-[20rem]">
+        <div className="flex w-full items-center gap-3 lg:w-auto">
+          <div className="relative min-w-0 flex-1 sm:min-w-[18rem] lg:min-w-[20rem]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="搜索提示词..."
@@ -487,7 +487,7 @@ export default function HistoryView() {
       </div>
 
       {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 lg:gap-6">
           {filtered.map((item) => {
             const previewUrls = getPreviewImageUrls(item);
             const resultImageCount = Math.max(getOriginalImageUrls(item).length, previewUrls.length);
@@ -500,7 +500,7 @@ export default function HistoryView() {
               <div
                 key={item.id}
                 onClick={() => openImageDetail(item)}
-                className="history-card-visibility group relative aspect-[3/4] cursor-pointer overflow-hidden rounded-[2rem] border border-border/50 bg-secondary/20 shadow-sm lg:shadow-md lg:transition-transform lg:duration-300 lg:hover:-translate-y-1"
+                className="history-card-visibility group relative aspect-[4/5] cursor-pointer overflow-hidden rounded-[2rem] border border-border/50 bg-secondary/20 shadow-sm sm:aspect-[3/4] lg:shadow-md lg:transition-transform lg:duration-300 lg:hover:-translate-y-1"
               >
                 {previewUrl ? (
                   <img

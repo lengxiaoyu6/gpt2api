@@ -452,11 +452,71 @@ describe('web backend bindings', () => {
     expect(previewImage.className).not.toContain(' group-hover:scale-110')
     expect(card).not.toBeNull()
     expect(card?.className).toContain('history-card-visibility')
+    expect(card?.className).toContain('aspect-[4/5]')
+    expect(card?.className).toContain('sm:aspect-[3/4]')
     expect(card?.className).toContain('lg:transition-transform')
+    const grid = findAncestorWithClass(card, 'grid')
+    expect(grid).not.toBeNull()
+    expect(grid?.className).toContain('grid-cols-2')
+    expect(grid?.className).toContain('gap-3')
+    expect(grid?.className).toContain('sm:grid-cols-2')
     const shell = findAncestorWithClass(screen.getByRole('heading', { name: '时间轴' }), 'max-w-[88rem]')
     expect(shell?.className).toContain('lg:animate-in')
     expect(shell?.className).not.toContain(' animate-in ')
     expect(shell?.className).not.toContain(' fade-in ')
+  })
+
+  test('history toolbar keeps search field and refresh action on one row for mobile layout', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    const searchInput = screen.getByPlaceholderText('搜索提示词...')
+    const refreshButton = screen.getByRole('button', { name: '刷新记录' })
+    const toolbar = findAncestorWithClass(searchInput, 'gap-3')
+    const searchField = findAncestorWithClass(searchInput, 'relative')
+
+    expect(toolbar).not.toBeNull()
+    expect(toolbar?.contains(refreshButton)).toBe(true)
+    expect(toolbar?.className).toContain('w-full')
+    expect(toolbar?.className).toContain('items-center')
+    expect(toolbar?.className).not.toContain('flex-col')
+    expect(searchField).not.toBeNull()
+    expect(searchField?.className).toContain('min-w-0')
+    expect(searchField?.className).toContain('flex-1')
   })
 
   test('history view displays thumbnail image in detail panel while keeping original size metadata', async () => {
