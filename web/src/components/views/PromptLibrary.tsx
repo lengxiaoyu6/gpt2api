@@ -19,6 +19,8 @@ type ImageDimensions = {
   height: number
 }
 
+const previewImageSizeCache = new Map<string, ImageDimensions>()
+
 function buildListParams(keyword: string, category: string, limit: number, offset: number) {
   const params: { keyword?: string; category?: string; limit: number; offset: number } = { limit, offset }
   const nextKeyword = keyword.trim()
@@ -70,6 +72,21 @@ function normalizeImageDimensions(width: number, height: number): ImageDimension
 function formatImageDimensions(size: ImageDimensions | null) {
   if (!size) return '读取中'
   return `${size.width} × ${size.height} px`
+}
+
+function readCachedImageDimensions(url: string) {
+  const key = url.trim()
+  if (!key) return null
+  return previewImageSizeCache.get(key) || null
+}
+
+function cacheImageDimensions(url: string, width: number, height: number) {
+  const key = url.trim()
+  if (!key) return null
+  const size = normalizeImageDimensions(width, height)
+  if (!size) return null
+  previewImageSizeCache.set(key, size)
+  return size
 }
 
 export default function PromptLibraryView({ pageSize = 20 }: Props) {
@@ -172,13 +189,37 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
   const selectedPreviewSizeLabel = formatImageDimensions(selectedPreviewSize)
 
   React.useEffect(() => {
-    setSelectedPreviewSize(null)
+    setSelectedPreviewSize(readCachedImageDimensions(selectedPreviewImageURL))
     setPreviewZoomOpen(false)
   }, [selected?.id, selectedPreviewImageURL])
 
-  const handleSelectedPreviewLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
-    setSelectedPreviewSize(normalizeImageDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight))
-  }
+  const handlePreviewImageLoad = React.useCallback((imageURL: string, event: React.SyntheticEvent<HTMLImageElement>) => {
+    const nextSize = cacheImageDimensions(imageURL, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
+    if (imageURL === selectedPreviewImageURL) {
+      setSelectedPreviewSize(nextSize)
+    }
+  }, [selectedPreviewImageURL])
+
+  const handleSelectedPreviewLoad = React.useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    handlePreviewImageLoad(selectedPreviewImageURL, event)
+  }, [handlePreviewImageLoad, selectedPreviewImageURL])
+
+  const handleCardPreviewLoad = React.useCallback((imageURL: string) => (event: React.SyntheticEvent<HTMLImageElement>) => {
+    handlePreviewImageLoad(imageURL, event)
+  }, [handlePreviewImageLoad])
+
+  const handleOpenPromptDetail = React.useCallback((item: PromptLibraryItem) => {
+    const nextPreviewImageURL = getPromptPreviewImageURL(item)
+    setSelectedPreviewSize(readCachedImageDimensions(nextPreviewImageURL))
+    setSelected(item)
+  }, [])
+
+  const handleOpenPreviewZoom = React.useCallback(() => {
+    setSelectedPreviewSize(readCachedImageDimensions(selectedPreviewImageURL))
+    setPreviewZoomOpen(true)
+  }, [selectedPreviewImageURL])
+
+  const selectedPreviewFetchPriority = selectedPreviewSize ? 'high' : 'auto'
 
   return (
     <PageShell width="wide" className="space-y-5 lg:space-y-7">
@@ -258,7 +299,7 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                 key={item.id}
                 type="button"
                 aria-label={`查看 Prompt：${item.title}`}
-                onClick={() => setSelected(item)}
+                onClick={() => handleOpenPromptDetail(item)}
                 className="group flex min-h-64 flex-col rounded-[1.75rem] border border-border/60 bg-card/70 p-5 text-left shadow-sm shadow-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_22px_54px_-36px_rgba(15,23,42,0.55)] focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
               >
                 {previewImageURL ? (
@@ -267,6 +308,8 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                       src={previewImageURL}
                       alt={`${item.title}预览图`}
                       loading="lazy"
+                      decoding="async"
+                      onLoad={handleCardPreviewLoad(previewImageURL)}
                       className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                     />
                   </div>
@@ -347,14 +390,16 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                     <button
                       type="button"
                       aria-label={`放大查看预览图：${selected.title}`}
-                      onClick={() => setPreviewZoomOpen(true)}
+                      onClick={handleOpenPreviewZoom}
                       className="group block w-full rounded-[1.75rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                     >
                       <div className="mx-auto flex w-full max-w-md items-center justify-center overflow-hidden rounded-[1.6rem] border border-border/60 bg-secondary/35 shadow-sm shadow-black/5">
                         <img
                           src={selectedPreviewImageURL}
                           alt={`${selected.title}预览图`}
-                          loading="lazy"
+                          loading="eager"
+                          decoding="async"
+                          fetchPriority={selectedPreviewFetchPriority}
                           onLoad={handleSelectedPreviewLoad}
                           className="max-h-[240px] w-full object-contain transition duration-300 group-hover:scale-[1.01]"
                         />
@@ -414,7 +459,9 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                 <img
                   src={selectedPreviewImageURL}
                   alt={`${selected.title}预览图放大查看`}
-                  loading="lazy"
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority={selectedPreviewFetchPriority}
                   onLoad={handleSelectedPreviewLoad}
                   className="mx-auto block max-h-full w-auto max-w-full object-contain sm:max-h-[78vh]"
                 />

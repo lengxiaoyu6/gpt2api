@@ -82,19 +82,21 @@ describe('web prompt library page', () => {
     render(<PromptLibraryView />)
 
     expect(await screen.findByText('电影感城市夜景')).toBeInTheDocument()
+    const listPreviewImage = screen.getByRole('img', { name: '电影感城市夜景预览图' })
+    Object.defineProperty(listPreviewImage, 'naturalWidth', { configurable: true, value: 2048 })
+    Object.defineProperty(listPreviewImage, 'naturalHeight', { configurable: true, value: 1536 })
+    fireEvent.load(listPreviewImage)
+
     fireEvent.click(screen.getByRole('button', { name: '查看 Prompt：电影感城市夜景' }))
 
     const dialog = await screen.findByRole('dialog', { name: '电影感城市夜景' })
     const previewButton = within(dialog).getByRole('button', { name: '放大查看预览图：电影感城市夜景' })
     const previewImage = within(previewButton).getByRole('img', { name: '电影感城市夜景预览图' })
 
-    Object.defineProperty(previewImage, 'naturalWidth', { configurable: true, value: 2048 })
-    Object.defineProperty(previewImage, 'naturalHeight', { configurable: true, value: 1536 })
-    fireEvent.load(previewImage)
-
     expect(within(dialog).getByText('完整尺寸')).toBeInTheDocument()
     expect(within(dialog).getByText('2048 × 1536 px')).toBeInTheDocument()
     expect(previewImage.className).toContain('max-h-[240px]')
+    expect(previewImage).toHaveAttribute('loading', 'eager')
 
     fireEvent.click(previewButton)
 
@@ -102,6 +104,7 @@ describe('web prompt library page', () => {
     const zoomedImage = within(zoomDialog).getByRole('img', { name: '电影感城市夜景预览图放大查看' })
     expect(zoomedImage).toHaveAttribute('src', 'https://cdn.example.test/prompts/city.webp')
     expect(within(zoomDialog).getByText('2048 × 1536 px')).toBeInTheDocument()
+    expect(zoomedImage).toHaveAttribute('loading', 'eager')
     expect(zoomDialog.className).toContain('h-[100dvh]')
     expect(zoomDialog.className).toContain('w-screen')
     expect(zoomDialog.className).toContain('rounded-none')
