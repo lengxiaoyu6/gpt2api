@@ -345,6 +345,11 @@ describe('generate image notice', () => {
     expect(css).toContain('scrollbar-width: thin')
     expect(css).toContain('scrollbar-gutter: stable')
     expect(css).toContain('.prompt-scrollbar::-webkit-scrollbar-thumb')
+    expect(css).toContain('.mobile-scroll-surface')
+    expect(css).toContain('backdrop-filter: none')
+    expect(css).toContain('prefers-reduced-motion: reduce')
+    expect(css).toContain('.history-card-visibility')
+    expect(css).toContain('content-visibility: auto')
   })
 
   test('generate click shows dismissible submission dialog instead of loading button text', async () => {
@@ -434,6 +439,11 @@ describe('generate image notice', () => {
     await waitFor(() => {
       expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:preview')
     })
+
+    const sourcePreview = screen.getByAltText('参考图 1')
+    expect(sourcePreview).toHaveAttribute('decoding', 'async')
+    expect(sourcePreview.className).toContain('lg:group-hover/source:scale-105')
+    expect(sourcePreview.className).not.toContain(' group-hover/source:scale-105')
 
     fireEvent.click(screen.getByRole('button', { name: '取消参考图' }))
 

@@ -191,7 +191,7 @@ export default function ProfileView({ siteName = 'OAI Hub' }: ProfileViewProps) 
           {footer}
         </PageShell>
       ) : (
-        <PageShell className="flex min-h-full flex-1 flex-col animate-in slide-in-from-bottom-10 duration-500">
+        <PageShell className="flex min-h-full flex-1 flex-col lg:animate-in lg:slide-in-from-bottom-10 lg:duration-500">
           <div className="flex flex-1 flex-col gap-8 lg:gap-10">
             <div className="space-y-1">
               <h1 className="text-2xl font-black tracking-tight lg:text-3xl">个人中心</h1>
@@ -201,8 +201,8 @@ export default function ProfileView({ siteName = 'OAI Hub' }: ProfileViewProps) 
             <div className="grid gap-6 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,25rem)_minmax(0,1fr)] lg:items-start">
             <div className="space-y-6 lg:sticky lg:top-28">
               <section className="relative">
-                <div className="absolute inset-0 -z-10 rounded-full bg-primary/20 blur-3xl" />
-                <Card className="overflow-hidden rounded-[2rem] border-border/50 bg-card/60 shadow-2xl backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 hidden rounded-full bg-primary/20 blur-3xl lg:block" />
+                <Card className="overflow-hidden rounded-[2rem] border-border/50 bg-card/60 shadow-2xl lg:backdrop-blur-xl">
                   <CardContent className="p-6 lg:p-7">
                     <div className="flex items-center gap-4">
                       <Avatar
@@ -280,14 +280,14 @@ export default function ProfileView({ siteName = 'OAI Hub' }: ProfileViewProps) 
                     className="group flex w-full items-center justify-between rounded-[1.5rem] p-4 transition-all hover:bg-background/80 lg:p-5"
                   >
                     <div className="flex items-center gap-4">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${item.bg} ${item.color} shadow-sm transition-transform group-hover:scale-110`}>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${item.bg} ${item.color} shadow-sm transition-transform lg:group-hover:scale-110`}>
                         <item.icon className="h-5 w-5" />
                       </div>
                       <span className="text-sm font-bold lg:text-base">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {item.extra && <span className="text-[10px] font-bold text-primary animate-pulse">{item.extra}</span>}
-                      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-20 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
+                      {item.extra && <span className="text-[10px] font-bold text-primary lg:animate-pulse">{item.extra}</span>}
+                      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-20 transition-all lg:group-hover:translate-x-1 lg:group-hover:opacity-100" />
                     </div>
                   </button>
                 ))}

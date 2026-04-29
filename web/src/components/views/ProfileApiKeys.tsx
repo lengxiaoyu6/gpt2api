@@ -316,11 +316,11 @@ export default function ProfileApiKeys({ onBack }: ProfileApiKeysProps) {
         </div>
 
         {loading ? (
-          <div className="rounded-[2rem] border border-border/50 bg-card/60 p-5 text-sm text-muted-foreground shadow-xl backdrop-blur lg:p-6">
+          <div className="rounded-[2rem] border border-border/50 bg-card/60 p-5 text-sm text-muted-foreground shadow-xl lg:backdrop-blur lg:p-6">
             API Key 列表加载中
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-[2rem] border border-border/50 bg-card/60 p-5 shadow-xl backdrop-blur lg:p-6">
+          <div className="rounded-[2rem] border border-border/50 bg-card/60 p-5 shadow-xl lg:backdrop-blur lg:p-6">
             <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
               <KeyRound className="h-4 w-4 text-primary" />
               <span>API Keys</span>
@@ -339,7 +339,7 @@ export default function ProfileApiKeys({ onBack }: ProfileApiKeysProps) {
               return (
                 <Card
                   key={item.id}
-                  className="rounded-[1.75rem] border border-border/50 bg-card/70 shadow-sm backdrop-blur"
+                  className="rounded-[1.75rem] border border-border/50 bg-card/70 shadow-sm lg:backdrop-blur"
                 >
                   <CardHeader className="gap-3 border-b border-border/40 pb-4">
                     <div className="space-y-1">

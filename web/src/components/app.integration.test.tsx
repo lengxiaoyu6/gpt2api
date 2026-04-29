@@ -220,6 +220,23 @@ describe('web integration', () => {
     expect(within(desktopInfoBar).queryByText('当前积分')).toBeNull()
   })
 
+  test('mobile shell uses paint-friendly fixed bars and desktop-only ambient background', () => {
+    const { container } = render(<App />)
+
+    const mobileHeader = container.querySelector('header')
+    const mobileNavigation = screen.getByRole('navigation', { name: '移动底部导航' })
+    const ambientBackdrop = container.querySelector('[data-testid="desktop-ambient-backdrop"]')
+
+    expect(mobileHeader).not.toBeNull()
+    expect(mobileHeader?.className).toContain('mobile-scroll-surface')
+    expect(mobileHeader?.className).not.toContain('backdrop-blur')
+    expect(mobileNavigation.className).toContain('mobile-scroll-surface')
+    expect(mobileNavigation.className).not.toContain('backdrop-blur')
+    expect(ambientBackdrop).not.toBeNull()
+    expect(ambientBackdrop?.className).toContain('hidden')
+    expect(ambientBackdrop?.className).toContain('lg:block')
+  })
+
   test('app exposes named desktop and mobile navigation containers', () => {
     render(<App />)
 
@@ -228,6 +245,35 @@ describe('web integration', () => {
     expect(screen.getByRole('region', { name: '桌面信息栏' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '生图' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '生成' })).toBeNull()
+  })
+
+  test('home hero keeps particle animation workload on desktop breakpoint', () => {
+    render(<HomeView onStartGeneration={vi.fn()} siteName="OAI Hub" />)
+
+    const particleField = screen.getByTestId('home-hero-particle-field')
+    const particles = particleField.querySelectorAll('.hero-particle')
+    const desktopEffects = screen.getAllByTestId('home-hero-desktop-effect')
+    const featureCard = screen.getByRole('button', { name: '文生图，开始生成' })
+
+    expect(particleField.className).toContain('mobile-static-particle-field')
+    expect(particles).toHaveLength(24)
+    desktopEffects.forEach((effect) => {
+      expect(effect.className).toContain('hidden')
+      expect(effect.className).toContain('lg:block')
+    })
+    expect(featureCard.className).toContain('lg:backdrop-blur')
+    expect(featureCard.className).toContain('lg:hover:-translate-y-1')
+    expect(featureCard.className).not.toContain(' backdrop-blur ')
+    expect(screen.queryByText('Live Render')).toBeNull()
+  })
+
+  test('mobile tab panel switches without page motion workload', () => {
+    render(<App />)
+
+    const tabPanel = screen.getByTestId('active-tab-panel')
+
+    expect(tabPanel.className).toContain('mobile-page-panel-static')
+    expect(tabPanel.getAttribute('data-motion-enabled')).toBe('false')
   })
 
   test('app resets document scroll after switching tabs', () => {
@@ -291,7 +337,7 @@ describe('web integration', () => {
     useStore.setState({
       activeTab: 'profile',
       siteInfo: {
-        'site.name': 'OAI Hub',
+        'site.name': '星河图像',
         'site.description': 'AI 创作平台',
         'site.logo_url': '',
         'site.footer': '',

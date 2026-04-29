@@ -437,7 +437,7 @@ export default function HistoryView() {
   }
 
   return (
-    <PageShell width="wide" className="space-y-8 lg:space-y-10 animate-in fade-in duration-500">
+    <PageShell width="wide" className="space-y-8 lg:space-y-10 lg:animate-in lg:fade-in lg:duration-500">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-black tracking-tight lg:text-3xl">时间轴</h1>
@@ -471,7 +471,7 @@ export default function HistoryView() {
 
       {filtered.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-6">
-          {filtered.map((item, i) => {
+          {filtered.map((item) => {
             const previewUrls = getPreviewImageUrls(item);
             const resultImageCount = Math.max(getOriginalImageUrls(item).length, previewUrls.length);
             const previewUrl = previewUrls[0] || null;
@@ -480,23 +480,22 @@ export default function HistoryView() {
             const detailStateLabel = getTaskDetailLabel(item.status);
 
             return (
-              <motion.div
+              <div
                 key={item.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.05 }}
                 onClick={() => openImageDetail(item)}
-                className="group relative aspect-[3/4] cursor-pointer overflow-hidden rounded-[2rem] border border-border/50 bg-secondary/20 shadow-md transition-transform duration-300 lg:hover:-translate-y-1"
+                className="history-card-visibility group relative aspect-[3/4] cursor-pointer overflow-hidden rounded-[2rem] border border-border/50 bg-secondary/20 shadow-sm lg:shadow-md lg:transition-transform lg:duration-300 lg:hover:-translate-y-1"
               >
                 {previewUrl ? (
                   <img
                     src={previewUrl}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover lg:transition-transform lg:duration-700 lg:group-hover:scale-110"
                     alt={item.prompt}
                   />
                 ) : (
                   <div className={`flex h-full w-full flex-col items-center justify-center gap-3 px-4 ${getTaskPanelClassName(taskStateKind)}`}>
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-full border backdrop-blur-sm ${getTaskBadgeClassName(taskStateKind)}`}>
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-full border lg:backdrop-blur-sm ${getTaskBadgeClassName(taskStateKind)}`}>
                       <TaskStateIcon
                         kind={taskStateKind}
                         className={`h-5 w-5 ${taskStateKind === 'processing' ? 'animate-spin' : ''}`}
@@ -511,7 +510,7 @@ export default function HistoryView() {
                   </div>
                 )}
                 {resultImageCount > 1 ? (
-                  <div className="absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/65 px-3 py-1.5 text-[11px] font-bold text-white shadow-lg shadow-black/25 backdrop-blur-md">
+                  <div className="absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/65 px-3 py-1.5 text-[11px] font-bold text-white shadow-lg shadow-black/25 lg:backdrop-blur-md">
                     <ImageIcon className="h-3.5 w-3.5" />
                     <span>共 {resultImageCount} 张</span>
                   </div>
@@ -526,12 +525,12 @@ export default function HistoryView() {
                     event.stopPropagation();
                     requestDeleteHistoryRecord(item);
                   }}
-                  className="absolute right-3 top-3 z-10 h-11 w-11 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 backdrop-blur-md hover:bg-black/75 disabled:opacity-50"
+                  className="absolute right-3 top-3 z-10 h-11 w-11 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 hover:bg-black/75 disabled:opacity-50 lg:backdrop-blur-md"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-                  <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-semibold backdrop-blur-md ${getTaskBadgeClassName(taskStateKind)}`}>
+                  <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-semibold lg:backdrop-blur-md ${getTaskBadgeClassName(taskStateKind)}`}>
                     <TaskStateIcon
                       kind={taskStateKind}
                       className={`h-2.5 w-2.5 ${taskStateKind === 'processing' ? 'animate-spin' : ''}`}
@@ -545,12 +544,12 @@ export default function HistoryView() {
                     <span className="text-[8px] text-white/60 font-mono">
                       {new Date(item.created_at).toLocaleDateString()}
                     </span>
-                    <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-md">
+                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-white/10 lg:backdrop-blur-md">
                       <ImageIcon className="w-2.5 h-2.5 text-white/80" />
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             );
           })}
         </div>
@@ -596,7 +595,7 @@ export default function HistoryView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => closeImageDetail()}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 lg:backdrop-blur-sm"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
@@ -614,10 +613,10 @@ export default function HistoryView() {
                 }}
               >
                 {selectedDisplayUrl ? (
-                  <img src={selectedDisplayUrl} className="h-full w-full object-contain" alt="Detail" />
+                  <img src={selectedDisplayUrl} decoding="async" className="h-full w-full object-contain" alt="Detail" />
                 ) : (
                   <div className={`flex h-full w-full flex-col items-center justify-center gap-4 px-6 ${getTaskPanelClassName(selectedImageKind)}`}>
-                    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur-sm ${getTaskBadgeClassName(selectedImageKind)}`}>
+                    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold lg:backdrop-blur-sm ${getTaskBadgeClassName(selectedImageKind)}`}>
                       <TaskStateIcon
                         kind={selectedImageKind}
                         className={`h-4 w-4 ${selectedImageKind === 'processing' ? 'animate-spin' : ''}`}
@@ -635,13 +634,13 @@ export default function HistoryView() {
                 )}
                 {hasMultiplePreviewImages ? (
                   <div className="absolute inset-x-4 bottom-4 z-10 flex flex-col items-center gap-2">
-                    <div className="rounded-full border border-white/20 bg-black/65 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-black/25 backdrop-blur-md">
+                    <div className="rounded-full border border-white/20 bg-black/65 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-black/25 lg:backdrop-blur-md">
                       第 {previewIndex + 1} 张 / 共 {selectedPreviewUrls.length} 张
                     </div>
-                    <div className="rounded-full border border-white/15 bg-black/50 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+                    <div className="rounded-full border border-white/15 bg-black/50 px-3 py-1 text-[11px] font-semibold text-white/90 lg:backdrop-blur-md">
                       左右滑动或点击箭头切换
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1.5 backdrop-blur-md">
+                    <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1.5 lg:backdrop-blur-md">
                       {selectedPreviewUrls.map((url, index) => (
                         <span
                           key={`${url}-${index}`}
@@ -666,7 +665,7 @@ export default function HistoryView() {
                         event.stopPropagation();
                         showPreviousPreviewImage();
                       }}
-                      className="absolute left-3 top-1/2 z-10 h-11 w-11 -translate-y-1/2 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 backdrop-blur-md hover:bg-black/75 disabled:opacity-35"
+                      className="absolute left-3 top-1/2 z-10 h-11 w-11 -translate-y-1/2 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 hover:bg-black/75 disabled:opacity-35 lg:backdrop-blur-md"
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </Button>
@@ -680,7 +679,7 @@ export default function HistoryView() {
                         event.stopPropagation();
                         showNextPreviewImage();
                       }}
-                      className="absolute right-3 top-1/2 z-10 h-11 w-11 -translate-y-1/2 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 backdrop-blur-md hover:bg-black/75 disabled:opacity-35"
+                      className="absolute right-3 top-1/2 z-10 h-11 w-11 -translate-y-1/2 rounded-full border border-white/20 bg-black/60 text-white shadow-lg shadow-black/25 hover:bg-black/75 disabled:opacity-35 lg:backdrop-blur-md"
                     >
                       <ChevronRight className="h-5 w-5" />
                     </Button>
@@ -750,7 +749,9 @@ export default function HistoryView() {
                           <img
                             src={item.previewUrl}
                             alt={`参考图 ${index + 1}`}
-                            className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            loading="lazy"
+                            decoding="async"
+                            className="aspect-square w-full object-cover lg:transition-transform lg:duration-500 lg:group-hover:scale-105"
                           />
                         </a>
                       ))}

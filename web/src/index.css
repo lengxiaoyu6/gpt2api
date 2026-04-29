@@ -130,6 +130,18 @@
 }
 
 @layer utilities {
+  .mobile-scroll-surface {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .history-card-visibility {
+    content-visibility: auto;
+    contain-intrinsic-size: 320px 426px;
+  }
+
   .prompt-scrollbar {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
@@ -171,5 +183,23 @@
   .dark .prompt-scrollbar:focus-visible::-webkit-scrollbar-thumb {
     background: color-mix(in oklab, var(--foreground) 34%, transparent);
     background-clip: padding-box;
+  }
+
+  @media (max-width: 767px) {
+    .mobile-static-particle-field .hero-particle {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

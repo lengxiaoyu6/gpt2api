@@ -37,6 +37,39 @@ const resetDocumentScroll = () => {
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 };
 
+function useDesktopViewport() {
+  const [enabled, setEnabled] = React.useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+
+    return window.matchMedia('(min-width: 1024px)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const desktopQuery = window.matchMedia('(min-width: 1024px)');
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateEnabled = () => {
+      setEnabled(desktopQuery.matches && !reducedMotionQuery.matches);
+    };
+
+    updateEnabled();
+    desktopQuery.addEventListener?.('change', updateEnabled);
+    reducedMotionQuery.addEventListener?.('change', updateEnabled);
+
+    return () => {
+      desktopQuery.removeEventListener?.('change', updateEnabled);
+      reducedMotionQuery.removeEventListener?.('change', updateEnabled);
+    };
+  }, []);
+
+  return enabled;
+}
+
 export default function App() {
   const {
     user,
@@ -50,6 +83,7 @@ export default function App() {
     openAuthForTab,
     logout,
   } = useStore();
+  const pageMotionEnabled = useDesktopViewport();
 
   useEffect(() => {
     void bootstrapApp();
@@ -167,7 +201,7 @@ export default function App() {
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between overflow-hidden border-b border-border/50 bg-background/80 px-3 backdrop-blur-xl sm:px-4 lg:hidden">
+        <header className="mobile-scroll-surface fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between overflow-hidden border-b border-border/50 bg-background/95 px-3 sm:px-4 lg:hidden">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Sparkles className="h-5 w-5" />
@@ -224,11 +258,13 @@ export default function App() {
 
         <main className="flex flex-1 flex-col pt-16 pb-[calc(4rem+env(safe-area-inset-bottom))] lg:px-6 lg:pt-0 lg:pb-10 xl:px-8">
           <motion.div
+            data-testid="active-tab-panel"
+            data-motion-enabled={String(pageMotionEnabled)}
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className={cn('w-full', activeTab === 'profile' && 'flex flex-1 flex-col')}
+            initial={pageMotionEnabled ? { opacity: 0, y: 10 } : false}
+            animate={pageMotionEnabled ? { opacity: 1, y: 0 } : undefined}
+            transition={pageMotionEnabled ? { duration: 0.2 } : undefined}
+            className={cn('w-full', !pageMotionEnabled && 'mobile-page-panel-static', activeTab === 'profile' && 'flex flex-1 flex-col')}
           >
             {activeTab === 'home' && <HomeView siteName={siteName} onStartGeneration={() => handleTabChange('generate')} />}
             {activeTab === 'generate' && <GenerateView />}
@@ -238,7 +274,7 @@ export default function App() {
         </main>
       </div>
 
-      <nav aria-label="移动底部导航" className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/50 bg-background/80 pb-safe backdrop-blur-2xl lg:hidden">
+      <nav aria-label="移动底部导航" className="mobile-scroll-surface fixed bottom-0 left-0 right-0 z-40 border-t border-border/50 bg-background/95 pb-safe lg:hidden">
         <div className="mx-auto flex h-16 max-w-lg items-center justify-around">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -272,7 +308,7 @@ export default function App() {
         {authOverlayOpen && <AuthOverlay onClose={closeAuth} />}
       </AnimatePresence>
 
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden opacity-20 dark:opacity-40">
+      <div data-testid="desktop-ambient-backdrop" className="pointer-events-none fixed inset-0 -z-10 hidden overflow-hidden opacity-20 dark:opacity-40 lg:block">
         <div className="absolute left-[-10%] top-[-10%] h-[50%] w-[50%] rounded-full bg-primary/30 blur-[120px] animate-pulse" />
         <div className="absolute bottom-[-10%] right-[-10%] h-[50%] w-[50%] rounded-full bg-blue-500/20 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
       </div>

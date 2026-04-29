@@ -405,6 +405,60 @@ describe('web backend bindings', () => {
     expect(screen.getByAltText('Cloud city')).toHaveAttribute('src', '/p/thumb/task-1/0')
   })
 
+  test('history grid uses lazy decoded images and mobile-friendly card surfaces', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    const previewImage = screen.getByAltText('Cloud city')
+    const card = findAncestorWithClass(previewImage, 'history-card-visibility')
+
+    expect(previewImage).toHaveAttribute('loading', 'lazy')
+    expect(previewImage).toHaveAttribute('decoding', 'async')
+    expect(previewImage.className).toContain('lg:group-hover:scale-110')
+    expect(previewImage.className).not.toContain(' group-hover:scale-110')
+    expect(card).not.toBeNull()
+    expect(card?.className).toContain('history-card-visibility')
+    expect(card?.className).toContain('lg:transition-transform')
+    const shell = findAncestorWithClass(screen.getByRole('heading', { name: '时间轴' }), 'max-w-[88rem]')
+    expect(shell?.className).toContain('lg:animate-in')
+    expect(shell?.className).not.toContain(' animate-in ')
+    expect(shell?.className).not.toContain(' fade-in ')
+  })
+
   test('history view displays original image size in detail panel', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
 
@@ -993,6 +1047,19 @@ describe('web backend bindings', () => {
 
     await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('button', { name: /我的创作 2/ })).toBeInTheDocument()
+  })
+
+  test('profile page shell keeps entrance animation on desktop breakpoint only', () => {
+    seedProfileState()
+
+    render(<ProfileView />)
+
+    const shell = findAncestorWithClass(screen.getByRole('heading', { name: '个人中心' }), 'min-h-full')
+
+    expect(shell?.className).toContain('lg:animate-in')
+    expect(shell?.className).toContain('lg:slide-in-from-bottom-10')
+    expect(shell?.className).not.toContain(' animate-in ')
+    expect(shell?.className).not.toContain(' slide-in-from-bottom-10 ')
   })
 
   test('profile view keeps profile and credit logs inside page shell', async () => {

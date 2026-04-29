@@ -38,8 +38,42 @@ const HERO_PARTICLES = [
   { left: '40%', top: '8%', size: 4, delay: 2.9, duration: 8.5, color: 'bg-blue-200/80' },
 ];
 
+function useDesktopAnimationEnabled() {
+  const [enabled, setEnabled] = React.useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+
+    return window.matchMedia('(min-width: 1024px)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateEnabled = () => {
+      setEnabled(mediaQuery.matches && !reducedMotionQuery.matches);
+    };
+
+    updateEnabled();
+    mediaQuery.addEventListener?.('change', updateEnabled);
+    reducedMotionQuery.addEventListener?.('change', updateEnabled);
+
+    return () => {
+      mediaQuery.removeEventListener?.('change', updateEnabled);
+      reducedMotionQuery.removeEventListener?.('change', updateEnabled);
+    };
+  }, []);
+
+  return enabled;
+}
+
 export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: HomeViewProps) {
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false);
+  const desktopAnimationEnabled = useDesktopAnimationEnabled();
 
   const handleFeatureKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, onClick: () => void) => {
     if (event.key !== 'Enter' && event.key !== ' ') {
@@ -92,53 +126,64 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(56,189,248,0.34),transparent_28%),radial-gradient(circle_at_78%_18%,rgba(168,85,247,0.35),transparent_30%),radial-gradient(circle_at_62%_82%,rgba(34,211,238,0.22),transparent_34%),linear-gradient(135deg,rgba(2,6,23,1),rgba(15,23,42,0.96)_46%,rgba(30,41,59,0.92))]" />
         <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
         <motion.div
+          data-testid="home-hero-desktop-effect"
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/10"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 42, repeat: Infinity, ease: 'linear' }}
+          className="absolute left-1/2 top-1/2 hidden h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/10 lg:block"
+          animate={desktopAnimationEnabled ? { rotate: 360 } : undefined}
+          transition={desktopAnimationEnabled ? { duration: 42, repeat: Infinity, ease: 'linear' } : undefined}
         />
         <motion.div
+          data-testid="home-hero-desktop-effect"
           aria-hidden="true"
-          className="absolute right-[-10%] top-[-18%] h-72 w-72 rounded-full bg-fuchsia-500/25 blur-3xl"
-          animate={{ scale: [1, 1.16, 1], opacity: [0.55, 0.82, 0.55] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute right-[-10%] top-[-18%] hidden h-72 w-72 rounded-full bg-fuchsia-500/25 blur-3xl lg:block"
+          animate={desktopAnimationEnabled ? { scale: [1, 1.16, 1], opacity: [0.55, 0.82, 0.55] } : undefined}
+          transition={desktopAnimationEnabled ? { duration: 8, repeat: Infinity, ease: 'easeInOut' } : undefined}
         />
         <motion.div
+          data-testid="home-hero-desktop-effect"
           aria-hidden="true"
-          className="absolute bottom-[-22%] left-[24%] h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl"
-          animate={{ scale: [1.08, 0.92, 1.08], opacity: [0.45, 0.76, 0.45] }}
-          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute bottom-[-22%] left-[24%] hidden h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl lg:block"
+          animate={desktopAnimationEnabled ? { scale: [1.08, 0.92, 1.08], opacity: [0.45, 0.76, 0.45] } : undefined}
+          transition={desktopAnimationEnabled ? { duration: 9, repeat: Infinity, ease: 'easeInOut' } : undefined}
         />
-        <div data-testid="home-hero-particle-field" aria-hidden="true" className="absolute inset-0">
+        <div data-testid="home-hero-particle-field" aria-hidden="true" className="mobile-static-particle-field absolute inset-0">
           <svg className="absolute inset-0 h-full w-full opacity-35" viewBox="0 0 100 100" preserveAspectRatio="none">
             <path d="M6 18 C22 34 30 10 47 26 S70 18 84 14" fill="none" stroke="rgba(125, 211, 252, 0.45)" strokeWidth="0.22" />
             <path d="M12 58 C31 46 38 82 53 64 S74 74 92 34" fill="none" stroke="rgba(216, 180, 254, 0.38)" strokeWidth="0.18" />
             <path d="M18 32 C35 47 53 64 68 82 S82 62 96 50" fill="none" stroke="rgba(255, 255, 255, 0.22)" strokeWidth="0.16" />
           </svg>
-          {HERO_PARTICLES.map((particle, index) => (
-            <motion.span
-              key={`${particle.left}-${particle.top}`}
-              className={`absolute rounded-full ${particle.color} shadow-[0_0_18px_currentColor]`}
-              style={{
+          {HERO_PARTICLES.map((particle, index) => {
+            const particleProps = {
+              className: `hero-particle absolute rounded-full ${particle.color} shadow-[0_0_18px_currentColor]`,
+              style: {
                 left: particle.left,
                 top: particle.top,
                 width: particle.size,
                 height: particle.size,
-              }}
-              animate={{
-                x: [0, index % 2 === 0 ? 18 : -16, 0],
-                y: [0, index % 3 === 0 ? -22 : 18, 0],
-                opacity: [0.35, 1, 0.35],
-                scale: [0.9, 1.35, 0.9],
-              }}
-              transition={{
-                duration: particle.duration,
-                delay: particle.delay,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-          ))}
+              },
+            };
+
+            return desktopAnimationEnabled ? (
+              <motion.span
+                key={`${particle.left}-${particle.top}`}
+                {...particleProps}
+                animate={{
+                  x: [0, index % 2 === 0 ? 18 : -16, 0],
+                  y: [0, index % 3 === 0 ? -22 : 18, 0],
+                  opacity: [0.35, 1, 0.35],
+                  scale: [0.9, 1.35, 0.9],
+                }}
+                transition={{
+                  duration: particle.duration,
+                  delay: particle.delay,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            ) : (
+              <span key={`${particle.left}-${particle.top}`} {...particleProps} />
+            );
+          })}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/34 to-transparent" />
         <div
@@ -146,12 +191,12 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
           className="absolute inset-0 flex flex-col justify-center px-6 py-6 lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center lg:gap-10 lg:p-12"
         >
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            initial={desktopAnimationEnabled ? { opacity: 0, y: 20 } : false}
+            animate={desktopAnimationEnabled ? { opacity: 1, y: 0 } : undefined}
+            transition={desktopAnimationEnabled ? { delay: 0.2 } : undefined}
             className="max-w-2xl space-y-3 lg:space-y-6"
           >
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200/25 bg-white/10 px-3 py-1 text-xs font-bold text-cyan-50 shadow-lg shadow-cyan-500/10 backdrop-blur-md lg:px-4 lg:py-1.5 lg:text-sm">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200/25 bg-white/10 px-3 py-1 text-xs font-bold text-cyan-50 shadow-lg shadow-cyan-500/10 lg:px-4 lg:py-1.5 lg:text-sm lg:backdrop-blur-md">
               <Sparkles className="h-3 w-3 lg:h-4 lg:w-4" />
               <span>OAI Hub 绘影</span>
             </div>
@@ -174,50 +219,53 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
             </Button>
           </motion.div>
 
-          <motion.div
-            aria-hidden="true"
-            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ delay: 0.34, duration: 0.5 }}
-            className="hidden rounded-[2rem] border border-white/14 bg-white/[0.08] p-4 shadow-2xl shadow-black/20 backdrop-blur-2xl lg:block"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
-              </div>
-              <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100">
-                Live Render
-              </span>
-            </div>
-            <div className="relative h-56 overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/70">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(34,211,238,0.32),transparent_34%),radial-gradient(circle_at_36%_64%,rgba(168,85,247,0.26),transparent_28%)]" />
-              <div className="absolute inset-5 grid grid-cols-6 gap-2 opacity-70">
-                {Array.from({ length: 24 }).map((_, index) => (
-                  <motion.span
-                    key={index}
-                    className="rounded-lg border border-white/10 bg-white/10"
-                    animate={{ opacity: [0.28, 0.9, 0.28] }}
-                    transition={{ duration: 2.4, delay: index * 0.08, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                ))}
-              </div>
-              <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-white/10 bg-slate-950/70 p-3 backdrop-blur">
-                <div className="mb-2 flex items-center justify-between text-[11px] font-bold text-slate-200">
-                  <span>Prompt Matrix</span>
-                  <span className="text-cyan-200">96%</span>
+          {desktopAnimationEnabled && (
+            <motion.div
+              data-testid="home-hero-render-panel"
+              aria-hidden="true"
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: 0.34, duration: 0.5 }}
+              className="hidden rounded-[2rem] border border-white/14 bg-white/[0.08] p-4 shadow-2xl shadow-black/20 backdrop-blur-2xl lg:block"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-primary to-fuchsia-300"
-                    animate={{ width: ['38%', '96%', '38%'] }}
-                    transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
-                  />
+                <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100">
+                  Live Render
+                </span>
+              </div>
+              <div className="relative h-56 overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/70">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(34,211,238,0.32),transparent_34%),radial-gradient(circle_at_36%_64%,rgba(168,85,247,0.26),transparent_28%)]" />
+                <div className="absolute inset-5 grid grid-cols-6 gap-2 opacity-70">
+                  {Array.from({ length: 24 }).map((_, index) => (
+                    <motion.span
+                      key={index}
+                      className="rounded-lg border border-white/10 bg-white/10"
+                      animate={{ opacity: [0.28, 0.9, 0.28] }}
+                      transition={{ duration: 2.4, delay: index * 0.08, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                  ))}
+                </div>
+                <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-white/10 bg-slate-950/70 p-3 backdrop-blur">
+                  <div className="mb-2 flex items-center justify-between text-[11px] font-bold text-slate-200">
+                    <span>Prompt Matrix</span>
+                    <span className="text-cyan-200">96%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-primary to-fuchsia-300"
+                      animate={{ width: ['38%', '96%', '38%'] }}
+                      transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          )}
         </div>
       </section>
 
@@ -245,7 +293,7 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
               aria-label={`${feature.title}，${feature.actionLabel}`}
               onClick={feature.onClick}
               onKeyDown={(event) => handleFeatureKeyDown(event, feature.onClick)}
-              className="group relative h-full min-h-[156px] cursor-pointer overflow-hidden rounded-[2rem] border-border/60 bg-background/80 p-0 text-left shadow-sm backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-background hover:shadow-2xl hover:shadow-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+              className="group relative h-full min-h-[156px] cursor-pointer overflow-hidden rounded-[2rem] border-border/60 bg-background/80 p-0 text-left shadow-sm transition-colors duration-200 lg:backdrop-blur lg:transition-all lg:duration-300 lg:hover:-translate-y-1 lg:hover:border-primary/20 lg:hover:bg-background lg:hover:shadow-2xl lg:hover:shadow-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
             >
               <div aria-hidden="true" className={`pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b ${feature.surfaceClassName}`} />
               <div className="relative flex h-full flex-col gap-5 p-5 lg:p-6">
@@ -253,7 +301,7 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${feature.iconClassName} text-white shadow-lg lg:h-14 lg:w-14`}>
                     <feature.icon className="h-6 w-6 lg:h-7 lg:w-7" />
                   </div>
-                  <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-bold text-muted-foreground shadow-sm backdrop-blur">
+                  <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-bold text-muted-foreground shadow-sm lg:backdrop-blur">
                     {feature.badge}
                   </span>
                 </div>
@@ -265,10 +313,10 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
 
                 <div
                   aria-hidden="true"
-                  className="flex min-h-[44px] items-center justify-between rounded-2xl border border-border/70 bg-secondary/40 px-4 text-sm font-bold text-foreground transition-colors group-hover:border-primary/20 group-hover:bg-primary/10 group-hover:text-primary"
+                  className="flex min-h-[44px] items-center justify-between rounded-2xl border border-border/70 bg-secondary/40 px-4 text-sm font-bold text-foreground transition-colors lg:group-hover:border-primary/20 lg:group-hover:bg-primary/10 lg:group-hover:text-primary"
                 >
                   <span>{feature.actionLabel}</span>
-                  <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  <ChevronRight className="h-4 w-4 transition-transform lg:group-hover:translate-x-1" />
                 </div>
               </div>
             </Card>

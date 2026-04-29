@@ -401,11 +401,12 @@ export default function GenerateView() {
                         >
                           <img
                             src={sourceImage.preview}
-                            className="h-full w-full object-cover transition-transform duration-300 group-hover/source:scale-105"
+                            decoding="async"
+                            className="h-full w-full object-cover lg:transition-transform lg:duration-300 lg:group-hover/source:scale-105"
                             alt={`参考图 ${index + 1}`}
                           />
                           <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/60 to-transparent" />
-                          <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur">
+                          <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white shadow-sm lg:backdrop-blur">
                             参考图 {index + 1}
                           </span>
                           <Button
@@ -413,7 +414,7 @@ export default function GenerateView() {
                             variant="secondary"
                             size="icon"
                             aria-label={sourceImages.length === 1 ? '取消参考图' : `取消参考图 ${index + 1}`}
-                            className="absolute right-2 top-2 z-10 h-11 w-11 rounded-full bg-black/55 text-white shadow-lg shadow-black/25 backdrop-blur hover:bg-black/70"
+                            className="absolute right-2 top-2 z-10 h-11 w-11 rounded-full bg-black/55 text-white shadow-lg shadow-black/25 hover:bg-black/70 lg:backdrop-blur"
                             onClick={(event) => handleCancelSourceImage(index, event)}
                           >
                             <X className="h-4 w-4" />
@@ -421,11 +422,11 @@ export default function GenerateView() {
                         </div>
                       ))}
                     </div>
-                    <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-[10px] font-bold text-white shadow-lg shadow-black/20 backdrop-blur">
+                    <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-[10px] font-bold text-white shadow-lg shadow-black/20 lg:backdrop-blur">
                       已选择 {sourceImages.length}/{MAX_SOURCE_IMAGES} 张
                     </div>
                     {sourceImages.length < MAX_SOURCE_IMAGES && (
-                      <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/90 px-3 py-2 text-[10px] font-black text-primary-foreground shadow-lg shadow-primary/20 backdrop-blur transition-transform group-hover:scale-105">
+                      <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/90 px-3 py-2 text-[10px] font-black text-primary-foreground shadow-lg shadow-primary/20 lg:backdrop-blur lg:transition-transform lg:group-hover:scale-105">
                         <ImageIcon className="h-3.5 w-3.5" />
                         <span>继续添加</span>
                       </div>
@@ -433,7 +434,7 @@ export default function GenerateView() {
                   </div>
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center">
-                    <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 transition-transform group-hover:scale-110">
+                    <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 lg:transition-transform lg:group-hover:scale-110">
                       <ImageIcon className="h-6 w-6 text-primary" />
                     </div>
                     <p className="text-xs font-bold">点击上传参考图</p>
@@ -686,7 +687,7 @@ export default function GenerateView() {
               >
                 {resultImages.map((image, index) => (
                   <div key={`${image.originalUrl}-${index}`} className="relative overflow-hidden rounded-[2rem] border border-primary/20 bg-card shadow-xl">
-                    <img src={image.displayUrl} alt={`Result ${index + 1}`} className="aspect-square w-full object-cover" />
+                    <img src={image.displayUrl} alt={`Result ${index + 1}`} decoding="async" className="aspect-square w-full object-cover" />
                     {isPreviewResult ? (
                       <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
                         预览图
@@ -698,7 +699,7 @@ export default function GenerateView() {
                       target="_blank"
                       rel="noopener"
                       aria-label={`下载原图 ${index + 1}`}
-                      className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm"
+                      className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg lg:backdrop-blur-sm"
                     >
                       <Download className="h-4 w-4" />
                     </a>

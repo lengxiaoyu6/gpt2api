@@ -80,7 +80,7 @@ export default function ProfileCreditLogs({ balance, onBack }: ProfileCreditLogs
         </div>
       </div>
 
-      <div className="rounded-[2rem] border border-border/50 bg-card/60 p-5 shadow-xl backdrop-blur lg:p-6">
+      <div className="rounded-[2rem] border border-border/50 bg-card/60 p-5 shadow-xl lg:backdrop-blur lg:p-6">
         <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
           <Coins className="h-4 w-4 text-yellow-500" />
           <span>当前可用积分</span>
@@ -105,7 +105,7 @@ export default function ProfileCreditLogs({ balance, onBack }: ProfileCreditLogs
             const amountClassName = item.amount > 0 ? 'text-emerald-600' : item.amount < 0 ? 'text-rose-600' : 'text-foreground'
 
             return (
-              <div key={item.id} className="rounded-[1.75rem] border border-border/50 bg-card/60 p-4 shadow-sm backdrop-blur lg:p-5">
+              <div key={item.id} className="rounded-[1.75rem] border border-border/50 bg-card/60 p-4 shadow-sm lg:backdrop-blur lg:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="text-sm font-bold">{title}</div>
