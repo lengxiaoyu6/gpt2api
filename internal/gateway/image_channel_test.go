@@ -138,6 +138,46 @@ func TestActualCountReturnsZeroForEmptyImageResult(t *testing.T) {
 	}
 }
 
+func TestImageGenerateWithRetryCompletesFewerImagesThanRequested(t *testing.T) {
+	requestedCounts := make([]int, 0, 2)
+	rt := &channel.Route{
+		Channel: &channel.Channel{ID: 1, Name: "route-1"},
+		Adapter: &imageAdapterStub{
+			imageFn: func(ctx context.Context, upstreamModel string, req *adapter.ImageRequest) (*adapter.ImageResult, error) {
+				requestedCounts = append(requestedCounts, req.N)
+				if len(requestedCounts) == 1 {
+					return &adapter.ImageResult{URLs: []string{"https://example.com/only-one.png"}}, nil
+				}
+				return &adapter.ImageResult{URLs: []string{
+					"https://example.com/fill-1.png",
+					"https://example.com/fill-2.png",
+				}}, nil
+			},
+		},
+	}
+
+	got, err := imageGenerateWithRetry(context.Background(), rt, &adapter.ImageRequest{Prompt: "multi", N: 3})
+	if err != nil {
+		t.Fatalf("imageGenerateWithRetry error = %v", err)
+	}
+	if len(requestedCounts) != 2 || requestedCounts[0] != 3 || requestedCounts[1] != 2 {
+		t.Fatalf("requested counts = %v", requestedCounts)
+	}
+	if got == nil || len(got.URLs) != 3 {
+		t.Fatalf("result = %#v", got)
+	}
+	want := []string{
+		"https://example.com/only-one.png",
+		"https://example.com/fill-1.png",
+		"https://example.com/fill-2.png",
+	}
+	for i := range want {
+		if got.URLs[i] != want[i] {
+			t.Fatalf("urls = %v", got.URLs)
+		}
+	}
+}
+
 func TestPickImageRouteSkipsRouteOnlyAfterSecondFailure(t *testing.T) {
 	first := &imageAdapterStub{
 		imageFn: func(ctx context.Context, upstreamModel string, req *adapter.ImageRequest) (*adapter.ImageResult, error) {

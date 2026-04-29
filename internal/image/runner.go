@@ -167,7 +167,12 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 		}
 	} else {
 		if r.runWithRetry(ctx, opt, runOnce, result) {
-			if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
+			trimRunResultImages(result, opt.N)
+			if got := runResultImageCount(result); got < opt.N {
+				result.Status = StatusFailed
+				result.ErrorCode = ErrInvalidResponse
+				result.ErrorMessage = fmt.Sprintf("requested %d images, got %d", opt.N, got)
+			} else if err := r.archiveResultImages(ctx, opt.TaskID, result); err != nil {
 				result.Status = StatusFailed
 				result.ErrorCode = ErrArchive
 				result.ErrorMessage = err.Error()
@@ -210,7 +215,7 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 }
 
 // runParallel 并发启动 opt.N 个独立请求,每个各出 1 张图,最终合并到 result。
-// 只要有 >=1 张成功就算整体成功;全部失败才返回失败。
+// 如果首批返回数量不足,按剩余数量继续补批;达到 opt.N 后才算整体成功。
 // 各 goroutine 不写 DAO(TaskID 置空),写库由外层 Run 统一完成。
 func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runnerAttemptFunc, result *RunResult) {
 	type subResult struct {
@@ -227,41 +232,58 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 	}
 
 	n := opt.N
-	ch := make(chan subResult, n)
 
 	subOpt := opt
 	subOpt.N = 1
 	subOpt.TaskID = ""
 
-	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
+	runBatch := func(count int) []subResult {
+		ch := make(chan subResult, count)
+		var wg sync.WaitGroup
+		for i := 0; i < count; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sub := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown, StorageMode: r.storageMode()}
+				ok := r.runWithRetry(ctx, subOpt, runOnce, sub)
+				if ok {
+					trimRunResultImages(sub, subOpt.N)
+				}
+				ch <- subResult{
+					ok:           ok,
+					attempts:     sub.Attempts,
+					fileIDs:      append([]string(nil), sub.FileIDs...),
+					signedURLs:   append([]string(nil), sub.SignedURLs...),
+					contentTypes: append([]string(nil), sub.ContentTypes...),
+					archiveImgs:  append([]imagestore.SourceImage(nil), sub.archiveImages...),
+					convID:       sub.ConversationID,
+					accountID:    sub.AccountID,
+					errCode:      sub.ErrorCode,
+					errMsg:       sub.ErrorMessage,
+				}
+			}()
+		}
 		go func() {
-			defer wg.Done()
-			sub := &RunResult{Status: StatusFailed, ErrorCode: ErrUnknown, StorageMode: r.storageMode()}
-			ok := r.runWithRetry(ctx, subOpt, runOnce, sub)
-			if ok {
-				trimRunResultImages(sub, subOpt.N)
-			}
-			ch <- subResult{
-				ok:           ok,
-				attempts:     sub.Attempts,
-				fileIDs:      append([]string(nil), sub.FileIDs...),
-				signedURLs:   append([]string(nil), sub.SignedURLs...),
-				contentTypes: append([]string(nil), sub.ContentTypes...),
-				archiveImgs:  append([]imagestore.SourceImage(nil), sub.archiveImages...),
-				convID:       sub.ConversationID,
-				accountID:    sub.AccountID,
-				errCode:      sub.ErrorCode,
-				errMsg:       sub.ErrorMessage,
-			}
+			wg.Wait()
+			close(ch)
 		}()
+		out := make([]subResult, 0, count)
+		for sr := range ch {
+			out = append(out, sr)
+		}
+		return out
 	}
 
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
+	subImageCount := func(sr subResult) int {
+		count := len(sr.fileIDs)
+		if len(sr.signedURLs) > count {
+			count = len(sr.signedURLs)
+		}
+		if len(sr.archiveImgs) > count {
+			count = len(sr.archiveImgs)
+		}
+		return count
+	}
 
 	var (
 		successCount int
@@ -269,11 +291,30 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 		lastErrMsg   string
 	)
 	result.quotaUsed = map[uint64]int{}
-	for sr := range ch {
-		result.Attempts += sr.attempts
-		if sr.ok {
+	maxBatches := n
+	if retryWindow := maxAttemptWindow(opt.MaxAttempts); retryWindow > maxBatches {
+		maxBatches = retryWindow
+	}
+	for batch := 1; batch <= maxBatches; batch++ {
+		remaining := n - runResultImageCount(result)
+		if remaining <= 0 {
+			break
+		}
+		for _, sr := range runBatch(remaining) {
+			result.Attempts += sr.attempts
+			if !sr.ok {
+				lastErrCode = sr.errCode
+				lastErrMsg = sr.errMsg
+				continue
+			}
+			imageCount := subImageCount(sr)
+			if imageCount <= 0 {
+				lastErrCode = ErrInvalidResponse
+				lastErrMsg = "empty image response"
+				continue
+			}
 			successCount++
-			base := len(result.FileIDs)
+			base := runResultImageCount(result)
 			result.FileIDs = append(result.FileIDs, sr.fileIDs...)
 			result.SignedURLs = append(result.SignedURLs, sr.signedURLs...)
 			result.ContentTypes = append(result.ContentTypes, sr.contentTypes...)
@@ -289,19 +330,24 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 				result.AccountID = sr.accountID
 			}
 			if sr.accountID > 0 {
-				result.quotaUsed[sr.accountID] += quotaImageCount(sr.fileIDs, sr.signedURLs, subOpt.N)
+				result.quotaUsed[sr.accountID] += imageCount
 			}
-			continue
 		}
-		lastErrCode = sr.errCode
-		lastErrMsg = sr.errMsg
+		if ctx.Err() != nil {
+			break
+		}
 	}
 	if len(result.archiveImages) > 1 {
 		sort.Slice(result.archiveImages, func(i, j int) bool {
 			return result.archiveImages[i].Index < result.archiveImages[j].Index
 		})
 	}
-	if successCount > 0 {
+	gotImages := runResultImageCount(result)
+	if gotImages > n {
+		trimRunResultImages(result, n)
+		gotImages = runResultImageCount(result)
+	}
+	if gotImages >= n {
 		result.Status = StatusSuccess
 		result.ErrorCode = ""
 		result.ErrorMessage = ""
@@ -309,11 +355,25 @@ func (r *Runner) runParallel(ctx context.Context, opt RunOptions, runOnce runner
 			zap.String("task_id", opt.TaskID),
 			zap.Int("requested", n),
 			zap.Int("succeeded", successCount),
-			zap.Int("got_images", len(result.FileIDs)),
+			zap.Int("got_images", gotImages),
+		)
+		return
+	}
+	if successCount > 0 {
+		result.ErrorCode = ErrInvalidResponse
+		result.ErrorMessage = fmt.Sprintf("requested %d images, got %d", n, gotImages)
+		logger.L().Warn("image runner parallel returned fewer images than requested after supplement",
+			zap.String("task_id", opt.TaskID),
+			zap.Int("requested", n),
+			zap.Int("succeeded", successCount),
+			zap.Int("got_images", gotImages),
 		)
 		return
 	}
 
+	if lastErrCode == "" {
+		lastErrCode = ErrUnknown
+	}
 	result.ErrorCode = lastErrCode
 	result.ErrorMessage = lastErrMsg
 	logger.L().Warn("image runner parallel all failed",
@@ -1194,6 +1254,23 @@ func trimRunResultImages(result *RunResult, maxImages int) {
 	if len(result.archiveImages) > maxImages {
 		result.archiveImages = append([]imagestore.SourceImage(nil), result.archiveImages[:maxImages]...)
 	}
+}
+
+func runResultImageCount(result *RunResult) int {
+	if result == nil {
+		return 0
+	}
+	count := len(result.FileIDs)
+	if len(result.SignedURLs) > count {
+		count = len(result.SignedURLs)
+	}
+	if len(result.ThumbURLs) > count {
+		count = len(result.ThumbURLs)
+	}
+	if len(result.archiveImages) > count {
+		count = len(result.archiveImages)
+	}
+	return count
 }
 
 func quotaImageCount(fileIDs, signedURLs []string, fallback int) int {

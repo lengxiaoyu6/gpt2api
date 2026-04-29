@@ -3,6 +3,7 @@ package image
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -261,15 +262,15 @@ func TestRunnerRunStopsAfterSingleNonRetryableFailure(t *testing.T) {
 	}
 }
 
-func TestRunnerRunReturnsPartialSuccessForParallelRequests(t *testing.T) {
+func TestRunnerRunContinuesParallelRequestsUntilRequestedImageCount(t *testing.T) {
 	var calls int32
 	r := &Runner{
 		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
 			call := atomic.AddInt32(&calls, 1)
-			if call == 1 {
+			if call == 1 || call == 5 || call == 8 || call == 10 {
 				result.ConversationID = "conv_partial"
-				result.FileIDs = []string{"file:partial_ok"}
-				result.SignedURLs = []string{"https://example.com/partial-ok.png"}
+				result.FileIDs = []string{fmt.Sprintf("file:partial_ok_%d", call)}
+				result.SignedURLs = []string{fmt.Sprintf("https://example.com/partial-ok-%d.png", call)}
 				result.ContentTypes = []string{"image/png"}
 				return true, "", nil
 			}
@@ -277,15 +278,15 @@ func TestRunnerRunReturnsPartialSuccessForParallelRequests(t *testing.T) {
 		},
 	}
 
-	res := r.Run(context.Background(), RunOptions{TaskID: "img_partial_success", N: 3, MaxAttempts: 1})
+	res := r.Run(context.Background(), RunOptions{TaskID: "img_partial_success", N: 4, MaxAttempts: 1})
 	if res.Status != StatusSuccess {
 		t.Fatalf("expected success status, got %s", res.Status)
 	}
-	if got := len(res.FileIDs); got != 1 {
+	if got := len(res.FileIDs); got != 4 {
 		t.Fatalf("file ids count = %d, ids = %v", got, res.FileIDs)
 	}
-	if res.FileIDs[0] != "file:partial_ok" {
-		t.Fatalf("file ids = %v", res.FileIDs)
+	if got := atomic.LoadInt32(&calls); got != 10 {
+		t.Fatalf("calls = %d", got)
 	}
 }
 

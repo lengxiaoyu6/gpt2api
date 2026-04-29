@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -264,19 +265,44 @@ func imageGenerateWithRetry(ctx context.Context, rt *channel.Route, req *adapter
 	if rt == nil || rt.Adapter == nil {
 		return nil, errors.New("image route adapter is nil")
 	}
+	expected := expectedImageCount(req)
+	maxCalls := expected
+	if maxCalls < 2 {
+		maxCalls = 2
+	}
+	combined := &adapter.ImageResult{}
 	var lastErr error
-	for attempt := 1; attempt <= 2; attempt++ {
-		result, err := rt.Adapter.ImageGenerate(ctx, rt.UpstreamModel, req)
-		if err == nil && actualCount(result) > 0 {
-			return result, nil
+	for attempt := 1; attempt <= maxCalls; attempt++ {
+		remaining := expected - actualCount(combined)
+		if remaining <= 0 {
+			return trimAdapterImageResult(combined, expected), nil
 		}
+		attemptReq := &adapter.ImageRequest{}
+		if req != nil {
+			*attemptReq = *req
+		}
+		attemptReq.N = remaining
+
+		result, err := rt.Adapter.ImageGenerate(ctx, rt.UpstreamModel, attemptReq)
 		if err == nil {
+			actual := actualCount(result)
+			if actual > 0 {
+				appendAdapterImageResult(combined, trimAdapterImageResult(result, remaining))
+				if actualCount(combined) >= expected {
+					return trimAdapterImageResult(combined, expected), nil
+				}
+				lastErr = fmt.Errorf("image response count mismatch: requested %d images, got %d", expected, actualCount(combined))
+				continue
+			}
 			err = errors.New("empty image response")
 		}
 		if errors.Is(err, adapter.ErrImageReferencesUnsupported) {
 			return nil, err
 		}
 		lastErr = err
+	}
+	if got := actualCount(combined); got > 0 {
+		return nil, fmt.Errorf("image response count mismatch: requested %d images, got %d", expected, got)
 	}
 	return nil, lastErr
 }
@@ -298,6 +324,41 @@ func actualCount(r *adapter.ImageResult) int {
 		return 0
 	}
 	return len(r.URLs) + len(r.B64s)
+}
+
+func expectedImageCount(req *adapter.ImageRequest) int {
+	if req == nil || req.N <= 0 {
+		return 1
+	}
+	return req.N
+}
+
+func trimAdapterImageResult(result *adapter.ImageResult, maxImages int) *adapter.ImageResult {
+	if result == nil || maxImages <= 0 {
+		return result
+	}
+	out := *result
+	if len(result.URLs) >= maxImages {
+		out.URLs = append([]string(nil), result.URLs[:maxImages]...)
+		out.B64s = nil
+		return &out
+	}
+	out.URLs = append([]string(nil), result.URLs...)
+	remaining := maxImages - len(out.URLs)
+	if len(result.B64s) > remaining {
+		out.B64s = append([]string(nil), result.B64s[:remaining]...)
+	} else {
+		out.B64s = append([]string(nil), result.B64s...)
+	}
+	return &out
+}
+
+func appendAdapterImageResult(dst, src *adapter.ImageResult) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.URLs = append(dst.URLs, src.URLs...)
+	dst.B64s = append(dst.B64s, src.B64s...)
 }
 
 func decodeChannelInlineImages(b64s []string, startIndex int) ([]imagestore.SourceImage, error) {
