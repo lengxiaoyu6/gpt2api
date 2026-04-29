@@ -22,6 +22,7 @@ import (
 	"github.com/432539/gpt2api/internal/recharge"
 	"github.com/432539/gpt2api/internal/redeem"
 	"github.com/432539/gpt2api/internal/settings"
+	"github.com/432539/gpt2api/internal/updatelog"
 	"github.com/432539/gpt2api/internal/usage"
 	"github.com/432539/gpt2api/internal/user"
 	pkgjwt "github.com/432539/gpt2api/pkg/jwt"
@@ -69,6 +70,7 @@ type Deps struct {
 	AdminRedeemH   *redeem.AdminHandler
 
 	AnnouncementH *announcement.Handler
+	UpdateLogH    *updatelog.Handler
 	SettingsH     *settings.Handler
 	SettingsSvc   *settings.Service
 }
@@ -184,6 +186,9 @@ func New(d *Deps) *gin.Engine {
 		}
 		if d.AnnouncementH != nil {
 			pub.GET("/announcements", d.AnnouncementH.ListPublic)
+		}
+		if d.UpdateLogH != nil {
+			pub.GET("/update-logs", d.UpdateLogH.ListPublic)
 		}
 		if d.RechargeH != nil {
 			pub.POST("/epay/notify", d.RechargeH.EPayNotify)
@@ -382,6 +387,16 @@ func New(d *Deps) *gin.Engine {
 					ag.POST("", d.AnnouncementH.Create)
 					ag.PUT("/:id", d.AnnouncementH.Update)
 					ag.DELETE("/:id", d.AnnouncementH.Delete)
+				}
+			}
+
+			if d.UpdateLogH != nil {
+				ug := admin.Group("/update-logs", middleware.RequirePerm(rbac.PermSystemSetting))
+				{
+					ug.GET("", d.UpdateLogH.ListAdmin)
+					ug.POST("", d.UpdateLogH.Create)
+					ug.PUT("/:id", d.UpdateLogH.Update)
+					ug.DELETE("/:id", d.UpdateLogH.Delete)
 				}
 			}
 

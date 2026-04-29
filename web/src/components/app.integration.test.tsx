@@ -32,6 +32,10 @@ vi.mock('../api/announcement', () => ({
   listPublicAnnouncements: vi.fn(),
 }))
 
+vi.mock('../api/update-log', () => ({
+  listPublicUpdateLogs: vi.fn(),
+}))
+
 vi.mock('../api/apikey', () => ({
   listKeys: vi.fn(),
   createKey: vi.fn(),
@@ -44,6 +48,7 @@ const meApi = await import('../api/me')
 const rechargeApi = await import('../api/recharge')
 const creditApi = await import('../api/credit')
 const announcementApi = await import('../api/announcement')
+const updateLogApi = await import('../api/update-log')
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
 const { default: App } = await import('../App')
@@ -94,6 +99,12 @@ describe('web integration', () => {
     vi.mocked(announcementApi.listPublicAnnouncements).mockResolvedValue({
       items: [],
       total: 0,
+    })
+    vi.mocked(updateLogApi.listPublicUpdateLogs).mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
     })
   })
 
@@ -163,6 +174,7 @@ describe('web integration', () => {
     const [brandArea, actionArea] = Array.from(mobileHeader?.children ?? [])
     const creditText = within(mobileHeader as HTMLElement).getByText('8.99 积分')
     const announcementButton = within(mobileHeader as HTMLElement).getByRole('button', { name: '公告' })
+    const updateLogButton = within(mobileHeader as HTMLElement).getByRole('button', { name: '更新日志' })
 
     expect(brandArea.className).toContain('min-w-0')
     expect(brandArea.className).toContain('flex-1')
@@ -173,6 +185,10 @@ describe('web integration', () => {
     expect(announcementButton.className).toContain('px-2.5')
     expect(announcementButton.querySelector('span')?.className).toContain('hidden')
     expect(announcementButton.querySelector('span')?.className).toContain('sm:inline')
+    expect(updateLogButton.className).toContain('px-2.5')
+    expect(updateLogButton.querySelector('span')?.className).toContain('hidden')
+    expect(updateLogButton.querySelector('span')?.className).toContain('sm:inline')
+    expect(updateLogApi.listPublicUpdateLogs).not.toHaveBeenCalled()
   })
 
   test('desktop home header keeps credit balance card on one line', async () => {
@@ -205,6 +221,7 @@ describe('web integration', () => {
     const desktopInfoBar = screen.getByRole('region', { name: '桌面信息栏' })
     const actionArea = desktopInfoBar.lastElementChild
     const creditText = within(desktopInfoBar).getByText('8.99 积分')
+    const updateLogButton = within(desktopInfoBar).getByRole('button', { name: '更新日志' })
     const creditCard = creditText.parentElement
     const creditIcon = creditCard?.querySelector('.lucide-coins')
 
@@ -217,7 +234,48 @@ describe('web integration', () => {
     expect(creditCard?.className).toContain('whitespace-nowrap')
     expect(creditIcon?.getAttribute('class')).toContain('shrink-0')
     expect(creditText.className).toContain('whitespace-nowrap')
+    expect(updateLogButton.className).toContain('px-2.5')
     expect(within(desktopInfoBar).queryByText('当前积分')).toBeNull()
+    expect(updateLogApi.listPublicUpdateLogs).not.toHaveBeenCalled()
+  })
+
+  test('update log header entry opens timeline page', async () => {
+    vi.mocked(updateLogApi.listPublicUpdateLogs).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          version: 'v1.2.0',
+          title: '系统更新',
+          content: '更新日志使用时间线页面展示',
+          enabled: true,
+          sort_order: 10,
+          published_at: '2026-04-29T08:00:00Z',
+          created_at: '2026-04-29T08:00:00Z',
+          updated_at: '2026-04-29T08:00:00Z',
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+    useStore.setState({
+      activeTab: 'home',
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: '更新日志' })[0])
+
+    expect(useStore.getState().activeTab).toBe('updateLogs')
+    expect(await screen.findByRole('heading', { name: '系统更新日志' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '系统更新日志时间线' })).toBeInTheDocument()
+    expect(screen.getByText('更新日志使用时间线页面展示')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: '系统更新日志' })).toBeNull()
+    expect(updateLogApi.listPublicUpdateLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
+
+    fireEvent.click(screen.getByRole('button', { name: '返回首页' }))
+    expect(useStore.getState().activeTab).toBe('home')
   })
 
   test('mobile shell uses paint-friendly fixed bars and desktop-only ambient background', () => {

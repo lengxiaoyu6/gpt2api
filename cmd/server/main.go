@@ -35,6 +35,7 @@ import (
 	"github.com/432539/gpt2api/internal/scheduler"
 	"github.com/432539/gpt2api/internal/server"
 	"github.com/432539/gpt2api/internal/settings"
+	"github.com/432539/gpt2api/internal/updatelog"
 	"github.com/432539/gpt2api/internal/usage"
 	"github.com/432539/gpt2api/internal/user"
 	"github.com/432539/gpt2api/pkg/crypto"
@@ -249,6 +250,9 @@ func main() {
 	announcementDAO := announcement.NewDAO(sqldb)
 	announcementSvc := announcement.NewService(announcementDAO)
 	announcementH := announcement.NewHandler(announcementSvc)
+	updateLogDAO := updatelog.NewDAO(sqldb)
+	updateLogSvc := updatelog.NewService(updateLogDAO)
+	updateLogH := updatelog.NewHandler(updateLogSvc)
 
 	// 代理池健康探测器:由 settings 提供热更参数,注入到 Handler
 	proxyH := proxy.NewHandler(proxySvc)
@@ -321,6 +325,7 @@ func main() {
 		AdminRedeemH:   adminRedeemH,
 
 		AnnouncementH: announcementH,
+		UpdateLogH:    updateLogH,
 		SettingsH:     settingsH,
 		SettingsSvc:   settingsSvc,
 	}

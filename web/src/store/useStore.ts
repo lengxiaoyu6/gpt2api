@@ -7,7 +7,7 @@ import * as meApi from '../api/me'
 import * as siteApi from '../api/site'
 import { resolveOutputSize, type AspectRatio, type OutputQualityValue } from '../features/image/options'
 
-export type TabKey = 'home' | 'generate' | 'history' | 'profile'
+export type TabKey = 'home' | 'generate' | 'history' | 'profile' | 'updateLogs'
 export type BootstrapStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type { AspectRatio, OutputQualityValue } from '../features/image/options'
 

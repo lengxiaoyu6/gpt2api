@@ -8,8 +8,10 @@ import HomeView from './components/views/Home';
 import GenerateView from './components/views/Generate';
 import HistoryView from './components/views/History';
 import ProfileView from './components/views/Profile';
+import UpdateLogsView from './components/views/UpdateLogs';
 import AuthOverlay from './components/AuthOverlay';
 import AnnouncementCenter from './components/AnnouncementCenter';
+import UpdateLogCenter from './components/UpdateLogCenter';
 
 import { Button } from '@/components/ui/button';
 import { cn, formatCredit } from '@/lib/utils';
@@ -30,6 +32,10 @@ const TAB_META: Record<TabKey, { title: string; description: string }> = {
   profile: {
     title: '账户概览',
     description: '查看积分余额、签到状态与账号设置。',
+  },
+  updateLogs: {
+    title: '系统更新日志',
+    description: '查看站点功能调整、体验优化与发布时间线。',
   },
 };
 
@@ -210,6 +216,7 @@ export default function App() {
           </div>
 
           <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <UpdateLogCenter onOpen={() => handleTabChange('updateLogs')} />
             <AnnouncementCenter active={activeTab === 'home'} />
             {user ? (
               <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/50 bg-secondary/50 px-2.5 py-1.5 sm:gap-2 sm:px-3">
@@ -237,6 +244,7 @@ export default function App() {
             </div>
 
             <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
+              <UpdateLogCenter onOpen={() => handleTabChange('updateLogs')} />
               <AnnouncementCenter active={activeTab === 'home'} />
               {user ? (
                 <div
@@ -270,6 +278,7 @@ export default function App() {
             {activeTab === 'generate' && <GenerateView />}
             {activeTab === 'history' && <HistoryView />}
             {activeTab === 'profile' && <ProfileView siteName={siteName} />}
+            {activeTab === 'updateLogs' && <UpdateLogsView onBackHome={() => handleTabChange('home')} />}
           </motion.div>
         </main>
       </div>
