@@ -1991,6 +1991,96 @@ describe('web backend bindings', () => {
     expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
   })
 
+  test('history detail preloads remaining previews and shows loading feedback during first switch', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    const preloadRecords: Array<{ src: string; image: { onload: null | (() => void) } }> = []
+
+    class MockPreloadImage {
+      onload: null | (() => void) = null
+      onerror: null | (() => void) = null
+      private currentSrc = ''
+
+      set src(value: string) {
+        this.currentSrc = value
+        preloadRecords.push({
+          src: value,
+          image: this,
+        })
+      }
+
+      get src() {
+        return this.currentSrc
+      }
+    }
+
+    vi.stubGlobal('Image', MockPreloadImage as unknown as typeof Image)
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 23,
+          task_id: 'task-preload-multi',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Preload multi city',
+          n: 3,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 15,
+          image_urls: ['/p/img/task-preload-multi/0', '/p/img/task-preload-multi/1', '/p/img/task-preload-multi/2'],
+          thumb_urls: ['/p/thumb/task-preload-multi/0', '/p/thumb/task-preload-multi/1', '/p/thumb/task-preload-multi/2'],
+          created_at: '2026-04-22T12:35:00Z',
+        },
+      ],
+    })
+
+    try {
+      render(<HistoryView />)
+
+      await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Preload multi city'))
+      })
+
+      await waitFor(() =>
+        expect(preloadRecords.map((item) => item.src)).toEqual(
+          expect.arrayContaining(['/p/thumb/task-preload-multi/1', '/p/thumb/task-preload-multi/2']),
+        ),
+      )
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '下一张' }))
+      })
+
+      expect(screen.getByText('第 2 张 / 共 3 张')).toBeInTheDocument()
+      expect(screen.getByText('第 2 张加载中')).toBeInTheDocument()
+
+      const secondPreviewPreloader = preloadRecords.find((item) => item.src === '/p/thumb/task-preload-multi/1')
+
+      await act(async () => {
+        secondPreviewPreloader?.image.onload?.()
+      })
+
+      await waitFor(() => expect(screen.queryByText('第 2 张加载中')).toBeNull())
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   test('history view constrains long prompt inside detail panel', async () => {
     const fetchHistory = vi.fn().mockResolvedValue([])
     const longPrompt = 'ultra-detailed-cinematic-neon-city-'.repeat(24)

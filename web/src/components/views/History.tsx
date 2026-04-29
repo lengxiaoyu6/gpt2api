@@ -272,6 +272,8 @@ export default function HistoryView() {
   const { user, history, historyLoading, historyHasMore, fetchHistory, imageModels, deleteHistoryRecord } = useStore();
   const [selectedImage, setSelectedImage] = useState<HistoryRecord | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [loadedPreviewUrls, setLoadedPreviewUrls] = useState<Record<string, boolean>>({});
+  const [loadingPreviewUrl, setLoadingPreviewUrl] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<HistoryRecord | null>(null);
   const [deletingTaskID, setDeletingTaskID] = useState<string | null>(null);
@@ -306,6 +308,7 @@ export default function HistoryView() {
     : history;
   const selectedImageKind = selectedImage ? getTaskStateKind(selectedImage.status) : null;
   const selectedPreviewUrls = getPreviewImageUrls(selectedImage);
+  const selectedPreviewUrlKey = selectedPreviewUrls.join('||');
   const selectedOriginalUrls = getOriginalImageUrls(selectedImage);
   const selectedReferenceImages = getReferenceImages(selectedImage);
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
@@ -329,15 +332,65 @@ export default function HistoryView() {
   const deleteTargetSizeLabel = formatImageSize(deleteTarget?.size);
   const deleteTargetCreatedAtLabel = deleteTarget ? new Date(deleteTarget.created_at).toLocaleString() : '';
 
+  useEffect(() => {
+    if (!selectedImage) {
+      setLoadedPreviewUrls({});
+      setLoadingPreviewUrl(null);
+      return;
+    }
+
+    const firstPreviewUrl = selectedPreviewUrls[0] || '';
+    const initialLoadedUrls = firstPreviewUrl ? { [firstPreviewUrl]: true } : {};
+    let active = true;
+
+    setLoadedPreviewUrls(initialLoadedUrls);
+    setLoadingPreviewUrl(null);
+
+    selectedPreviewUrls.forEach((url, index) => {
+      if (!url || index === 0) {
+        return;
+      }
+
+      const preloader = new Image();
+      preloader.onload = () => {
+        if (!active) {
+          return;
+        }
+
+        setLoadedPreviewUrls((current) => (current[url] ? current : { ...current, [url]: true }));
+      };
+      preloader.onerror = () => {
+        if (!active) {
+          return;
+        }
+
+        setLoadedPreviewUrls((current) => (current[url] ? current : { ...current, [url]: true }));
+      };
+      preloader.src = url;
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedImage, selectedPreviewUrlKey]);
+
+  useEffect(() => {
+    if (loadingPreviewUrl && loadedPreviewUrls[loadingPreviewUrl]) {
+      setLoadingPreviewUrl(null);
+    }
+  }, [loadedPreviewUrls, loadingPreviewUrl]);
+
   function openImageDetail(item: HistoryRecord) {
     touchStartXRef.current = null;
     setPreviewIndex(0);
+    setLoadingPreviewUrl(null);
     setSelectedImage(item);
   }
 
   function closeImageDetail() {
     touchStartXRef.current = null;
     setPreviewIndex(0);
+    setLoadingPreviewUrl(null);
     setSelectedImage(null);
   }
 
@@ -372,7 +425,12 @@ export default function HistoryView() {
       return;
     }
 
-    setPreviewIndex((current) => Math.max(0, current - 1));
+    setPreviewIndex((current) => {
+      const nextIndex = Math.max(0, current - 1);
+      const nextUrl = selectedPreviewUrls[nextIndex] || null;
+      setLoadingPreviewUrl(nextUrl && loadedPreviewUrls[nextUrl] ? null : nextUrl);
+      return nextIndex;
+    });
   }
 
   function showNextPreviewImage() {
@@ -380,7 +438,12 @@ export default function HistoryView() {
       return;
     }
 
-    setPreviewIndex((current) => Math.min(selectedPreviewUrls.length - 1, current + 1));
+    setPreviewIndex((current) => {
+      const nextIndex = Math.min(selectedPreviewUrls.length - 1, current + 1);
+      const nextUrl = selectedPreviewUrls[nextIndex] || null;
+      setLoadingPreviewUrl(nextUrl && loadedPreviewUrls[nextUrl] ? null : nextUrl);
+      return nextIndex;
+    });
   }
 
   function handlePreviewTouchStart(event: React.TouchEvent<HTMLDivElement>) {
@@ -630,7 +693,21 @@ export default function HistoryView() {
                 }}
               >
                 {selectedDisplayUrl ? (
-                  <img src={selectedDisplayUrl} decoding="async" className="h-full w-full object-contain" alt="Detail" />
+                  <img
+                    src={selectedDisplayUrl}
+                    decoding="async"
+                    className="h-full w-full object-contain"
+                    alt="Detail"
+                    onLoad={() => {
+                      if (!selectedDisplayUrl) {
+                        return;
+                      }
+
+                      setLoadedPreviewUrls((current) =>
+                        current[selectedDisplayUrl] ? current : { ...current, [selectedDisplayUrl]: true },
+                      );
+                    }}
+                  />
                 ) : (
                   <div className={`flex h-full w-full flex-col items-center justify-center gap-4 px-6 ${getTaskPanelClassName(selectedImageKind)}`}>
                     <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold lg:backdrop-blur-sm ${getTaskBadgeClassName(selectedImageKind)}`}>
@@ -649,6 +726,14 @@ export default function HistoryView() {
                     </p>
                   </div>
                 )}
+                {loadingPreviewUrl === selectedDisplayUrl ? (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/55 px-6 text-center text-white backdrop-blur-[2px]">
+                    <LoaderCircle className="h-6 w-6 animate-spin" />
+                    <div className="rounded-full border border-white/20 bg-black/45 px-3 py-1.5 text-xs font-semibold">
+                      第 {previewIndex + 1} 张加载中
+                    </div>
+                  </div>
+                ) : null}
                 {hasMultiplePreviewImages ? (
                   <div className="absolute inset-x-4 bottom-4 z-10 flex flex-col items-center gap-2">
                     <div className="rounded-full border border-white/20 bg-black/65 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-black/25 lg:backdrop-blur-md">
