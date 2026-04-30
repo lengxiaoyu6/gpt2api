@@ -92,6 +92,8 @@ export interface AdminImageTask {
   task_id: string
   user_id: number
   user_email: string
+  model_id: number
+  model_slug?: string
   prompt: string
   n: number
   size: string

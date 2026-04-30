@@ -204,6 +204,7 @@ SELECT id, task_id, user_id, key_id, model_id, account_id, prompt, n, size, upsc
 type AdminTaskRow struct {
 	Task
 	UserEmail string `db:"user_email" json:"user_email"`
+	ModelSlug string `db:"model_slug" json:"model_slug"`
 }
 
 // AdminTaskFilter 管理员查询过滤条件。
@@ -256,9 +257,11 @@ SELECT t.id, t.task_id, t.user_id, t.key_id, t.model_id, t.account_id,
        t.conversation_id, t.file_ids, t.result_urls, t.thumb_urls, t.reference_count, t.reference_urls, t.reference_thumb_urls, t.error,
        t.estimated_credit, t.credit_cost,
        t.created_at, t.started_at, t.finished_at,
-       COALESCE(u.email, '') AS user_email
+       COALESCE(u.email, '') AS user_email,
+       COALESCE(m.slug, '') AS model_slug
   FROM image_tasks t
   LEFT JOIN users u ON u.id = t.user_id
+  LEFT JOIN models m ON m.id = t.model_id
  WHERE ` + where + `
  ORDER BY t.id DESC
  LIMIT ? OFFSET ?`

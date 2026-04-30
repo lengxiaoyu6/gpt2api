@@ -9,6 +9,8 @@ interface TaskRow {
   task_id: string
   user_id: number
   user_email: string
+  model_id: number
+  model_slug?: string
   prompt: string
   n: number
   size: string
@@ -170,6 +172,14 @@ onMounted(fetchList)
             <div style="font-size:11px;color:var(--el-text-color-secondary)">uid {{ row.user_id }}</div>
           </template>
         </el-table-column>
+        <el-table-column label="模型" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div class="model-cell">
+              <code>{{ row.model_slug || `#${row.model_id}` }}</code>
+              <span v-if="row.model_slug" class="muted">#{{ row.model_id }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="提示词" min-width="240" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.prompt || '-' }}</span>
@@ -296,6 +306,17 @@ onMounted(fetchList)
 </template>
 
 <style scoped>
+.model-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
 .preview-thumb {
   width: 64px;
   height: 64px;
