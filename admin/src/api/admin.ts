@@ -98,6 +98,7 @@ export interface AdminImageTask {
   upscale: string
   status: string
   result_urls_parsed: string[]
+  preview_urls_parsed: string[]
   error: string
   credit_cost: number
   estimated_credit: number

@@ -15,6 +15,7 @@ interface TaskRow {
   upscale: string
   status: string
   result_urls_parsed: string[]
+  preview_urls_parsed: string[]
   error: string
   credit_cost: number
   estimated_credit: number
@@ -33,13 +34,6 @@ const filter = reactive({
   page: 1,
   page_size: 20,
 })
-
-// 缩略图统一走 thumb_kb=10 的预览,体积大约 5~10KB,够列表小卡片用了。
-function withThumb(url: string, kb = 10): string {
-  if (!url) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}thumb_kb=${kb}`
-}
 
 async function fetchList() {
   loading.value = true
@@ -78,8 +72,9 @@ function onReset() {
 const previewDlg = ref(false)
 const previewRow = ref<TaskRow | null>(null)
 const previewIdx = ref(0)
-const previewUrls = computed<string[]>(() => previewRow.value?.result_urls_parsed || [])
+const previewUrls = computed<string[]>(() => previewRow.value?.preview_urls_parsed || [])
 const currentPreview = computed<string>(() => previewUrls.value[previewIdx.value] || '')
+const currentDownloadUrl = computed<string>(() => previewRow.value?.result_urls_parsed?.[previewIdx.value] || '')
 
 function openPreview(row: TaskRow, idx = 0) {
   previewRow.value = row
@@ -193,22 +188,22 @@ onMounted(fetchList)
         </el-table-column>
         <el-table-column label="结果" min-width="220">
           <template #default="{ row }">
-            <div v-if="row.result_urls_parsed?.length" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div v-if="row.preview_urls_parsed?.length" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <div style="display:flex;gap:4px;flex-wrap:wrap">
                 <img
-                  v-for="(url, idx) in row.result_urls_parsed.slice(0, 3)"
+                  v-for="(url, idx) in row.preview_urls_parsed.slice(0, 3)"
                   :key="idx"
-                  :src="withThumb(url)"
+                  :src="url"
                   alt=""
                   loading="lazy"
                   style="width:44px;height:44px;border-radius:4px;object-fit:cover;cursor:zoom-in;border:1px solid var(--el-border-color-lighter)"
                   @click="openPreview(row, idx)"
                 />
                 <div
-                  v-if="row.result_urls_parsed.length > 3"
+                  v-if="row.preview_urls_parsed.length > 3"
                   style="width:44px;height:44px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;background:var(--el-fill-color-light);cursor:pointer"
                   @click="openPreview(row, 3)"
-                >+{{ row.result_urls_parsed.length - 3 }}</div>
+                >+{{ row.preview_urls_parsed.length - 3 }}</div>
               </div>
               <div style="display:flex;flex-direction:column;gap:2px">
                 <el-button type="primary" link size="small" @click="openPreview(row, 0)">放大</el-button>
@@ -275,7 +270,7 @@ onMounted(fetchList)
           <img
             v-for="(url, idx) in previewUrls"
             :key="idx"
-            :src="withThumb(url, 16)"
+            :src="url"
             alt=""
             loading="lazy"
             :class="['preview-thumb', { active: previewIdx === idx }]"
@@ -283,7 +278,7 @@ onMounted(fetchList)
           />
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
-          <el-button size="small" @click="downloadOne(currentPreview, previewRow.task_id, previewIdx)">
+          <el-button size="small" @click="downloadOne(currentDownloadUrl, previewRow.task_id, previewIdx)">
             下载当前
           </el-button>
           <el-button

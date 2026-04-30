@@ -10,6 +10,12 @@ import (
 	"github.com/432539/gpt2api/pkg/resp"
 )
 
+type adminTaskView struct {
+	AdminTaskRow
+	ResultURLsParsed  []string `json:"result_urls_parsed"`
+	PreviewURLsParsed []string `json:"preview_urls_parsed"`
+}
+
 // AdminHandler 管理员视角下的生成记录接口。
 type AdminHandler struct {
 	dao *DAO
@@ -54,26 +60,12 @@ func (h *AdminHandler) List(c *gin.Context) {
 		return
 	}
 
-	// 把 result_urls JSON bytes 解成可读字符串数组后输出 —— 同时改写为
-	// 自家代理 URL,前端无须再单独构造,且永远不会泄漏上游鉴权 URL。
-	type rowOut struct {
-		AdminTaskRow
-		ResultURLsParsed []string `json:"result_urls_parsed"`
-	}
-	out := make([]rowOut, 0, len(rows))
+	out := make([]adminTaskView, 0, len(rows))
 	for _, r := range rows {
-		urls := r.DecodeResultURLs()
-		if len(urls) > 0 {
-			urls = BuildProxyURLs(r.TaskID, urls)
-		} else if fids := r.DecodeFileIDs(); len(fids) > 0 {
-			urls = make([]string, len(fids))
-			for i := range fids {
-				urls[i] = BuildProxyURL(r.TaskID, i, "")
-			}
-		}
-		out = append(out, rowOut{
-			AdminTaskRow:     r,
-			ResultURLsParsed: urls,
+		out = append(out, adminTaskView{
+			AdminTaskRow:      r,
+			ResultURLsParsed:  buildAdminDownloadURLs(r),
+			PreviewURLsParsed: buildAdminPreviewURLs(r),
 		})
 	}
 
@@ -83,4 +75,55 @@ func (h *AdminHandler) List(c *gin.Context) {
 		"page":      page,
 		"page_size": size,
 	})
+}
+
+func buildAdminDownloadURLs(r AdminTaskRow) []string {
+	urls := r.DecodeResultURLs()
+	if len(urls) > 0 {
+		return BuildProxyURLs(r.TaskID, urls)
+	}
+	if fids := r.DecodeFileIDs(); len(fids) > 0 {
+		urls = make([]string, len(fids))
+		for i := range fids {
+			urls[i] = BuildProxyURL(r.TaskID, i, "")
+		}
+	}
+	return urls
+}
+
+func buildAdminPreviewURLs(r AdminTaskRow) []string {
+	rawURLs := r.DecodeResultURLs()
+	thumbURLs := r.DecodeThumbURLs()
+	fileIDs := r.DecodeFileIDs()
+
+	count := len(rawURLs)
+	if len(thumbURLs) > count {
+		count = len(thumbURLs)
+	}
+	if len(fileIDs) > count {
+		count = len(fileIDs)
+	}
+	if count == 0 {
+		return nil
+	}
+
+	out := make([]string, count)
+	for i := 0; i < count; i++ {
+		if i < len(thumbURLs) {
+			if u := strings.TrimSpace(thumbURLs[i]); u != "" {
+				out[i] = u
+				continue
+			}
+		}
+		if i < len(rawURLs) {
+			if u := strings.TrimSpace(rawURLs[i]); u != "" {
+				out[i] = u
+				continue
+			}
+		}
+		if i < len(fileIDs) {
+			out[i] = BuildProxyURL(r.TaskID, i, "")
+		}
+	}
+	return out
 }
