@@ -27,7 +27,6 @@ var menuTree = []Menu{
 				Perms: []Permission{PermSelfProfile}},
 			{Key: "personal.play", Title: "在线体验", Icon: "MagicStick", Path: "/personal/play",
 				Perms: []Permission{PermSelfImage, PermSelfUsage}},
-
 			{Key: "personal.usage", Title: "使用记录", Icon: "Histogram", Path: "/personal/usage",
 				Perms: []Permission{PermSelfUsage}},
 			{Key: "personal.history-tasks", Title: "历史任务", Icon: "PictureRounded", Path: "/personal/history-tasks",
@@ -43,49 +42,79 @@ var menuTree = []Menu{
 	// ---- 管理员区 ----
 	{
 		Key: "admin", Title: "后台管理", Icon: "Setting", Path: "/admin",
-		Perms: []Permission{PermUserRead, PermAccountRead, PermProxyRead,
-			PermUsageReadAll, PermSystemBackup, PermSystemImageFile, PermSystemSetting}, // 任一 admin 权限即可看到大入口
+		Perms: []Permission{
+			PermUserRead, PermUserWrite, PermUserCredit,
+			PermKeyReadAll, PermKeyWriteAll,
+			PermAccountRead, PermAccountWrite,
+			PermProxyRead, PermProxyWrite,
+			PermModelRead, PermModelWrite,
+			PermChannelRead, PermChannelWrite,
+			PermGroupWrite, PermRechargeManage,
+			PermUsageReadAll, PermStatsReadAll, PermAuditRead,
+			PermSystemSetting, PermSystemBackup, PermSystemImageFile,
+		},
 		Children: []Menu{
-			{Key: "admin.users", Title: "用户管理", Icon: "UserFilled", Path: "/admin/users",
-				Perms: []Permission{PermUserRead}},
-			{Key: "admin.credits", Title: "积分管理", Icon: "Coin", Path: "/admin/credits",
-				Perms: []Permission{PermUserCredit}},
-			{Key: "admin.recharges", Title: "充值订单", Icon: "CreditCard", Path: "/admin/recharges",
-				Perms: []Permission{PermRechargeManage}},
-			{Key: "admin.redeem-codes", Title: "兑换码", Icon: "Ticket", Path: "/admin/redeem-codes",
-				Perms: []Permission{PermRechargeManage}},
-			{Key: "admin.accounts", Title: "GPT账号", Icon: "Connection", Path: "/admin/accounts",
-				Perms: []Permission{PermAccountRead}},
-			{Key: "admin.proxies", Title: "代理管理", Icon: "Guide", Path: "/admin/proxies",
-				Perms: []Permission{PermProxyRead}},
-			{Key: "admin.models", Title: "模型配置", Icon: "Box", Path: "/admin/models",
-				Perms: []Permission{PermModelRead, PermModelWrite}},
-			{Key: "admin.channels", Title: "上游渠道", Icon: "Share", Path: "/admin/channels",
-				Perms: []Permission{PermChannelRead, PermChannelWrite}},
-			{Key: "admin.groups", Title: "用户分组", Icon: "OfficeBuilding", Path: "/admin/groups",
-				Perms: []Permission{PermGroupWrite}},
-			{Key: "admin.usage", Title: "用量统计", Icon: "DataAnalysis", Path: "/admin/usage",
-				Perms: []Permission{PermUsageReadAll}},
-			{Key: "admin.request-logs", Title: "请求记录", Icon: "Tickets", Path: "/admin/request-logs",
-				Perms: []Permission{PermUsageReadAll}},
-			{Key: "admin.keys", Title: "全局 Keys", Icon: "Key", Path: "/admin/keys",
-				Perms: []Permission{PermKeyReadAll}},
-			{Key: "admin.image-tasks", Title: "生成记录", Icon: "Picture", Path: "/admin/image-tasks",
-				Perms: []Permission{PermUsageReadAll}},
-			{Key: "admin.audit", Title: "审计日志", Icon: "Document", Path: "/admin/audit",
-				Perms: []Permission{PermAuditRead}},
-			{Key: "admin.backup", Title: "数据备份", Icon: "FolderOpened", Path: "/admin/backup",
-				Perms: []Permission{PermSystemBackup}},
-			{Key: "admin.image-files", Title: "图片文件", Icon: "Picture", Path: "/admin/image-files",
-				Perms: []Permission{PermSystemImageFile}},
-			{Key: "admin.announcements", Title: "公告管理", Icon: "Bell", Path: "/admin/announcements",
-				Perms: []Permission{PermSystemSetting}},
-			{Key: "admin.update-logs", Title: "系统更新日志", Icon: "DocumentChecked", Path: "/admin/update-logs",
-				Perms: []Permission{PermSystemSetting}},
-			{Key: "admin.prompts", Title: "Prompt库", Icon: "Collection", Path: "/admin/prompts",
-				Perms: []Permission{PermSystemSetting}},
-			{Key: "admin.settings", Title: "系统设置", Icon: "Tools", Path: "/admin/settings",
-				Perms: []Permission{PermSystemSetting}},
+			{Key: "admin.dashboard", Title: "后台概览", Icon: "House", Path: "/admin/dashboard"},
+			{
+				Key: "admin.user-billing", Title: "用户与计费", Icon: "UserFilled",
+				Children: []Menu{
+					{Key: "admin.users", Title: "用户管理", Icon: "UserFilled", Path: "/admin/users",
+						Perms: []Permission{PermUserRead}},
+					{Key: "admin.credits", Title: "积分管理", Icon: "Coin", Path: "/admin/credits",
+						Perms: []Permission{PermUserCredit}},
+					{Key: "admin.recharges", Title: "充值订单", Icon: "CreditCard", Path: "/admin/recharges",
+						Perms: []Permission{PermRechargeManage}},
+					{Key: "admin.redeem-codes", Title: "兑换码", Icon: "Ticket", Path: "/admin/redeem-codes",
+						Perms: []Permission{PermRechargeManage}},
+					{Key: "admin.groups", Title: "用户分组", Icon: "OfficeBuilding", Path: "/admin/groups",
+						Perms: []Permission{PermGroupWrite}},
+					{Key: "admin.keys", Title: "全局 Keys", Icon: "Key", Path: "/admin/keys",
+						Perms: []Permission{PermKeyReadAll}},
+				},
+			},
+			{
+				Key: "admin.models-resources", Title: "模型与资源", Icon: "Box",
+				Children: []Menu{
+					{Key: "admin.accounts", Title: "GPT账号", Icon: "Connection", Path: "/admin/accounts",
+						Perms: []Permission{PermAccountRead}},
+					{Key: "admin.proxies", Title: "代理管理", Icon: "Guide", Path: "/admin/proxies",
+						Perms: []Permission{PermProxyRead}},
+					{Key: "admin.models", Title: "模型配置", Icon: "Box", Path: "/admin/models",
+						Perms: []Permission{PermModelRead, PermModelWrite}},
+					{Key: "admin.channels", Title: "上游渠道", Icon: "Share", Path: "/admin/channels",
+						Perms: []Permission{PermChannelRead, PermChannelWrite}},
+					{Key: "admin.image-files", Title: "图片文件", Icon: "Picture", Path: "/admin/image-files",
+						Perms: []Permission{PermSystemImageFile}},
+				},
+			},
+			{
+				Key: "admin.data-records", Title: "数据与记录", Icon: "DataAnalysis",
+				Children: []Menu{
+					{Key: "admin.usage", Title: "用量统计", Icon: "DataAnalysis", Path: "/admin/usage",
+						Perms: []Permission{PermUsageReadAll}},
+					{Key: "admin.request-logs", Title: "请求记录", Icon: "Tickets", Path: "/admin/request-logs",
+						Perms: []Permission{PermUsageReadAll}},
+					{Key: "admin.image-tasks", Title: "生成记录", Icon: "Picture", Path: "/admin/image-tasks",
+						Perms: []Permission{PermUsageReadAll}},
+					{Key: "admin.audit", Title: "审计日志", Icon: "Document", Path: "/admin/audit",
+						Perms: []Permission{PermAuditRead}},
+					{Key: "admin.backup", Title: "数据备份", Icon: "FolderOpened", Path: "/admin/backup",
+						Perms: []Permission{PermSystemBackup}},
+				},
+			},
+			{
+				Key: "admin.content-system", Title: "内容与系统", Icon: "Tools",
+				Children: []Menu{
+					{Key: "admin.announcements", Title: "公告管理", Icon: "Bell", Path: "/admin/announcements",
+						Perms: []Permission{PermSystemSetting}},
+					{Key: "admin.update-logs", Title: "系统更新日志", Icon: "DocumentChecked", Path: "/admin/update-logs",
+						Perms: []Permission{PermSystemSetting}},
+					{Key: "admin.prompts", Title: "Prompt库", Icon: "Collection", Path: "/admin/prompts",
+						Perms: []Permission{PermSystemSetting}},
+					{Key: "admin.settings", Title: "系统设置", Icon: "Tools", Path: "/admin/settings",
+						Perms: []Permission{PermSystemSetting}},
+				},
+			},
 		},
 	},
 }
@@ -95,29 +124,47 @@ func MenuForRole(role string) []Menu {
 	return filterMenus(menuTree, role)
 }
 
+// NavigationMenuForRole 返回供前端导航栏直接渲染的两层菜单。
+// 普通用户返回 personal 下的页面项,管理员返回 admin 下的一级页面与分组项。
+func NavigationMenuForRole(role string) []Menu {
+	menus := MenuForRole(role)
+	switch role {
+	case RoleUser:
+		if root := findDirectMenu(menus, "personal"); root != nil {
+			return root.Children
+		}
+	case RoleAdmin:
+		if root := findDirectMenu(menus, "admin"); root != nil {
+			return root.Children
+		}
+	}
+	return menus
+}
+
 func filterMenus(src []Menu, role string) []Menu {
 	out := make([]Menu, 0, len(src))
 	for _, m := range src {
-		// 复制一份避免对源数据做任何写入
 		copied := m
 		copied.Children = filterMenus(m.Children, role)
 
-		// 可见性规则:
-		//   - 无 Perms 限制 → 所有已登录可见(但若有 children,仍要求 children 非空)
-		//   - 有 Perms → 必须 role 拥有其中任一权限
-		visible := true
-		if len(copied.Perms) > 0 {
-			visible = HasAny(role, copied.Perms...)
-		}
-		// 无子节点 + 不可见 → 跳过
-		// 有子节点但 children 被裁成 0 → 如果自己也不可见,跳过
-		if !visible && len(copied.Children) == 0 {
+		if len(m.Children) > 0 && len(copied.Children) == 0 {
 			continue
 		}
-		if len(m.Children) > 0 && len(copied.Children) == 0 && !visible {
+		if len(copied.Perms) > 0 && !HasAny(role, copied.Perms...) {
 			continue
 		}
+
 		out = append(out, copied)
 	}
 	return out
+}
+
+func findDirectMenu(items []Menu, key string) *Menu {
+	for i := range items {
+		item := &items[i]
+		if item.Key == key {
+			return item
+		}
+	}
+	return nil
 }

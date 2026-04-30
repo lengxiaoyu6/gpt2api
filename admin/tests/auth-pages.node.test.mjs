@@ -34,14 +34,13 @@ test('登录页默认跳转后台首页，并在提交后执行管理员身份�
   assert.doesNotMatch(loginVue, /\/personal\/dashboard/)
 })
 
-test('用户状态仓库提供管理员会话校验与后台菜单派生', () => {
+test('用户状态仓库提供管理员会话校验，并直接消费接口返回的后台分组菜单', () => {
   const userStore = read('admin/src/stores/user.ts')
 
-  assert.match(userStore, /function cloneMenuItem\(/)
-  assert.match(userStore, /function buildAdminMenu\(items: authApi\.MenuItem\[\]\)/)
-  assert.match(userStore, /key: 'admin\.dashboard'/)
-  assert.match(userStore, /path: '\/admin\/dashboard'/)
-  assert.match(userStore, /const adminMenu = computed<authApi\.MenuItem\[\]>\(\(\) => buildAdminMenu\(menu\.value\)\)/)
+  assert.match(userStore, /const adminMenu = computed<authApi\.MenuItem\[\]>\(\(\) => menu\.value\)/)
+  assert.match(userStore, /menu\.value = data\.menu \|\| \[\]/)
+  assert.doesNotMatch(userStore, /function cloneMenuItem\(/)
+  assert.doesNotMatch(userStore, /function buildAdminMenu\(items: authApi\.MenuItem\[\]\)/)
   assert.match(userStore, /async function assertAdminAccess\(\)/)
   assert.match(userStore, /if \(role\.value === 'admin'\) return/)
   assert.match(userStore, /clear\(\)/)

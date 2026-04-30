@@ -16,12 +16,12 @@ import (
 )
 
 type fakeSelfDAO struct {
-	user         *User
-	creditLogs   []CreditLog
-	total        int64
-	resetUserID  uint64
-	resetHash    string
-	resetErr     error
+	user        *User
+	creditLogs  []CreditLog
+	total       int64
+	resetUserID uint64
+	resetHash   string
+	resetErr    error
 }
 
 func (f *fakeSelfDAO) GetByID(context.Context, uint64) (*User, error) {
@@ -42,11 +42,11 @@ func (f *fakeSelfDAO) ResetPassword(_ context.Context, id uint64, hash string) e
 }
 
 type fakePasswordService struct {
-	verifyErr      error
-	hashValue      string
-	hashErr        error
-	verifyCalls    []string
-	hashCalls      []string
+	verifyErr   error
+	hashValue   string
+	hashErr     error
+	verifyCalls []string
+	hashCalls   []string
 }
 
 func (f *fakePasswordService) VerifyPassword(_ context.Context, _ uint64, password string) error {
@@ -157,5 +157,65 @@ func TestChangePasswordUpdatesPasswordHash(t *testing.T) {
 	}
 	if updated, ok := data["updated"].(bool); !ok || !updated {
 		t.Fatalf("updated = %#v", data["updated"])
+	}
+}
+
+func TestMenuReturnsTopLevelAdminDashboard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dao := &fakeSelfDAO{user: &User{ID: 10, Role: "admin"}}
+	h := NewHandler(dao, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set(middleware.CtxUserID, uint64(10))
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/me/menu", nil)
+
+	h.Menu(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var body resp.Body
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	data, ok := body.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("data type = %T", body.Data)
+	}
+	if role, _ := data["role"].(string); role != "admin" {
+		t.Fatalf("role = %q", role)
+	}
+	menu, ok := data["menu"].([]any)
+	if !ok {
+		t.Fatalf("menu type = %T", data["menu"])
+	}
+	if len(menu) == 0 {
+		t.Fatal("menu is empty")
+	}
+	first, ok := menu[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first menu type = %T", menu[0])
+	}
+	if key, _ := first["key"].(string); key != "admin.dashboard" {
+		t.Fatalf("first key = %q", key)
+	}
+	if title, _ := first["title"].(string); title != "后台概览" {
+		t.Fatalf("first title = %q", title)
+	}
+	if path, _ := first["path"].(string); path != "/admin/dashboard" {
+		t.Fatalf("first path = %q", path)
+	}
+	if children, exists := first["children"]; exists {
+		t.Fatalf("dashboard children should be empty, got %#v", children)
+	}
+	for _, item := range menu {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("entry type = %T", item)
+		}
+		if key, _ := entry["key"].(string); key == "admin" {
+			t.Fatal("menu should not include admin root node")
+		}
 	}
 }

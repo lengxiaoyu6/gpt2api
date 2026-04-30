@@ -15,35 +15,7 @@ export const useUserStore = defineStore(
 
     const isLoggedIn = computed(() => !!accessToken.value)
     const isAdmin = computed(() => role.value === 'admin')
-    const adminMenu = computed<authApi.MenuItem[]>(() => buildAdminMenu(menu.value))
-
-    function cloneMenuItem(item: authApi.MenuItem): authApi.MenuItem {
-      return {
-        ...item,
-        children: item.children?.map(cloneMenuItem),
-      }
-    }
-
-    function buildAdminMenu(items: authApi.MenuItem[]) {
-      const adminGroup = items.find((item) => item.key === 'admin')
-      if (!adminGroup) return []
-
-      const children = adminGroup.children?.map(cloneMenuItem) || []
-      if (!children.some((item) => item.key === 'admin.dashboard')) {
-        children.unshift({
-          key: 'admin.dashboard',
-          title: '后台概览',
-          icon: 'House',
-          path: '/admin/dashboard',
-        })
-      }
-
-      return [{
-        ...cloneMenuItem(adminGroup),
-        path: '/admin/dashboard',
-        children,
-      }]
-    }
+    const adminMenu = computed<authApi.MenuItem[]>(() => menu.value)
 
     function setTokens(tp: authApi.TokenPair) {
       accessToken.value = tp.access_token

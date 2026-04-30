@@ -58,6 +58,11 @@ const sideCollapsed = computed(() => (isMobile.value ? false : collapsed.value))
 const asideWidth = computed(() => (isMobile.value ? '0px' : collapsed.value ? '64px' : '220px'));
 const activePath = computed(() => route.path);
 
+const defaultOpenKeys = computed(() => {
+    if (sideCollapsed.value) return [];
+    return adminMenu.value.filter((item) => item.children?.length).map((item) => item.key);
+});
+
 const titleMap = computed(() => {
     const m = new Map<string, string>();
     function walk(items: MenuItem[]) {
@@ -132,6 +137,7 @@ watch(
 
             <el-menu
                 :default-active="activePath"
+                :default-openeds="defaultOpenKeys"
                 :collapse="sideCollapsed"
                 background-color="transparent"
                 text-color="#cfd3dc"
@@ -149,6 +155,7 @@ watch(
                             <el-icon v-if="group.icon"><component :is="group.icon" /></el-icon>
                             <span>{{ group.title }}</span>
                         </template>
+
                         <el-menu-item v-for="child in group.children" :key="child.key" :index="child.path!">
                             <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
                             <template #title>{{ child.title }}</template>

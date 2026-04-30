@@ -54,7 +54,7 @@ func (h *Handler) Me(c *gin.Context) {
 	})
 }
 
-// Menu 返回当前用户可见的菜单树。仅依据 DB 中的 role 计算,前端直接渲染。
+// Menu 返回当前用户可见的两层导航菜单。仅依据 DB 中的 role 计算,前端按结果渲染。
 func (h *Handler) Menu(c *gin.Context) {
 	uid := middleware.UserID(c)
 	if uid == 0 {
@@ -72,7 +72,7 @@ func (h *Handler) Menu(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{
 		"role":        u.Role,
-		"menu":        rbac.MenuForRole(u.Role),
+		"menu":        rbac.NavigationMenuForRole(u.Role),
 		"permissions": rbac.ListPermissions(u.Role),
 	})
 }
