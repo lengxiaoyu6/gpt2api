@@ -252,6 +252,9 @@ onMounted(() => { fetchGroups(); fetchList() })
             </div>
           </template>
         </el-table-column>
+        <el-table-column label="注册时间" min-width="160">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column label="最近登录" min-width="160">
           <template #default="{ row }">
             <div style="font-size:12px">
