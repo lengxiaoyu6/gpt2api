@@ -16,7 +16,7 @@ FROM alpine:3.20
 
 # 走 ustc HTTP 源,规避企业 HTTPS 代理 MITM 导致的证书校验失败
 RUN sed -i 's@https\?://dl-cdn.alpinelinux.org@http://mirrors.ustc.edu.cn@g' /etc/apk/repositories \
-    && apk add --no-cache ca-certificates tzdata curl bash mariadb-client \
+    && apk add --no-cache ca-certificates tzdata curl bash mariadb-client libheif-tools \
     && update-ca-certificates \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const generateImage = vi.fn()
 const editImage = vi.fn()
+const detectSourceImageFormat = vi.fn()
+const convertHEICToJPEG = vi.fn()
 
 vi.mock('../api/site', () => ({
   fetchSiteInfo: vi.fn(),
@@ -25,9 +27,28 @@ vi.mock('../api/me', () => ({
   playEditImage: vi.fn(),
 }))
 
+vi.mock('../lib/heic', async () => {
+  const actual = await vi.importActual<typeof import('../lib/heic')>('../lib/heic')
+  return {
+    ...actual,
+    detectSourceImageFormat,
+    convertHEICToJPEG,
+  }
+})
+
 const storeModule = await import('../store/useStore')
 const useStore = storeModule.useStore
 const { default: GenerateView } = await import('./views/Generate')
+
+const fakeHEICHeaderBytes = Uint8Array.from([
+  0x00, 0x00, 0x00, 0x1c,
+  0x66, 0x74, 0x79, 0x70,
+  0x68, 0x65, 0x69, 0x63,
+  0x00, 0x00, 0x00, 0x00,
+  0x6d, 0x69, 0x66, 0x31,
+  0x68, 0x65, 0x69, 0x63,
+  0x6d, 0x69, 0x61, 0x66,
+])
 
 function resetStore() {
   const initial = useStore.getInitialState()
@@ -39,6 +60,8 @@ describe('generate image notice', () => {
   beforeEach(() => {
     resetStore()
     vi.clearAllMocks()
+    detectSourceImageFormat.mockReset()
+    convertHEICToJPEG.mockReset()
   })
 
   afterEach(() => {
@@ -452,6 +475,205 @@ describe('generate image notice', () => {
     })
     expect(screen.getByText('点击上传参考图')).toBeInTheDocument()
     expect(fileInput.value).toBe('')
+  })
+
+  test('image-to-image converts heic source images to jpeg previews before submit', async () => {
+    const pendingEditImage = vi.fn().mockResolvedValue({
+      created: 1,
+      data: [{ url: 'https://example.com/result.png' }],
+    })
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage: pendingEditImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    const createObjectURL = vi.fn().mockImplementation((file: File) => `blob:${file.name}`)
+    const originalCreateObjectURL = URL.createObjectURL
+    URL.createObjectURL = createObjectURL
+
+    try {
+      render(<GenerateView />)
+
+      fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      expect(fileInput).toHaveAttribute('accept', '.png,.jpg,.jpeg,.webp,.heic,.heif,image/png,image/jpeg,image/webp,image/heic,image/heif')
+
+      const heicFile = new File(['heic-image'], 'source.heic', { type: 'image/heic' })
+      const validFile = new File(['png-image'], 'source.png', { type: 'image/png' })
+      const convertedHeicFile = new File(['jpeg-image'], 'source.jpg', { type: 'image/jpeg' })
+
+      detectSourceImageFormat.mockImplementation(async (file: File) => {
+        if (file === heicFile) {
+          return 'heic'
+        }
+        if (file === validFile) {
+          return 'png'
+        }
+        return null
+      })
+      convertHEICToJPEG.mockResolvedValue(convertedHeicFile)
+
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [heicFile, validFile] } })
+      })
+
+      await waitFor(() => {
+        expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:source.jpg')
+      })
+
+      expect(screen.queryByText('提交后将自动转换为 JPG')).toBeNull()
+      expect(screen.getByAltText('参考图 2')).toHaveAttribute('src', 'blob:source.png')
+      expect(createObjectURL).toHaveBeenCalledTimes(2)
+      expect(createObjectURL).toHaveBeenNthCalledWith(1, convertedHeicFile)
+      expect(createObjectURL).toHaveBeenNthCalledWith(2, validFile)
+
+      fireEvent.change(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...'), {
+        target: { value: '增加电影感光影' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+      await waitFor(() => {
+        expect(pendingEditImage).toHaveBeenCalledTimes(1)
+      })
+      expect(convertHEICToJPEG).toHaveBeenCalledWith(heicFile)
+      expect(pendingEditImage.mock.calls[0][0].files).toEqual([convertedHeicFile, validFile])
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+    }
+  })
+
+  test('image-to-image converts disguised heic png files before submit', async () => {
+    const pendingEditImage = vi.fn().mockResolvedValue({
+      created: 1,
+      data: [{ url: 'https://example.com/result.png' }],
+    })
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage: pendingEditImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    const createObjectURL = vi.fn().mockImplementation((file: File) => `blob:${file.name}`)
+    const originalCreateObjectURL = URL.createObjectURL
+    URL.createObjectURL = createObjectURL
+
+    try {
+      render(<GenerateView />)
+
+      fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const disguisedHeicFile = new File([fakeHEICHeaderBytes], 'comment.png', { type: 'image/png' })
+      const convertedHeicFile = new File(['jpeg-image'], 'comment.jpg', { type: 'image/jpeg' })
+
+      detectSourceImageFormat.mockResolvedValue('heic')
+      convertHEICToJPEG.mockResolvedValue(convertedHeicFile)
+
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [disguisedHeicFile] } })
+      })
+
+      await waitFor(() => {
+        expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:comment.jpg')
+      })
+
+      fireEvent.change(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...'), {
+        target: { value: '提升细节' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+      await waitFor(() => {
+        expect(pendingEditImage).toHaveBeenCalledTimes(1)
+      })
+
+      expect(screen.queryByText('提交后将自动转换为 JPG')).toBeNull()
+      expect(createObjectURL).toHaveBeenCalledWith(convertedHeicFile)
+      expect(pendingEditImage.mock.calls[0][0].files).toEqual([convertedHeicFile])
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+    }
+  })
+
+  test('image-to-image removes heic source images when conversion fails', async () => {
+    const pendingEditImage = vi.fn().mockResolvedValue({
+      created: 1,
+      data: [{ url: 'https://example.com/result.png' }],
+    })
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage: pendingEditImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    detectSourceImageFormat.mockResolvedValue('heic')
+    convertHEICToJPEG.mockRejectedValue(new Error('convert failed'))
+
+    render(<GenerateView />)
+
+    fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const heicFile = new File(['heic-image'], 'broken.heic', { type: 'image/heic' })
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [heicFile] } })
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByAltText('参考图 1')).toBeNull()
+    })
+
+    expect(screen.queryByText('HEIC 参考图 1')).toBeNull()
+    expect(screen.getByText('点击上传参考图')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...'), {
+      target: { value: '提升细节' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(pendingEditImage).not.toHaveBeenCalled()
   })
 
   test('image-to-image accepts multiple source images and submits them together', async () => {

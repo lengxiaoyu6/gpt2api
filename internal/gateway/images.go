@@ -1,13 +1,19 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	stdimage "image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -17,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	_ "golang.org/x/image/webp"
 
 	"github.com/432539/gpt2api/internal/apikey"
 	"github.com/432539/gpt2api/internal/billing"
@@ -35,11 +42,13 @@ const maxReferenceImageBytes = 20 * 1024 * 1024
 
 // 同一次请求最多携带的参考图数量。
 const maxReferenceImages = 4
+const supportedReferenceImageFormats = "PNG、JPG、WEBP、HEIC、HEIF"
 
 // chatMsg 是 OpenAI chat message 的本地别名,便于 handleChatAsImage 内部表达。
 type chatMsg = chatgpt.ChatMessage
 
 var imageAspectRatioPrefixRE = regexp.MustCompile(`(?i)^\s*Make\s+the\s+aspect\s+ratio\s+\d+\s*:\s*\d+\s*,\s*`)
+var referenceHEICToJPEG = defaultReferenceHEICToJPEG
 
 var canonicalImageAspectRatios = []struct {
 	w int
@@ -1011,11 +1020,13 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 				fmt.Sprintf("参考图 %q 超过 %dMB 上限", fh.Filename, maxReferenceImageBytes/1024/1024))
 			return
 		}
-		refs = append(refs, image.ReferenceImage{
-			Data:        data,
-			FileName:    filepath.Base(fh.Filename),
-			ContentType: fh.Header.Get("Content-Type"),
-		})
+		ref, err := normalizeReferenceImageInput(c.Request.Context(), data, fh.Filename, fh.Header.Get("Content-Type"))
+		if err != nil {
+			openAIError(c, http.StatusBadRequest, "invalid_reference_image",
+				fmt.Sprintf("参考图 %q %s", fh.Filename, err.Error()))
+			return
+		}
+		refs = append(refs, ref)
 	}
 
 	// usage 记录
@@ -1255,6 +1266,153 @@ func readMultipart(fh *multipart.FileHeader) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+func normalizeReferenceImageContentType(data []byte) (string, error) {
+	cfg, format, err := stdimage.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return "", fmt.Errorf("格式无效，仅支持 %s", supportedReferenceImageFormats)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "png":
+		return "image/png", nil
+	case "jpeg":
+		return "image/jpeg", nil
+	case "webp":
+		return "image/webp", nil
+	default:
+		return "", fmt.Errorf("格式无效，仅支持 %s", supportedReferenceImageFormats)
+	}
+}
+
+func normalizeReferenceImageInput(ctx context.Context, data []byte, fileName, declaredContentType string) (image.ReferenceImage, error) {
+	baseName := strings.TrimSpace(filepath.Base(fileName))
+	if contentType, err := normalizeReferenceImageContentType(data); err == nil {
+		return image.ReferenceImage{
+			Data:        data,
+			FileName:    baseName,
+			ContentType: contentType,
+		}, nil
+	}
+	if !isHEICReferenceImage(data, declaredContentType, baseName) {
+		return image.ReferenceImage{}, fmt.Errorf("格式无效，仅支持 %s", supportedReferenceImageFormats)
+	}
+	converted, err := referenceHEICToJPEG(ctx, data)
+	if err != nil {
+		return image.ReferenceImage{}, fmt.Errorf("HEIC 转码失败:%s", err.Error())
+	}
+	if len(converted) == 0 {
+		return image.ReferenceImage{}, errors.New("HEIC 转码失败:输出为空")
+	}
+	if len(converted) > maxReferenceImageBytes {
+		return image.ReferenceImage{}, fmt.Errorf("HEIC 转码后超过 %dMB 上限", maxReferenceImageBytes/1024/1024)
+	}
+	contentType, err := normalizeReferenceImageContentType(converted)
+	if err != nil {
+		return image.ReferenceImage{}, fmt.Errorf("HEIC 转码结果无效:%s", err.Error())
+	}
+	return image.ReferenceImage{
+		Data:        converted,
+		FileName:    normalizeConvertedReferenceImageName(baseName, ".jpg"),
+		ContentType: contentType,
+	}, nil
+}
+
+func isHEICReferenceImage(data []byte, declaredContentType, fileName string) bool {
+	if hasHEIFFileTypeBox(data) {
+		return true
+	}
+	declared := strings.ToLower(strings.TrimSpace(declaredContentType))
+	if declared == "image/heic" || declared == "image/heif" {
+		return true
+	}
+	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(strings.TrimSpace(fileName)), ".")) {
+	case "heic", "heif":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasHEIFFileTypeBox(data []byte) bool {
+	if len(data) < 16 || !bytes.Equal(data[4:8], []byte("ftyp")) {
+		return false
+	}
+	boxSize := int(uint32(data[0])<<24 | uint32(data[1])<<16 | uint32(data[2])<<8 | uint32(data[3]))
+	if boxSize <= 0 || boxSize > len(data) {
+		boxSize = len(data)
+	}
+	for offset := 8; offset+4 <= boxSize; offset += 4 {
+		brand := string(data[offset : offset+4])
+		if isHEIFBrand(brand) {
+			return true
+		}
+	}
+	return false
+}
+
+func isHEIFBrand(brand string) bool {
+	switch strings.ToLower(strings.TrimSpace(brand)) {
+	case "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeConvertedReferenceImageName(fileName, ext string) string {
+	ext = strings.TrimSpace(ext)
+	if ext == "" {
+		ext = ".jpg"
+	}
+	base := strings.TrimSpace(filepath.Base(fileName))
+	if base == "" || base == "." {
+		return "reference" + ext
+	}
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." {
+		name = "reference"
+	}
+	return name + ext
+}
+
+func defaultReferenceHEICToJPEG(ctx context.Context, data []byte) ([]byte, error) {
+	toolPath, err := exec.LookPath("heif-convert")
+	if err != nil {
+		return nil, errors.New("服务端缺少 heif-convert，请安装 libheif-tools")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tmpDir, err := os.MkdirTemp("", "gpt2api-heic-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	inputPath := filepath.Join(tmpDir, "input.heic")
+	outputPath := filepath.Join(tmpDir, "output.jpg")
+	if err := os.WriteFile(inputPath, data, 0o600); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, toolPath, "-q", "90", inputPath, outputPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, errors.New(msg)
+	}
+
+	converted, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, err
+	}
+	return converted, nil
+}
+
 // decodeReferenceInputs 把 JSON 里 reference_images(url/data-url/base64 混合)下载/解码成字节。
 // 超出条数上限直接报错;单张尺寸上限 maxReferenceImageBytes。
 func decodeReferenceInputs(ctx context.Context, inputs []string) ([]image.ReferenceImage, error) {
@@ -1280,7 +1438,11 @@ func decodeReferenceInputs(ctx context.Context, inputs []string) ([]image.Refere
 		if len(data) > maxReferenceImageBytes {
 			return nil, fmt.Errorf("第 %d 张参考图超过 %dMB 上限", i+1, maxReferenceImageBytes/1024/1024)
 		}
-		out = append(out, image.ReferenceImage{Data: data, FileName: name, ContentType: contentType})
+		ref, err := normalizeReferenceImageInput(ctx, data, name, contentType)
+		if err != nil {
+			return nil, fmt.Errorf("第 %d 张参考图%s", i+1, err.Error())
+		}
+		out = append(out, ref)
 	}
 	return out, nil
 }

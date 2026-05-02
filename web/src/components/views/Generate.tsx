@@ -12,6 +12,13 @@ import PageShell from '@/components/PageShell';
 import { cn, formatCredit } from '@/lib/utils';
 import { useStore } from '../../store/useStore';
 import {
+  convertHEICToJPEG,
+  detectSourceImageFormat,
+  SOURCE_IMAGE_ACCEPT,
+  SUPPORTED_SOURCE_IMAGE_FORMATS,
+  type SourceImageFormat,
+} from '../../lib/heic';
+import {
   IMAGE_RATIO_OPTIONS,
   OUTPUT_QUALITY_OPTIONS,
   getRatioPreviewStyle,
@@ -21,10 +28,12 @@ import {
 
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 const MAX_SOURCE_IMAGES = 4;
-
 interface SourceImage {
-  file: File;
-  preview: string;
+  originalFile: File;
+  uploadFile: File;
+  preview: string | null;
+  previewMode: 'image';
+  sourceFormat: SourceImageFormat;
 }
 
 interface GeneratedImage {
@@ -48,6 +57,66 @@ const getSourceImageGridClass = (count: number) => {
 const getSourceImageTileClass = (count: number, index: number) => (
   count === 3 && index === 0 ? 'row-span-2' : ''
 );
+
+const resolveDirectPreviewFormatByMetadata = (file: File): SourceImageFormat | null => {
+  const normalizedType = file.type.trim().toLowerCase();
+  if (normalizedType === 'image/png') {
+    return 'png';
+  }
+  if (normalizedType === 'image/jpeg') {
+    return 'jpeg';
+  }
+  if (normalizedType === 'image/webp') {
+    return 'webp';
+  }
+
+  const extension = file.name.split('.').pop()?.trim().toLowerCase() || '';
+  if (extension === 'png') {
+    return 'png';
+  }
+  if (extension === 'jpg' || extension === 'jpeg') {
+    return 'jpeg';
+  }
+  if (extension === 'webp') {
+    return 'webp';
+  }
+
+  return null;
+};
+
+const resolveSourceImage = async (file: File): Promise<SourceImage | null> => {
+  const detectedFormat = await detectSourceImageFormat(file);
+  const format = detectedFormat ?? resolveDirectPreviewFormatByMetadata(file);
+
+  if (!format) {
+    return null;
+  }
+
+  if (format === 'heic' || format === 'heif') {
+    try {
+      const convertedFile = await convertHEICToJPEG(file);
+      return {
+        originalFile: file,
+        uploadFile: convertedFile,
+        preview: URL.createObjectURL(convertedFile),
+        previewMode: 'image',
+        sourceFormat: format,
+      };
+    } catch (error) {
+      console.error('reference image conversion failed', error);
+      toast.error('参考图转换失败，请更换图片后重试');
+      return null;
+    }
+  }
+
+  return {
+    originalFile: file,
+    uploadFile: file,
+    preview: URL.createObjectURL(file),
+    previewMode: 'image',
+    sourceFormat: format,
+  };
+};
 
 const resolveImageUnitPrice = (
   model: {
@@ -152,7 +221,7 @@ export default function GenerateView() {
   useEffect(() => {
     return () => {
       sourceImagesRef.current.forEach((image) => {
-        if (image.preview.startsWith('blob:')) {
+        if (image.preview?.startsWith('blob:')) {
           URL.revokeObjectURL(image.preview);
         }
       });
@@ -221,7 +290,7 @@ export default function GenerateView() {
             prompt: nextPrompt || '增强细节，提升画面质感',
             aspectRatio: imageAspectRatio,
             quality: imageOutputQuality,
-            files: sourceImages.map((image) => image.file),
+            files: sourceImages.map((image) => image.uploadFile),
             count: effectiveImageCount,
           });
 
@@ -250,28 +319,49 @@ export default function GenerateView() {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const pickedFiles: File[] = e.target.files ? Array.from(e.target.files) : [];
     if (pickedFiles.length === 0) {
       return;
     }
 
-    const availableSlots = Math.max(0, MAX_SOURCE_IMAGES - sourceImages.length);
-    const acceptedFiles = pickedFiles.slice(0, availableSlots);
-    if (acceptedFiles.length < pickedFiles.length) {
+    const availableSlots = Math.max(0, MAX_SOURCE_IMAGES - sourceImagesRef.current.length);
+    if (availableSlots === 0) {
       toast.warning(`最多上传 ${MAX_SOURCE_IMAGES} 张参考图`);
+      e.target.value = '';
+      return;
+    }
+
+    const validFiles: SourceImage[] = [];
+    let unsupportedCount = 0;
+    for (const file of pickedFiles) {
+      const resolvedImage = await resolveSourceImage(file);
+      if (!resolvedImage) {
+        unsupportedCount += 1;
+        continue;
+      }
+      validFiles.push(resolvedImage);
+    }
+
+    if (unsupportedCount > 0) {
+      toast.warning(`参考图仅支持 ${SUPPORTED_SOURCE_IMAGE_FORMATS} 格式`);
+    }
+
+    const acceptedFiles = validFiles.slice(0, availableSlots);
+    if (acceptedFiles.length < validFiles.length) {
+      toast.warning(`最多上传 ${MAX_SOURCE_IMAGES} 张参考图`);
+      validFiles.slice(availableSlots).forEach((image) => {
+        if (image.preview?.startsWith('blob:')) {
+          URL.revokeObjectURL(image.preview);
+        }
+      });
     }
     if (acceptedFiles.length === 0) {
       e.target.value = '';
       return;
     }
 
-    const nextImages = acceptedFiles.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-    }));
-
-    setSourceImages((prev) => [...prev, ...nextImages]);
+    setSourceImages((prev) => [...prev, ...acceptedFiles]);
     e.target.value = '';
   };
 
@@ -280,7 +370,7 @@ export default function GenerateView() {
 
     setSourceImages((prev) => {
       const target = prev[index];
-      if (target?.preview.startsWith('blob:')) {
+      if (target?.preview?.startsWith('blob:')) {
         URL.revokeObjectURL(target.preview);
       }
       return prev.filter((_, itemIndex) => itemIndex !== index);
@@ -402,18 +492,30 @@ export default function GenerateView() {
                     <div className={cn('grid h-full w-full gap-2.5 p-2.5', getSourceImageGridClass(sourceImages.length))}>
                       {sourceImages.map((sourceImage, index) => (
                         <div
-                          key={`${sourceImage.file.name}-${index}`}
+                          key={`${sourceImage.originalFile.name}-${index}`}
                           className={cn(
                             'group/source relative min-h-0 overflow-hidden rounded-2xl border border-white/15 bg-background/70 shadow-lg shadow-black/10',
                             getSourceImageTileClass(sourceImages.length, index),
                           )}
                         >
-                          <img
-                            src={sourceImage.preview}
-                            decoding="async"
-                            className="h-full w-full object-cover lg:transition-transform lg:duration-300 lg:group-hover/source:scale-105"
-                            alt={`参考图 ${index + 1}`}
-                          />
+                          {sourceImage.preview ? (
+                            <img
+                              src={sourceImage.preview}
+                              decoding="async"
+                              className="h-full w-full object-cover lg:transition-transform lg:duration-300 lg:group-hover/source:scale-105"
+                              alt={`参考图 ${index + 1}`}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-muted/60 via-background/80 to-secondary/30 px-4 text-center">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                                <RefreshCw className="h-5 w-5 text-primary" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs font-bold text-foreground">HEIC 参考图 {index + 1}</p>
+                                <p className="text-[10px] leading-5 text-muted-foreground">提交后将自动转换为 JPG</p>
+                              </div>
+                            </div>
+                          )}
                           <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/60 to-transparent" />
                           <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white shadow-sm lg:backdrop-blur">
                             参考图 {index + 1}
@@ -447,10 +549,10 @@ export default function GenerateView() {
                       <ImageIcon className="h-6 w-6 text-primary" />
                     </div>
                     <p className="text-xs font-bold">点击上传参考图</p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">支持 PNG, JPG, WEBP，最多 {MAX_SOURCE_IMAGES} 张</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">支持 PNG, JPG, WEBP, HEIC, HEIF，最多 {MAX_SOURCE_IMAGES} 张</p>
                   </div>
                 )}
-                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden" />
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept={SOURCE_IMAGE_ACCEPT} multiple className="hidden" />
               </div>
             )}
 

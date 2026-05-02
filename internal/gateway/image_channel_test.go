@@ -7,12 +7,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"sync"
 	"testing"
 	"time"
@@ -480,6 +483,8 @@ func TestImageGenerationsRoutesReferenceImagesToResponsesChannel(t *testing.T) {
 		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/responses", "gpt-image-1", "gpt-5.4"),
 		uploader,
 	)
+	firstPNG := mustChannelPNG(t, color.RGBA{R: 255, A: 255})
+	secondPNG := mustChannelPNG(t, color.RGBA{G: 255, A: 255})
 
 	reqBody, err := json.Marshal(ImageGenRequest{
 		Model:  "gpt-image-1",
@@ -487,8 +492,8 @@ func TestImageGenerationsRoutesReferenceImagesToResponsesChannel(t *testing.T) {
 		N:      1,
 		Size:   "1024x1024",
 		ReferenceImages: []string{
-			dataURLForTest([]byte("first-image")),
-			dataURLForTest([]byte("second-image")),
+			dataURLForTest(firstPNG),
+			dataURLForTest(secondPNG),
 		},
 	})
 	if err != nil {
@@ -507,11 +512,11 @@ func TestImageGenerationsRoutesReferenceImagesToResponsesChannel(t *testing.T) {
 	if uploader.calls != 2 {
 		t.Fatalf("uploader.calls = %d, want 2", uploader.calls)
 	}
-	if string(uploader.sources[0].Data) != "first-image" {
-		t.Fatalf("uploader.sources[0] = %q", string(uploader.sources[0].Data))
+	if !bytes.Equal(uploader.sources[0].Data, firstPNG) {
+		t.Fatalf("uploader.sources[0] bytes mismatch")
 	}
-	if string(uploader.sources[1].Data) != "second-image" {
-		t.Fatalf("uploader.sources[1] = %q", string(uploader.sources[1].Data))
+	if !bytes.Equal(uploader.sources[1].Data, secondPNG) {
+		t.Fatalf("uploader.sources[1] bytes mismatch")
 	}
 
 	if got := payload["model"]; got != "gpt-5.4" {
@@ -936,6 +941,266 @@ func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T
 	}
 }
 
+func TestImageEditsRejectsInvalidMultipartReferenceImageFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := &ImagesHandler{}
+	ak := &apikey.APIKey{ID: 1, UserID: 2}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "gpt-image-1"); err != nil {
+		t.Fatalf("write model field: %v", err)
+	}
+	if err := writer.WriteField("prompt", "换个风格"); err != nil {
+		t.Fatalf("write prompt field: %v", err)
+	}
+	writeMultipartFileWithContentType(t, writer, "image", "bad.png", "image/png", []byte("not-a-real-png"))
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/edits", &body, writer.FormDataContentType(), ak)
+	h.ImageEdits(c)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error.Code != "invalid_reference_image" {
+		t.Fatalf("error.code = %q", resp.Error.Code)
+	}
+	if !contains(resp.Error.Message, "仅支持 PNG、JPG、WEBP") {
+		t.Fatalf("error.message = %q", resp.Error.Message)
+	}
+}
+
+func TestImageEditsConvertsHEICMultipartReferenceImagesBeforeChannelUpload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalConverter := referenceHEICToJPEG
+	referenceHEICToJPEG = func(ctx context.Context, data []byte) ([]byte, error) {
+		if !bytes.Equal(data, fakeHEICBytes()) {
+			t.Fatalf("converter input mismatch")
+		}
+		return mustChannelJPEG(t, color.RGBA{R: 200, G: 120, B: 80, A: 255}), nil
+	}
+	defer func() {
+		referenceHEICToJPEG = originalConverter
+	}()
+
+	var (
+		gotPath string
+		payload map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode upstream request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: response.output_item.done\n")
+		_, _ = io.WriteString(w, "data: {\"item\":{\"type\":\"image_generation_call\",\"result\":\"bXVsdGktcmVmLWZpbmFs\"}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	uploader := &referenceUploaderStub{
+		urls: []string{
+			"https://img.example.com/edit-1.jpg",
+		},
+	}
+	h, ak := newChannelBackedImageHandlerForTest(
+		t,
+		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/responses", "gpt-image-1", "gpt-5.4"),
+		uploader,
+	)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "gpt-image-1"); err != nil {
+		t.Fatalf("write model field: %v", err)
+	}
+	if err := writer.WriteField("prompt", "换个风格"); err != nil {
+		t.Fatalf("write prompt field: %v", err)
+	}
+	writeMultipartFileWithContentType(t, writer, "image", "comment.png", "image/png", fakeHEICBytes())
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/edits", &body, writer.FormDataContentType(), ak)
+	h.ImageEdits(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if gotPath != "/v1/responses" {
+		t.Fatalf("upstream path = %q, want /v1/responses", gotPath)
+	}
+	if uploader.calls != 1 {
+		t.Fatalf("uploader.calls = %d, want 1", uploader.calls)
+	}
+	if got := uploader.sources[0].ContentType; got != "image/jpeg" {
+		t.Fatalf("uploader.sources[0].ContentType = %q", got)
+	}
+	if got := uploader.sources[0].FileName; got != "comment.jpg" {
+		t.Fatalf("uploader.sources[0].FileName = %q", got)
+	}
+	if got := http.DetectContentType(uploader.sources[0].Data); got != "image/jpeg" {
+		t.Fatalf("uploaded content type = %q", got)
+	}
+
+	content := mustResponsesContent(t, payload)
+	if len(content) != 2 {
+		t.Fatalf("content len = %d, want 2", len(content))
+	}
+	if got := content[1]["image_url"]; got != "https://img.example.com/edit-1.jpg" {
+		t.Fatalf("content[1].image_url = %#v", got)
+	}
+}
+
+func TestImageGenerationsRejectsInvalidJSONReferenceImageFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	models, _, ak := newImageHandlerRuntimeDeps(t)
+	h := &ImagesHandler{
+		Handler: &Handler{
+			Models: models,
+		},
+	}
+
+	reqBody, err := json.Marshal(ImageGenRequest{
+		Model:  "gpt-image-1",
+		Prompt: "换个风格",
+		N:      1,
+		Size:   "1024x1024",
+		ReferenceImages: []string{
+			"data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("not-a-real-png")),
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/generations", bytes.NewReader(reqBody), "application/json", ak)
+	h.ImageGenerations(c)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error.Code != "invalid_reference_image" {
+		t.Fatalf("error.code = %q", resp.Error.Code)
+	}
+	if !contains(resp.Error.Message, "仅支持 PNG、JPG、WEBP") {
+		t.Fatalf("error.message = %q", resp.Error.Message)
+	}
+}
+
+func TestImageGenerationsConvertsHEICJSONReferenceImagesBeforeChannelUpload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalConverter := referenceHEICToJPEG
+	referenceHEICToJPEG = func(ctx context.Context, data []byte) ([]byte, error) {
+		if !bytes.Equal(data, fakeHEICBytes()) {
+			t.Fatalf("converter input mismatch")
+		}
+		return mustChannelJPEG(t, color.RGBA{R: 90, G: 140, B: 220, A: 255}), nil
+	}
+	defer func() {
+		referenceHEICToJPEG = originalConverter
+	}()
+
+	var (
+		gotPath string
+		payload map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode upstream request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: response.output_item.done\n")
+		_, _ = io.WriteString(w, "data: {\"item\":{\"type\":\"image_generation_call\",\"result\":\"ZmluYWw=\"}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	uploader := &referenceUploaderStub{
+		urls: []string{
+			"https://img.example.com/uploaded-1.jpg",
+		},
+	}
+	h, ak := newChannelBackedImageHandlerForTest(
+		t,
+		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/responses", "gpt-image-1", "gpt-5.4"),
+		uploader,
+	)
+
+	reqBody, err := json.Marshal(ImageGenRequest{
+		Model:  "gpt-image-1",
+		Prompt: "换个风格",
+		N:      1,
+		Size:   "1024x1024",
+		ReferenceImages: []string{
+			"data:image/heic;base64," + base64.StdEncoding.EncodeToString(fakeHEICBytes()),
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	c, recorder := newAuthedImageTestContext(http.MethodPost, "/v1/images/generations", bytes.NewReader(reqBody), "application/json", ak)
+	h.ImageGenerations(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if gotPath != "/v1/responses" {
+		t.Fatalf("upstream path = %q, want /v1/responses", gotPath)
+	}
+	if uploader.calls != 1 {
+		t.Fatalf("uploader.calls = %d, want 1", uploader.calls)
+	}
+	if got := uploader.sources[0].ContentType; got != "image/jpeg" {
+		t.Fatalf("uploader.sources[0].ContentType = %q", got)
+	}
+	if got := uploader.sources[0].FileName; got != "reference.jpg" {
+		t.Fatalf("uploader.sources[0].FileName = %q", got)
+	}
+	if got := http.DetectContentType(uploader.sources[0].Data); got != "image/jpeg" {
+		t.Fatalf("uploaded content type = %q", got)
+	}
+
+	content := mustResponsesContent(t, payload)
+	if len(content) != 2 {
+		t.Fatalf("content len = %d, want 2", len(content))
+	}
+	if got := content[1]["image_url"]; got != "https://img.example.com/uploaded-1.jpg" {
+		t.Fatalf("content[1].image_url = %#v", got)
+	}
+}
+
 func newImageChannelTestRouter(t *testing.T, baseURL string) *channel.Router {
 	return newImageChannelTestRouterWithMapping(t, baseURL, "gpt-image-1", "gpt-image-1")
 }
@@ -1169,6 +1434,21 @@ func writeMultipartFile(t *testing.T, writer *multipart.Writer, field, name stri
 	}
 }
 
+func writeMultipartFileWithContentType(t *testing.T, writer *multipart.Writer, field, name, contentType string, data []byte) {
+	t.Helper()
+
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, field, name))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		t.Fatalf("create form file %s: %v", field, err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatalf("write form file %s: %v", field, err)
+	}
+}
+
 func mustChannelPNG(t *testing.T, c color.RGBA) []byte {
 	t.Helper()
 
@@ -1183,6 +1463,33 @@ func mustChannelPNG(t *testing.T, c color.RGBA) []byte {
 		t.Fatalf("encode png: %v", err)
 	}
 	return buf.Bytes()
+}
+
+func mustChannelJPEG(t *testing.T, c color.RGBA) []byte {
+	t.Helper()
+
+	img := stdimage.NewRGBA(stdimage.Rect(0, 0, 8, 8))
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			img.SetRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func fakeHEICBytes() []byte {
+	return []byte{
+		0x00, 0x00, 0x00, 0x18,
+		'f', 't', 'y', 'p',
+		'h', 'e', 'i', 'c',
+		0x00, 0x00, 0x00, 0x00,
+		'm', 'i', 'f', '1',
+		'h', 'e', 'i', 'c',
+	}
 }
 
 func contains(s, sub string) bool {
