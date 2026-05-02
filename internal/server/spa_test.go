@@ -110,6 +110,61 @@ func TestMountSPAFallsBackToAdminWhenWebMissing(t *testing.T) {
 	}
 }
 
+func TestMountSPASetsNoStoreForHTMLFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	root := t.TempDir()
+	adminDir := filepath.Join(root, "admin", "dist")
+	mustWriteFile(t, filepath.Join(adminDir, "index.html"), "<html>admin</html>")
+
+	t.Setenv("GPT2API_ADMIN_DIR", adminDir)
+	t.Setenv("GPT2API_WEB_DIR", filepath.Join(root, "missing-web"))
+
+	r := gin.New()
+	if !mountSPA(r, nil) {
+		t.Fatal("expected spa to be mounted")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/history", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("expected no-store cache control, got %q", got)
+	}
+}
+
+func TestMountSPASetsImmutableCacheForAssets(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	root := t.TempDir()
+	adminDir := filepath.Join(root, "admin", "dist")
+	mustWriteFile(t, filepath.Join(adminDir, "index.html"), "<html>admin</html>")
+	mustWriteFile(t, filepath.Join(adminDir, "assets", "app-abc123.js"), "console.log('ok');")
+
+	t.Setenv("GPT2API_ADMIN_DIR", adminDir)
+	t.Setenv("GPT2API_WEB_DIR", filepath.Join(root, "missing-web"))
+
+	r := gin.New()
+	if !mountSPA(r, nil) {
+		t.Fatal("expected spa to be mounted")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/app-abc123.js", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("expected immutable cache control, got %q", got)
+	}
+}
+
 func mustWriteFile(t *testing.T, path string, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

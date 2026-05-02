@@ -66,14 +66,14 @@ func mountSPA(r *gin.Engine, siteSettings siteSettingsReader) bool {
 			return
 		}
 		if file, ok := resolveStaticPath(site.dir, p); ok {
-			c.File(file)
+			serveSPAFile(c, file, p)
 			return
 		}
 		if looksLikeStaticAsset(p) {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		c.File(site.indexPath)
+		serveSPAFile(c, site.indexPath, p)
 	})
 	return true
 }
@@ -193,6 +193,37 @@ func isDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+const (
+	spaHTMLCacheControl        = "no-store"
+	spaAssetCacheControl       = "public, max-age=31536000, immutable"
+	spaDefaultFileCacheControl = "public, max-age=3600"
+)
+
+func serveSPAFile(c *gin.Context, file string, requestPath string) {
+	applySPACacheControl(c, file, requestPath)
+	c.File(file)
+}
+
+func applySPACacheControl(c *gin.Context, file string, requestPath string) {
+	switch {
+	case isHTMLDocument(file):
+		c.Header("Cache-Control", spaHTMLCacheControl)
+	case isImmutableAssetRequest(requestPath):
+		c.Header("Cache-Control", spaAssetCacheControl)
+	default:
+		c.Header("Cache-Control", spaDefaultFileCacheControl)
+	}
+}
+
+func isHTMLDocument(file string) bool {
+	return strings.EqualFold(filepath.Ext(file), ".html")
+}
+
+func isImmutableAssetRequest(requestPath string) bool {
+	cleaned := filepath.ToSlash(filepath.Clean("/" + strings.TrimSpace(requestPath)))
+	return strings.HasPrefix(cleaned, "/assets/")
 }
 
 func resolveStaticPath(root string, requestPath string) (string, bool) {
