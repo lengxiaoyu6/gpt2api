@@ -117,7 +117,7 @@ interface AppState {
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
   generateImage: (input: { prompt: string; aspectRatio: AspectRatio; quality?: OutputQualityValue; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
-  editImage: (input: { prompt: string; aspectRatio: AspectRatio; quality?: OutputQualityValue; files: File[]; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
+  editImage: (input: { prompt: string; aspectRatio: AspectRatio; quality?: OutputQualityValue; size?: string; files: File[]; count?: number; signal?: AbortSignal }) => Promise<meApi.PlayImageResponse>
   openAuthForTab: (tab: TabKey) => void
   closeAuth: () => void
   setActiveTab: (tab: TabKey) => void
@@ -381,7 +381,7 @@ export const useStore = create<AppState>()(
           signal: input.signal,
         }
         if (shouldSendOutputSize(modelConfig)) {
-          opts.size = resolveOutputSize(input.aspectRatio, outputQuality)
+          opts.size = input.size?.trim() || resolveOutputSize(input.aspectRatio, outputQuality)
         }
         try {
           return await meApi.playEditImage(

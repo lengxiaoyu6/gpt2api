@@ -779,6 +779,105 @@ describe('generate image notice', () => {
     expect(pendingEditImage).not.toHaveBeenCalled()
   })
 
+  test('image-to-image shows original-size option only for single source image and submits dynamic size', async () => {
+    const pendingEditImage = vi.fn().mockResolvedValue({
+      created: 1,
+      data: [{ url: 'https://example.com/result.png' }],
+    })
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage: pendingEditImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalImage = globalThis.Image
+    const imageWidth = 1170
+    const imageHeight = 2532
+
+    URL.createObjectURL = vi.fn().mockImplementation((file: File) => `blob:${file.name}`)
+
+    class MockImage {
+      onload: null | (() => void) = null
+      onerror: null | (() => void) = null
+      naturalWidth = imageWidth
+      naturalHeight = imageHeight
+      private _src = ''
+
+      set src(value: string) {
+        this._src = value
+        queueMicrotask(() => {
+          this.onload?.()
+        })
+      }
+
+      get src() {
+        return this._src
+      }
+    }
+
+    vi.stubGlobal('Image', MockImage as unknown as typeof Image)
+
+    try {
+      render(<GenerateView />)
+
+      fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
+      expect(screen.queryByRole('button', { name: '原图尺寸' })).toBeNull()
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['image-1'], 'source-1.png', { type: 'image/png' })
+
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [file] } })
+      })
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '原图尺寸' })).toBeInTheDocument()
+      })
+      expect(screen.getByText('195:422')).toBeInTheDocument()
+      expect(screen.getByText('沿用参考图比例')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: '原图尺寸' }))
+      fireEvent.change(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...'), {
+        target: { value: '保留构图，增强电影感' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+      await waitFor(() => {
+        expect(pendingEditImage).toHaveBeenCalledTimes(1)
+      })
+
+      expect(pendingEditImage).toHaveBeenCalledWith(expect.objectContaining({
+        size: '696x1506',
+      }))
+
+      const secondFile = new File(['image-2'], 'source-2.png', { type: 'image/png' })
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [secondFile] } })
+      })
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: '原图尺寸' })).toBeNull()
+      })
+      expect(screen.getByRole('button', { name: '1:1 方形' })).toHaveClass('border-primary/50', 'bg-primary/15')
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+      vi.stubGlobal('Image', originalImage)
+    }
+  })
+
   test('image-to-image accepts multiple source images and submits them together', async () => {
     const pendingEditImage = vi.fn().mockResolvedValue({
       created: 1,

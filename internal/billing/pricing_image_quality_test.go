@@ -15,6 +15,9 @@ func TestResolveImageQualityBySize(t *testing.T) {
 		{size: "1024x1024", want: "1K"},
 		{size: "2048x1152", want: "2K"},
 		{size: "3840x2160", want: "4K"},
+		{size: "696x1506", want: "1K"},
+		{size: "1392x3013", want: "2K"},
+		{size: "1958x4237", want: "4K"},
 	}
 
 	for _, tc := range cases {

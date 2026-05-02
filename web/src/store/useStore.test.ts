@@ -594,6 +594,30 @@ describe('useStore backend integration', () => {
     )
   })
 
+  test('editImage prefers explicit size override over aspect-ratio mapping', async () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    const state = useStore.getState() as any
+    await state.fetchMe()
+    await state.fetchImageModels()
+    const files = [new File(['demo'], 'demo.png', { type: 'image/png' })]
+
+    await state.editImage({
+      prompt: 'portrait relight',
+      aspectRatio: '2:3',
+      quality: '2K',
+      size: '1371x2967',
+      files,
+      count: 1,
+    })
+
+    expect(meApi.playEditImage).toHaveBeenCalledWith(
+      'gpt-image-1',
+      'portrait relight',
+      files,
+      expect.objectContaining({ size: '1371x2967', n: 1 }),
+    )
+  })
+
   test('editImage keeps raw prompt and still sends 1K size for local pool when model disables output size', async () => {
     vi.mocked(meApi.listMyModels).mockResolvedValue({
       items: [{

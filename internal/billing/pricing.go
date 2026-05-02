@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"strconv"
 	"strings"
 
 	modelpkg "github.com/432539/gpt2api/internal/model"
@@ -39,6 +40,29 @@ var imageQualityBySize = map[string]string{
 	"3696x1584": "4K",
 }
 
+const (
+	imageArea1K = 1024 * 1024
+	imageArea2K = 2048 * 2048
+	imageArea4K = 2880 * 2880
+)
+
+func parseImageSize(size string) (int64, bool) {
+	normalized := strings.TrimSpace(strings.ToLower(size))
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		return 0, false
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || width <= 0 {
+		return 0, false
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || height <= 0 {
+		return 0, false
+	}
+	return int64(width) * int64(height), true
+}
+
 // ComputeChatCost 计算聊天模型的费用(单位:厘)。
 // input/output tokens × 单价(per 1M) × 倍率。
 func ComputeChatCost(m *modelpkg.Model, promptTokens, completionTokens int, ratio float64) int64 {
@@ -55,10 +79,21 @@ func ComputeChatCost(m *modelpkg.Model, promptTokens, completionTokens int, rati
 }
 
 func ResolveImageQualityBySize(size string) string {
-	if quality, ok := imageQualityBySize[strings.ToLower(strings.TrimSpace(size))]; ok {
+	normalized := strings.ToLower(strings.TrimSpace(size))
+	if quality, ok := imageQualityBySize[normalized]; ok {
 		return quality
 	}
-	return "1K"
+	area, ok := parseImageSize(normalized)
+	if !ok {
+		return "1K"
+	}
+	if area < int64((imageArea1K+imageArea2K)/2) {
+		return "1K"
+	}
+	if area < int64((imageArea2K+imageArea4K)/2) {
+		return "2K"
+	}
+	return "4K"
 }
 
 func ResolveImageUnitPrice(m *modelpkg.Model, size string) int64 {

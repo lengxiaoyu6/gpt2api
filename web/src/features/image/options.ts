@@ -19,6 +19,12 @@ export interface ImageRatioOption {
   desc: string
 }
 
+const OUTPUT_AREA_BY_QUALITY: Record<OutputQualityValue, number> = {
+  '1K': 1024 * 1024,
+  '2K': 2048 * 2048,
+  '4K': 2880 * 2880,
+}
+
 export const IMAGE_RATIO_OPTIONS: ReadonlyArray<ImageRatioOption> = [
   { label: '方形', ratio: '1:1', w: 1, h: 1, desc: '社交媒体' },
   { label: '横屏', ratio: '5:4', w: 5, h: 4, desc: '海报横幅' },
@@ -53,6 +59,57 @@ export const OUTPUT_QUALITY_OPTIONS: ReadonlyArray<{ value: OutputQualityValue; 
 
 export function resolveOutputSize(ratio: AspectRatio, quality: OutputQualityValue) {
   return OUTPUT_SIZE_BY_RATIO[ratio][quality]
+}
+
+function gcdInt(a: number, b: number) {
+  let x = Math.abs(Math.round(a))
+  let y = Math.abs(Math.round(b))
+
+  while (y !== 0) {
+    [x, y] = [y, x % y]
+  }
+
+  return x || 1
+}
+
+function normalizeDimension(value: number) {
+  return Math.max(1, Math.round(value))
+}
+
+export function simplifyImageRatio(width: number, height: number) {
+  const normalizedWidth = normalizeDimension(width)
+  const normalizedHeight = normalizeDimension(height)
+  const divisor = gcdInt(normalizedWidth, normalizedHeight)
+  return `${normalizedWidth / divisor}:${normalizedHeight / divisor}`
+}
+
+export function resolveOriginalOutputSize(width: number, height: number, quality: OutputQualityValue) {
+  const normalizedWidth = normalizeDimension(width)
+  const normalizedHeight = normalizeDimension(height)
+  const targetArea = OUTPUT_AREA_BY_QUALITY[quality]
+  const ratio = normalizedWidth / normalizedHeight
+
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return null
+  }
+
+  const candidateWidth = normalizeDimension(Math.sqrt(targetArea * ratio))
+  const sizeFromWidth = {
+    width: candidateWidth,
+    height: normalizeDimension(candidateWidth * normalizedHeight / normalizedWidth),
+  }
+
+  const candidateHeight = normalizeDimension(Math.sqrt(targetArea / ratio))
+  const sizeFromHeight = {
+    width: normalizeDimension(candidateHeight * normalizedWidth / normalizedHeight),
+    height: candidateHeight,
+  }
+
+  const areaErrorByWidth = Math.abs(sizeFromWidth.width * sizeFromWidth.height - targetArea)
+  const areaErrorByHeight = Math.abs(sizeFromHeight.width * sizeFromHeight.height - targetArea)
+  const best = areaErrorByWidth <= areaErrorByHeight ? sizeFromWidth : sizeFromHeight
+
+  return `${best.width}x${best.height}`
 }
 
 export function getRatioPreviewStyle(option: Pick<ImageRatioOption, 'w' | 'h'>) {

@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
-import { IMAGE_RATIO_OPTIONS, resolveOutputSize } from './options'
+import {
+  IMAGE_RATIO_OPTIONS,
+  resolveOriginalOutputSize,
+  resolveOutputSize,
+  simplifyImageRatio,
+} from './options'
 
 describe('image output quality mapping', () => {
   test('exposes only ratios that have concrete size mappings', () => {
@@ -29,5 +34,16 @@ describe('image output quality mapping', () => {
     expect(resolveOutputSize('3:4', '2K')).toBe('1536x2048')
     expect(resolveOutputSize('2:3', '4K')).toBe('2336x3504')
     expect(resolveOutputSize('21:9', '4K')).toBe('3696x1584')
+  })
+
+  test('builds simplified original ratio text from source image dimensions', () => {
+    expect(simplifyImageRatio(1170, 2532)).toBe('195:422')
+    expect(simplifyImageRatio(2048, 1536)).toBe('4:3')
+  })
+
+  test('maps original image ratio to dynamic output size by selected quality', () => {
+    expect(resolveOriginalOutputSize(1170, 2532, '1K')).toBe('696x1506')
+    expect(resolveOriginalOutputSize(1170, 2532, '2K')).toBe('1392x3013')
+    expect(resolveOriginalOutputSize(1170, 2532, '4K')).toBe('1958x4237')
   })
 })

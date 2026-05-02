@@ -22,18 +22,25 @@ import {
   IMAGE_RATIO_OPTIONS,
   OUTPUT_QUALITY_OPTIONS,
   getRatioPreviewStyle,
+  resolveOriginalOutputSize,
+  simplifyImageRatio,
   type AspectRatio,
   type OutputQualityValue,
 } from '../../features/image/options';
 
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 const MAX_SOURCE_IMAGES = 4;
+const ORIGINAL_SIZE_RATIO = '__original__';
+
 interface SourceImage {
+  id: string;
   originalFile: File;
   uploadFile: File;
   preview: string | null;
   previewMode: 'image';
   sourceFormat: SourceImageFormat;
+  width: number | null;
+  height: number | null;
 }
 
 interface GeneratedImage {
@@ -94,6 +101,25 @@ const resolveDirectPreviewFormatByMetadata = (file: File): SourceImageFormat | n
   return null;
 };
 
+const createSourceImageID = (file: File) => (
+  `${file.name}:${file.size}:${file.lastModified}:${Math.random().toString(36).slice(2, 10)}`
+);
+
+const readImageDimensions = (src: string) => new Promise<{ width: number; height: number }>((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => {
+    const width = image.naturalWidth || (image as HTMLImageElement).width || 0;
+    const height = image.naturalHeight || (image as HTMLImageElement).height || 0;
+    if (width > 0 && height > 0) {
+      resolve({ width, height });
+      return;
+    }
+    reject(new Error('invalid image dimensions'));
+  };
+  image.onerror = () => reject(new Error('image decode failed'));
+  image.src = src;
+});
+
 const resolveSourceImage = async (file: File): Promise<SourceImage | null> => {
   const detectedFormat = await detectSourceImageFormat(file);
   const format = detectedFormat ?? resolveDirectPreviewFormatByMetadata(file);
@@ -105,12 +131,16 @@ const resolveSourceImage = async (file: File): Promise<SourceImage | null> => {
   if (format === 'heic' || format === 'heif') {
     try {
       const convertedFile = await convertHEICToJPEG(file);
+      const preview = URL.createObjectURL(convertedFile);
       return {
+        id: createSourceImageID(file),
         originalFile: file,
         uploadFile: convertedFile,
-        preview: URL.createObjectURL(convertedFile),
+        preview,
         previewMode: 'image',
         sourceFormat: format,
+        width: null,
+        height: null,
       };
     } catch (error) {
       console.error('reference image conversion failed', error);
@@ -119,12 +149,17 @@ const resolveSourceImage = async (file: File): Promise<SourceImage | null> => {
     }
   }
 
+  const preview = URL.createObjectURL(file);
+
   return {
+    id: createSourceImageID(file),
     originalFile: file,
     uploadFile: file,
-    preview: URL.createObjectURL(file),
+    preview,
     previewMode: 'image',
     sourceFormat: format,
+    width: null,
+    height: null,
   };
 };
 
@@ -212,6 +247,7 @@ const triggerLinkDownload = (href: string, fileName: string) => {
   anchor.click();
   anchor.remove();
 };
+type ImageAspectRatioValue = AspectRatio | typeof ORIGINAL_SIZE_RATIO;
 
 export default function GenerateView() {
   const {
@@ -229,7 +265,7 @@ export default function GenerateView() {
   const [resultImages, setResultImages] = useState<GeneratedImage[]>([]);
   const [isPreviewResult, setIsPreviewResult] = useState(false);
   const [textAspectRatio, setTextAspectRatio] = useState<AspectRatio>('1:1');
-  const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('1:1');
+  const [imageAspectRatio, setImageAspectRatio] = useState<ImageAspectRatioValue>('1:1');
   const [textOutputQuality, setTextOutputQuality] = useState<OutputQualityValue>('1K');
   const [imageOutputQuality, setImageOutputQuality] = useState<OutputQualityValue>('1K');
   const [imageCount, setImageCount] = useState<1 | 2 | 3 | 4>(1);
@@ -249,9 +285,29 @@ export default function GenerateView() {
   const imageNotice = siteInfo['site.image_notice']?.trim() || '';
   const activeAspectRatio = mode === 'txt' ? textAspectRatio : imageAspectRatio;
   const activeOutputQuality = mode === 'txt' ? textOutputQuality : imageOutputQuality;
+  const singleSourceImage = mode === 'img' && sourceImages.length === 1 ? sourceImages[0] : null;
+  const originalSizeOption = singleSourceImage?.width && singleSourceImage?.height
+    ? {
+        ratio: ORIGINAL_SIZE_RATIO,
+        ratioText: simplifyImageRatio(singleSourceImage.width, singleSourceImage.height),
+        size: resolveOriginalOutputSize(singleSourceImage.width, singleSourceImage.height, imageOutputQuality),
+      }
+    : null;
   const currentQualityPrice = resolveImageUnitPrice(currentModel, activeOutputQuality, supportsOutputSize);
   const effectiveImageCount = mode === 'img' ? 1 : (supportsMultiImage ? imageCount : 1);
   const totalPrice = currentQualityPrice * effectiveImageCount;
+
+  useEffect(() => {
+    if (mode !== 'img') {
+      return;
+    }
+    if (imageAspectRatio !== ORIGINAL_SIZE_RATIO) {
+      return;
+    }
+    if (sourceImages.length !== 1 || !originalSizeOption?.size) {
+      setImageAspectRatio('1:1');
+    }
+  }, [imageAspectRatio, mode, originalSizeOption?.size, sourceImages.length]);
 
   useEffect(() => {
     const nextPrompt = consumePendingPrompt();
@@ -335,8 +391,9 @@ export default function GenerateView() {
           })
         : await editImage({
             prompt: nextPrompt || '增强细节，提升画面质感',
-            aspectRatio: imageAspectRatio,
+            aspectRatio: imageAspectRatio === ORIGINAL_SIZE_RATIO ? '1:1' : imageAspectRatio,
             quality: imageOutputQuality,
+            size: imageAspectRatio === ORIGINAL_SIZE_RATIO ? originalSizeOption?.size || undefined : undefined,
             files: sourceImages.map((image) => image.uploadFile),
             count: effectiveImageCount,
           });
@@ -409,6 +466,20 @@ export default function GenerateView() {
     }
 
     setSourceImages((prev) => [...prev, ...acceptedFiles]);
+    acceptedFiles.forEach((image) => {
+      if (!image.preview) {
+        return;
+      }
+      void readImageDimensions(image.preview)
+        .then(({ width, height }) => {
+          setSourceImages((prev) => prev.map((item) => (
+            item.id === image.id ? { ...item, width, height } : item
+          )));
+        })
+        .catch((error) => {
+          console.error('reference image dimension read failed', error);
+        });
+    });
     e.target.value = '';
   };
 
@@ -427,9 +498,9 @@ export default function GenerateView() {
     }
   };
 
-  const handleAspectRatioChange = (ratio: AspectRatio) => {
+  const handleAspectRatioChange = (ratio: ImageAspectRatioValue) => {
     if (mode === 'txt') {
-      setTextAspectRatio(ratio);
+      setTextAspectRatio(ratio as AspectRatio);
       return;
     }
     setImageAspectRatio(ratio);
@@ -567,7 +638,7 @@ export default function GenerateView() {
                     <div className={cn('grid h-full w-full gap-2.5 p-2.5', getSourceImageGridClass(sourceImages.length))}>
                       {sourceImages.map((sourceImage, index) => (
                         <div
-                          key={`${sourceImage.originalFile.name}-${index}`}
+                          key={sourceImage.id}
                           className={cn(
                             'group/source relative min-h-0 overflow-hidden rounded-2xl border border-white/15 bg-background/70 shadow-lg shadow-black/10',
                             getSourceImageTileClass(sourceImages.length, index),
@@ -748,6 +819,37 @@ export default function GenerateView() {
               <div className="space-y-3">
                 <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">画布比例</p>
                 <div className="grid grid-cols-5 gap-2">
+                  {mode === 'img' && originalSizeOption ? (
+                    <button
+                      type="button"
+                      key={ORIGINAL_SIZE_RATIO}
+                      aria-label="原图尺寸"
+                      onClick={() => handleAspectRatioChange(ORIGINAL_SIZE_RATIO)}
+                      className={cn(
+                        'flex flex-col items-center justify-center rounded-xl border px-1 py-2.5 transition-all',
+                        imageAspectRatio === ORIGINAL_SIZE_RATIO
+                          ? 'border-primary/50 bg-primary/15 text-foreground shadow-lg shadow-primary/10'
+                          : 'bg-background/50 border-border/50 hover:border-primary/30',
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'mb-1 rounded-sm border transition-colors',
+                          imageAspectRatio === ORIGINAL_SIZE_RATIO ? 'border-primary/60 bg-primary/20' : 'border-border/80 bg-muted/30',
+                        )}
+                        style={getRatioPreviewStyle({
+                          w: singleSourceImage?.width || 1,
+                          h: singleSourceImage?.height || 1,
+                        })}
+                      />
+                      <span className="text-[10px] font-black">原图尺寸</span>
+                      <span className="text-[9px] font-semibold leading-tight">{originalSizeOption.ratioText}</span>
+                      <span className={cn('mt-0.5 text-[8px]', imageAspectRatio === ORIGINAL_SIZE_RATIO ? 'text-foreground/80 opacity-80' : 'text-muted-foreground opacity-60')}>
+                        沿用参考图比例
+                      </span>
+                    </button>
+                  ) : null}
                   {IMAGE_RATIO_OPTIONS.map((option) => {
                     const isActive = activeAspectRatio === option.ratio;
                     return (
