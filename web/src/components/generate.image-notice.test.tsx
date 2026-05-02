@@ -431,6 +431,82 @@ describe('generate image notice', () => {
     expect(screen.getByRole('link', { name: '下载原图 1' })).toHaveAttribute('href', 'https://example.com/original.png')
   })
 
+  test('generate result download triggers file download instead of opening a new page', async () => {
+    const blob = new Blob(['image-binary'], { type: 'image/png' })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+      headers: {
+        get: vi.fn((name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null)),
+      },
+    })
+    const createObjectURL = vi.fn().mockReturnValue('blob:generate-download')
+    const revokeObjectURL = vi.fn()
+    const clickedDownloads: string[] = []
+    const clickedHrefs: string[] = []
+    const clickedTargets: string[] = []
+    const originalAnchorClick = HTMLAnchorElement.prototype.click
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage: vi.fn().mockResolvedValue({
+        created: 1,
+        data: [{ url: 'https://example.com/original.png?sig=abc', thumb_url: 'https://example.com/thumb.png' }],
+      }),
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    vi.stubGlobal('fetch', fetchMock)
+    URL.createObjectURL = createObjectURL
+    URL.revokeObjectURL = revokeObjectURL
+    HTMLAnchorElement.prototype.click = vi.fn(function (this: HTMLAnchorElement) {
+      clickedDownloads.push(this.download)
+      clickedHrefs.push(this.href)
+      clickedTargets.push(this.target)
+    }) as unknown as typeof HTMLAnchorElement.prototype.click
+
+    try {
+      render(<GenerateView />)
+
+      fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
+        target: { value: '一座海边图书馆' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+      expect(await screen.findByAltText('Result 1')).toHaveAttribute('src', 'https://example.com/thumb.png')
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('link', { name: '下载原图 1' }))
+      })
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('https://example.com/original.png?sig=abc'))
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(blob))
+      expect(clickedHrefs).toEqual(['blob:generate-download'])
+      expect(clickedTargets).toEqual([''])
+      expect(clickedDownloads[0]).toContain('.png')
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:generate-download')
+    } finally {
+      HTMLAnchorElement.prototype.click = originalAnchorClick
+      URL.createObjectURL = originalCreateObjectURL
+      URL.revokeObjectURL = originalRevokeObjectURL
+      vi.unstubAllGlobals()
+    }
+  })
+
   test('image-to-image upload can be cancelled after selecting a source image', async () => {
     useStore.setState({
       siteInfo: {

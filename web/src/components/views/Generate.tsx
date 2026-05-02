@@ -41,6 +41,16 @@ interface GeneratedImage {
   displayUrl: string;
 }
 
+const IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
+  'image/bmp': 'bmp',
+  'image/gif': 'gif',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/svg+xml': 'svg',
+  'image/webp': 'webp',
+};
+
 const getSourceImageGridClass = (count: number) => {
   if (count === 1) {
     return 'grid-cols-1 grid-rows-1';
@@ -164,6 +174,43 @@ const getModelSecondaryLabel = (
     return '';
   }
   return description;
+};
+
+const getImageExtension = (url: string, contentType?: string | null) => {
+  const normalizedType = contentType?.split(';')[0]?.trim().toLowerCase() || '';
+
+  if (normalizedType && IMAGE_EXTENSION_BY_TYPE[normalizedType]) {
+    return IMAGE_EXTENSION_BY_TYPE[normalizedType];
+  }
+
+  try {
+    const parsedUrl = new URL(url, window.location.origin);
+    const matched = parsedUrl.pathname.match(/\.([a-z0-9]+)$/i);
+
+    if (matched?.[1]) {
+      return matched[1].toLowerCase();
+    }
+  } catch {
+    return 'png';
+  }
+
+  return 'png';
+};
+
+const getGeneratedDownloadFileName = (imageUrl: string, index: number, contentType?: string | null) => {
+  const extension = getImageExtension(imageUrl, contentType);
+  return `generated-${index + 1}.${extension}`;
+};
+
+const triggerLinkDownload = (href: string, fileName: string) => {
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 };
 
 export default function GenerateView() {
@@ -394,6 +441,34 @@ export default function GenerateView() {
       return;
     }
     setImageOutputQuality(value);
+  };
+
+  const handleDownloadResultImage = async (event: React.MouseEvent<HTMLAnchorElement>, image: GeneratedImage, index: number) => {
+    event.preventDefault();
+
+    try {
+      const response = await fetch(image.originalUrl);
+
+      if (!response.ok) {
+        throw new Error('下载图片失败');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const fileName = getGeneratedDownloadFileName(
+        image.originalUrl,
+        index,
+        blob.type || response.headers.get('content-type'),
+      );
+
+      try {
+        triggerLinkDownload(objectUrl, fileName);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '下载图片失败，请稍后重试');
+    }
   };
 
   return (
@@ -807,9 +882,11 @@ export default function GenerateView() {
                     <a
                       href={image.originalUrl}
                       download
-                      target="_blank"
                       rel="noopener"
                       aria-label={`下载原图 ${index + 1}`}
+                      onClick={(event) => {
+                        void handleDownloadResultImage(event, image, index);
+                      }}
                       className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg lg:backdrop-blur-sm"
                     >
                       <Download className="h-4 w-4" />

@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('motion/react', async () => {
@@ -632,6 +634,71 @@ describe('web backend bindings', () => {
     expect(imageFrame.className).toContain('lg:h-[min(68vh,32rem)]')
     expect(imageFrame.className).toContain('w-full')
     expect(imageFrame.style.aspectRatio).toBe('')
+  })
+
+  test('history detail uses dedicated desktop scrollbar container', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    const prompt = 'Long prompt for scrollbar verification'
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 33,
+          task_id: 'task-scrollbar',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt,
+          n: 1,
+          size: '2048x2048',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-scrollbar/0'],
+          thumb_urls: ['/p/thumb/task-scrollbar/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    })
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(prompt))
+    })
+
+    const detailImage = await screen.findByAltText('Detail')
+    const detailCard = findAncestorWithClass(detailImage, 'bg-card')
+    const detailBody = findAncestorWithClass(screen.getByText('完整尺寸'), 'history-detail-scrollbar')
+    const promptHeading = screen.getByRole('heading', { level: 3, name: prompt })
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+
+    expect(detailCard).not.toBeNull()
+    expect(detailCard?.className).toContain('flex')
+    expect(detailCard?.className).toContain('flex-col')
+    expect(detailCard?.className).toContain('lg:overflow-hidden')
+    expect(detailBody).not.toBeNull()
+    expect(detailBody?.className).toContain('history-detail-scrollbar')
+    expect(detailBody?.className).toContain('lg:flex-1')
+    expect(detailBody?.className).toContain('lg:min-h-0')
+    expect(detailBody?.className).toContain('lg:overflow-y-auto')
+    expect(detailBody?.className).toContain('lg:overscroll-contain')
+    expect(promptHeading.className).toContain('lg:max-h-none')
+    expect(promptHeading.className).toContain('lg:overflow-visible')
+    expect(css).toContain('.history-detail-scrollbar')
   })
 
   test('history view refresh button forces server reload', async () => {

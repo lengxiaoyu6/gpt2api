@@ -683,7 +683,7 @@ export default function HistoryView() {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-[calc(100vw-2rem)] max-w-lg shrink-0 bg-card rounded-3xl overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg shrink-0 flex-col overflow-y-auto rounded-3xl bg-card shadow-2xl lg:overflow-hidden"
             >
               <div
                 className="relative flex h-[min(44vh,22rem)] min-h-[14rem] w-full items-center justify-center overflow-hidden bg-black sm:h-[min(56vh,28rem)] lg:h-[min(68vh,32rem)]"
@@ -798,13 +798,13 @@ export default function HistoryView() {
                   <X className="w-4 h-4" />
                 </Button>
               </div>
-              <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-6">
+              <div className="history-detail-scrollbar flex flex-col gap-4 p-4 sm:gap-5 sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-4">
                 <div className="min-w-0 space-y-1.5">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-widest">
                     <Calendar className="w-3 h-3" />
                     <span>创建于 {new Date(selectedImage.created_at).toLocaleString()}</span>
                   </div>
-                  <h3 className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-base font-bold leading-6 sm:max-h-32 sm:text-lg sm:leading-tight">
+                  <h3 className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-base font-bold leading-6 sm:max-h-32 sm:text-lg sm:leading-tight lg:max-h-none lg:overflow-visible">
                     {selectedImage.prompt}
                   </h3>
                 </div>
