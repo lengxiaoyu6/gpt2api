@@ -144,6 +144,33 @@ describe('web prompt library page', () => {
     expect(within(dialog).getByRole('img', { name: '水彩花园灵感图预览图' })).toHaveAttribute('src', 'https://cdn.example.test/prompts/garden.webp')
   })
 
+
+
+  test('renders prompt summary as single-line ellipsis text on cards', async () => {
+    render(<PromptLibraryView />)
+
+    const summary = await screen.findByText('赛博朋克城市，雨夜霓虹，高细节')
+    expect(summary.className).toContain('truncate')
+    expect(summary.className).toContain('whitespace-nowrap')
+    expect(summary.className).toContain('overflow-hidden')
+  })
+
+  test('uses two-column compact cards on mobile inspiration list', async () => {
+    render(<PromptLibraryView />)
+
+    expect(await screen.findByText('电影感城市夜景')).toBeInTheDocument()
+
+    const list = screen.getByLabelText('Prompt 卡片列表')
+    expect(list.className).toContain('grid-cols-2')
+    expect(list.className).toContain('gap-3')
+    expect(list.className).toContain('sm:gap-4')
+
+    const card = screen.getByRole('button', { name: '查看 Prompt：电影感城市夜景' })
+    expect(card.className).toContain('p-3')
+    expect(card.className).toContain('sm:p-5')
+    expect(card.className).toContain('sm:min-h-64')
+  })
+
   test('supports keyword category query and loading next page', async () => {
     vi.mocked(api.listMyPrompts)
       .mockResolvedValueOnce({
