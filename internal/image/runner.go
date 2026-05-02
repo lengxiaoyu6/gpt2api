@@ -24,6 +24,8 @@ import (
 
 type runnerAttemptFunc func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error)
 
+const runnerTaskPersistTimeout = 5 * time.Second
+
 // QuotaDecrementor 允许 Runner 在生图成功后立即扣减账号剩余额度,
 // 无需等待下一次后台探测即可在前端看到正确数字。
 type QuotaDecrementor interface {
@@ -191,8 +193,10 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 
 	// 落库
 	if r.dao != nil && opt.TaskID != "" {
+		persistCtx, cancel := context.WithTimeout(context.Background(), runnerTaskPersistTimeout)
+		defer cancel()
 		if result.Status == StatusSuccess {
-			if err := r.dao.MarkSuccess(ctx, opt.TaskID, result.ConversationID,
+			if err := r.dao.MarkSuccess(persistCtx, opt.TaskID, result.ConversationID,
 				result.FileIDs, result.SignedURLs, result.ThumbURLs, result.StorageMode, 0 /* credit_cost 由网关负责写 */); err == nil && r.quotaDecr != nil {
 				quotaUsed := result.quotaUsed
 				if len(quotaUsed) == 0 && result.AccountID > 0 {
@@ -208,7 +212,7 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 				}
 			}
 		} else {
-			_ = r.dao.MarkFailed(ctx, opt.TaskID, result.ErrorCode)
+			_ = r.dao.MarkFailed(persistCtx, opt.TaskID, result.ErrorCode)
 		}
 	}
 	return result

@@ -231,6 +231,48 @@ describe('web backend bindings', () => {
     expect(screen.queryByRole('button', { name: '发送验证码' })).toBeNull()
   })
 
+  test('auth overlay exposes a close button and invokes onClose when tapped', () => {
+    const onClose = vi.fn()
+
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={onClose} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭登录弹窗' }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  test('auth overlay closes from backdrop clicks and keeps panel clicks inside the dialog', () => {
+    const onClose = vi.fn()
+
+    useStore.setState({
+      siteInfo: {
+        ...useStore.getState().siteInfo,
+        'auth.allow_register': 'true',
+      },
+      login: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn().mockResolvedValue(undefined),
+      closeAuth: vi.fn(),
+    })
+
+    render(<AuthOverlay onClose={onClose} />)
+
+    fireEvent.click(screen.getByTestId('auth-overlay-panel'))
+    expect(onClose).toHaveBeenCalledTimes(0)
+
+    fireEvent.click(screen.getByRole('dialog', { name: '登录弹窗' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   test('auth overlay submits email_code during register', async () => {
     const register = vi.fn().mockResolvedValue(undefined)
 

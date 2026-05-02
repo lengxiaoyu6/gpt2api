@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Sparkles, User, Mail, Lock } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { sendRegisterEmailCode } from '../api/auth';
 import { ApiError } from '../api/http';
@@ -232,22 +233,40 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
     }
   };
 
-  return (
+  const content = (
     <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label="登录弹窗"
+      data-testid="auth-overlay-backdrop"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <motion.div
+        data-testid="auth-overlay-panel"
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
         className="w-full max-w-sm relative"
+        onClick={(event) => event.stopPropagation()}
       >
         <Card className="border-border/50 bg-card/95 shadow-2xl overflow-hidden">
-          <div className="absolute top-4 right-4">
-            <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+          <div className="absolute top-4 right-4 z-10">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="关闭登录弹窗"
+              onClick={onClose}
+              className="h-11 w-11 rounded-full bg-background/70 text-muted-foreground shadow-sm backdrop-blur touch-manipulation hover:bg-muted hover:text-foreground"
+            >
               <X className="w-4 h-4" />
             </Button>
           </div>
@@ -348,4 +367,10 @@ export default function AuthOverlay({ onClose }: AuthOverlayProps) {
       </motion.div>
     </motion.div>
   );
+
+  if (typeof document === 'undefined') {
+    return content;
+  }
+
+  return createPortal(content, document.body);
 }

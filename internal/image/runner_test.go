@@ -456,3 +456,64 @@ func (d *imageProxyFailureTestDeps) proxyHealth(t *testing.T, proxyID uint64) (i
 	}
 	return row.HealthScore, row.LastError
 }
+type runnerStatusDAOStub struct {
+	markRunningCtxErr error
+	markSuccessCtxErr error
+	markFailedCtxErr  error
+	markFailedTaskID  string
+	markFailedCode    string
+}
+
+func (s *runnerStatusDAOStub) MarkRunning(ctx context.Context, taskID string, accountID uint64) error {
+	s.markRunningCtxErr = ctx.Err()
+	return nil
+}
+
+func (s *runnerStatusDAOStub) SetAccount(ctx context.Context, taskID string, accountID uint64) error {
+	return nil
+}
+
+func (s *runnerStatusDAOStub) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs, thumbURLs []string, storageMode string, creditCost int64) error {
+	s.markSuccessCtxErr = ctx.Err()
+	return ctx.Err()
+}
+
+func (s *runnerStatusDAOStub) MarkFailed(ctx context.Context, taskID, errorCode string) error {
+	s.markFailedCtxErr = ctx.Err()
+	s.markFailedTaskID = taskID
+	s.markFailedCode = errorCode
+	return ctx.Err()
+}
+
+func TestRunnerRunMarksTaskFailedEvenWhenRunContextCanceled(t *testing.T) {
+	dao := &runnerStatusDAOStub{}
+	runCtx, cancel := context.WithCancel(context.Background())
+	r := &Runner{
+		dao: dao,
+		runOnceFn: func(ctx context.Context, opt RunOptions, result *RunResult) (bool, string, error) {
+			cancel()
+			result.AccountID = 9
+			return false, ErrPollTimeout, context.Canceled
+		},
+	}
+
+	res := r.Run(runCtx, RunOptions{TaskID: "img_ctx_cancel_failed"})
+	if res.Status != StatusFailed {
+		t.Fatalf("status = %s", res.Status)
+	}
+	if res.ErrorCode != ErrPollTimeout {
+		t.Fatalf("error code = %s", res.ErrorCode)
+	}
+	if dao.markRunningCtxErr != nil {
+		t.Fatalf("MarkRunning ctx err = %v", dao.markRunningCtxErr)
+	}
+	if dao.markFailedTaskID != "img_ctx_cancel_failed" {
+		t.Fatalf("MarkFailed task id = %q", dao.markFailedTaskID)
+	}
+	if dao.markFailedCode != ErrPollTimeout {
+		t.Fatalf("MarkFailed error code = %q, want %q", dao.markFailedCode, ErrPollTimeout)
+	}
+	if dao.markFailedCtxErr != nil {
+		t.Fatalf("MarkFailed ctx err = %v", dao.markFailedCtxErr)
+	}
+}
