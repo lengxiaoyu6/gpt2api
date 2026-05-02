@@ -1262,6 +1262,7 @@ describe('web backend bindings', () => {
     await waitFor(() => expect(screen.getAllByText('任务失败').length).toBeGreaterThan(0))
     expect(screen.getByText('失败原因')).toBeInTheDocument()
     expect(screen.getAllByText('内容审核未通过').length).toBeGreaterThan(0)
+    expect(screen.queryByText('第 1 张加载中')).toBeNull()
     expect(screen.getByText('参考图')).toBeInTheDocument()
     expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', '/p/ref-thumb/task-failed/0')
   })

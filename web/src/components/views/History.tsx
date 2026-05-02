@@ -314,6 +314,7 @@ export default function HistoryView() {
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
   const selectedDisplayUrl = selectedPreviewUrl || selectedOriginalUrl;
+  const hasSelectedResultImages = selectedPreviewUrls.length > 0 || selectedOriginalUrls.length > 0;
   const selectedImageSizeLabel = formatImageSize(selectedImage?.size);
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
   const isFirstPreviewImage = previewIndex === 0;
@@ -726,7 +727,7 @@ export default function HistoryView() {
                     </p>
                   </div>
                 )}
-                {loadingPreviewUrl === selectedDisplayUrl ? (
+                {hasSelectedResultImages && selectedDisplayUrl && loadingPreviewUrl === selectedDisplayUrl ? (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/55 px-6 text-center text-white backdrop-blur-[2px]">
                     <LoaderCircle className="h-6 w-6 animate-spin" />
                     <div className="rounded-full border border-white/20 bg-black/45 px-3 py-1.5 text-xs font-semibold">
