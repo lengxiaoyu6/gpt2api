@@ -374,11 +374,10 @@ export const useStore = create<AppState>()(
         if (!modelSlug) {
           throw new Error('当前暂无可用图像模型')
         }
-        const supportsMultiImage = modelConfig?.supports_multi_image ?? true
         const supportsOutputSize = modelConfig?.supports_output_size ?? true
         const outputQuality = effectiveOutputQuality(supportsOutputSize, input.quality)
         const opts: { n?: number; size?: string; signal?: AbortSignal } = {
-          n: supportsMultiImage ? normalizeImageCount(input.count) : 1,
+          n: 1,
           signal: input.signal,
         }
         if (shouldSendOutputSize(modelConfig)) {

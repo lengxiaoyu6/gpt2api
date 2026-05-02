@@ -252,6 +252,33 @@ describe('generate image notice', () => {
     })
   })
 
+  test('generate page hides count controls in image-to-image mode and keeps single-count pricing copy', async () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500, supports_multi_image: true },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+    fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
+
+    expect(screen.queryByText('生成张数')).toBeNull()
+    expect(screen.queryByText('多张生成会按张数累计扣费')).toBeNull()
+    expect(screen.getByText('当前 1 张，预计消耗 0.15 积分')).toBeInTheDocument()
+  })
+
   test('generate page omits idle inspiration placeholder at bottom', () => {
     useStore.setState({
       siteInfo: {

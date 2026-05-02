@@ -250,7 +250,7 @@ export default function GenerateView() {
   const activeAspectRatio = mode === 'txt' ? textAspectRatio : imageAspectRatio;
   const activeOutputQuality = mode === 'txt' ? textOutputQuality : imageOutputQuality;
   const currentQualityPrice = resolveImageUnitPrice(currentModel, activeOutputQuality, supportsOutputSize);
-  const effectiveImageCount = supportsMultiImage ? imageCount : 1;
+  const effectiveImageCount = mode === 'img' ? 1 : (supportsMultiImage ? imageCount : 1);
   const totalPrice = currentQualityPrice * effectiveImageCount;
 
   useEffect(() => {
@@ -517,7 +517,7 @@ export default function GenerateView() {
         </div>
         <div className="rounded-[1.75rem] border border-primary/20 bg-primary/10 px-4 py-3 text-right text-[10px] font-bold text-primary shadow-sm shadow-primary/10 lg:min-w-[18rem] lg:text-xs">
           <p>当前质量价格：{formatCredit(currentQualityPrice)} 积分 / 张</p>
-          {supportsMultiImage ? (
+          {mode === 'txt' && supportsMultiImage ? (
             <p className="mt-1 text-[9px] font-medium text-foreground/80">多张生成会按张数累计扣费</p>
           ) : null}
           <p className="mt-1 text-[9px] font-medium text-foreground/80">当前 {effectiveImageCount} 张，预计消耗 {formatCredit(totalPrice)} 积分</p>
@@ -809,7 +809,7 @@ export default function GenerateView() {
                 </div>
               ) : null}
 
-              {supportsMultiImage ? (
+              {mode === 'txt' && supportsMultiImage ? (
                 <div className="space-y-3">
                   <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">生成张数</p>
                   <div className="grid grid-cols-4 gap-2">

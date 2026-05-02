@@ -543,7 +543,7 @@ describe('useStore backend integration', () => {
     expect((useStore.getState() as any).history[0].status).toBe('failed')
   })
 
-  test('editImage keeps raw prompt when model supports output size, converts selected quality to actual size with multiple files and refreshes me plus history', async () => {
+  test('editImage keeps raw prompt when model supports output size, converts selected quality to actual size with multiple files, forces single output and refreshes me plus history', async () => {
     localStorage.setItem('gpt2api.access', 'access-token')
     const state = useStore.getState() as any
     await state.fetchMe()
@@ -565,10 +565,33 @@ describe('useStore backend integration', () => {
       'gpt-image-1',
       'portrait relight',
       files,
-      expect.objectContaining({ size: '1344x2016', n: 3 }),
+      expect.objectContaining({ size: '1344x2016', n: 1 }),
     )
     expect(meApi.getMe).toHaveBeenCalledTimes(2)
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
+  })
+
+  test('editImage always sends n=1 in image-to-image mode even when count is greater than one', async () => {
+    localStorage.setItem('gpt2api.access', 'access-token')
+    const state = useStore.getState() as any
+    await state.fetchMe()
+    await state.fetchImageModels()
+    const files = [new File(['demo'], 'demo.png', { type: 'image/png' })]
+
+    await state.editImage({
+      prompt: 'portrait relight',
+      aspectRatio: '2:3',
+      quality: '2K',
+      files,
+      count: 4,
+    })
+
+    expect(meApi.playEditImage).toHaveBeenCalledWith(
+      'gpt-image-1',
+      'portrait relight',
+      files,
+      expect.objectContaining({ size: '1344x2016', n: 1 }),
+    )
   })
 
   test('editImage keeps raw prompt and still sends 1K size for local pool when model disables output size', async () => {
@@ -604,7 +627,7 @@ describe('useStore backend integration', () => {
     )
   })
 
-  test('editImage keeps omitting size for upstream channel when model disables output size', async () => {
+  test('editImage keeps omitting size for upstream channel when model disables output size and still forces single output', async () => {
     vi.mocked(meApi.listMyModels).mockResolvedValue({
       items: [{
         id: 2,
@@ -633,7 +656,7 @@ describe('useStore backend integration', () => {
       'upstream-default-size',
       'portrait relight',
       files,
-      expect.objectContaining({ n: 3 }),
+      expect.objectContaining({ n: 1 }),
     )
     const opts = vi.mocked(meApi.playEditImage).mock.calls.at(-1)?.[3]
     expect(opts).not.toHaveProperty('size')
