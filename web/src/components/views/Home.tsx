@@ -384,7 +384,12 @@ export default function HomeView({ onStartGeneration, onOpenUpdateLogs, siteName
                   role="listitem"
                   className={index === 0 ? 'rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3' : 'rounded-2xl border border-border/60 bg-background/65 px-4 py-3'}
                 >
-                  <p className="text-sm leading-6 text-foreground/90">{item.content}</p>
+                  <div className="space-y-2">
+                    <div className="inline-flex max-w-full items-center rounded-full border border-border/60 bg-background/75 px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                      {item.version || `#${item.id}`}
+                    </div>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/90">{item.content}</p>
+                  </div>
                 </article>
               ))}
             </div>
