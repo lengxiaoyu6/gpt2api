@@ -705,6 +705,13 @@ describe("web integration", () => {
     expect(await screen.findByText("首页新增小型更新区块")).toBeInTheDocument();
     expect(screen.getByText("最近更新")).toBeInTheDocument();
 
+    const updateCard = screen.getByText("首页新增小型更新区块").closest(".rounded-\\[2rem\\]");
+    expect(updateCard?.className).toContain("h-[18rem]");
+
+    const scrollRegion = screen.getByRole("list", { name: "首页最近更新列表" });
+    expect(scrollRegion.className).toContain("min-h-0");
+    expect(scrollRegion.className).toContain("overflow-y-auto");
+
     fireEvent.click(screen.getByRole("button", { name: "查看全部更新日志" }));
 
     await waitFor(() => {

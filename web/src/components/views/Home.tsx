@@ -370,17 +370,18 @@ export default function HomeView({ onStartGeneration, onOpenUpdateLogs, siteName
           </Button>
         </div>
 
-        <Card className="rounded-[2rem] border-border/60 bg-card/75 p-4 shadow-sm shadow-black/5 sm:p-5">
+        <Card className="h-[18rem] rounded-[2rem] border-border/60 bg-card/75 p-4 shadow-sm shadow-black/5 sm:p-5">
           {!updatesLoaded ? (
-            <div className="flex min-h-24 items-center justify-center text-sm text-muted-foreground">
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               正在加载更新内容
             </div>
           ) : recentUpdates.length > 0 ? (
-            <div className="space-y-3">
+            <div role="list" aria-label="首页最近更新列表" className="min-h-0 h-full space-y-3 overflow-y-auto pr-1">
               {recentUpdates.map((item, index) => (
                 <article
                   key={item.id}
+                  role="listitem"
                   className={index === 0 ? 'rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3' : 'rounded-2xl border border-border/60 bg-background/65 px-4 py-3'}
                 >
                   <p className="text-sm leading-6 text-foreground/90">{item.content}</p>
@@ -388,7 +389,7 @@ export default function HomeView({ onStartGeneration, onOpenUpdateLogs, siteName
               ))}
             </div>
           ) : (
-            <div className="min-h-24 rounded-2xl border border-dashed border-border/60 bg-background/65 px-4 py-6 text-sm text-muted-foreground">
+            <div className="flex h-full items-center rounded-2xl border border-dashed border-border/60 bg-background/65 px-4 py-6 text-sm text-muted-foreground">
               暂无更新内容
             </div>
           )}
