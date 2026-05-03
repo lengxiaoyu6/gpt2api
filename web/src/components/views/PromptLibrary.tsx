@@ -304,7 +304,7 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                 type="button"
                 aria-label={`查看 Prompt：${item.title}`}
                 onClick={() => handleOpenPromptDetail(item)}
-                className="group flex min-h-0 flex-col rounded-[1.4rem] border border-border/60 bg-card/70 p-3 text-left shadow-sm shadow-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_22px_54px_-36px_rgba(15,23,42,0.55)] focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 sm:min-h-64 sm:rounded-[1.75rem] sm:p-5"
+                className="group flex min-h-0 min-w-0 flex-col rounded-[1.4rem] border border-border/60 bg-card/70 p-3 text-left shadow-sm shadow-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_22px_54px_-36px_rgba(15,23,42,0.55)] focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 sm:min-h-64 sm:rounded-[1.75rem] sm:p-5"
               >
                 {previewImageURL ? (
                   <div className="-mx-0.5 -mt-0.5 mb-3 overflow-hidden rounded-[1.1rem] border border-border/60 bg-secondary/30 sm:-mx-1 sm:-mt-1 sm:mb-4 sm:rounded-[1.35rem]">
@@ -322,8 +322,8 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary sm:px-3 sm:text-xs">{item.category || '通用'}</span>
                   <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">#{item.id}</span>
                 </div>
-                <h2 className="mt-3 text-[15px] font-black leading-5 tracking-tight text-foreground group-hover:text-primary sm:mt-4 sm:text-lg sm:leading-6">{item.title}</h2>
-                <p className="mt-2 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-5 text-muted-foreground truncate sm:mt-3 sm:text-sm sm:leading-6">
+                <h2 className="mt-3 min-w-0 w-full break-words text-[15px] font-black leading-5 tracking-tight text-foreground group-hover:text-primary sm:mt-4 sm:text-lg sm:leading-6">{item.title}</h2>
+                <p className="mt-2 min-w-0 w-full max-w-full flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-5 text-muted-foreground truncate sm:mt-3 sm:text-sm sm:leading-6">
                   {previewContent(item.content)}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">

@@ -197,6 +197,20 @@ describe('web prompt library page', () => {
     expect(summary.className).toContain('overflow-hidden')
   })
 
+  test('constrains prompt card text width to avoid overflow on mobile browsers', async () => {
+    render(<PromptLibraryView />)
+
+    const card = await screen.findByRole('button', { name: '查看 Prompt：电影感城市夜景' })
+    const title = screen.getByRole('heading', { name: '电影感城市夜景', level: 2 })
+    const summary = screen.getByText('赛博朋克城市，雨夜霓虹，高细节')
+
+    expect(card.className).toContain('min-w-0')
+    expect(title.className).toContain('min-w-0')
+    expect(summary.className).toContain('w-full')
+    expect(summary.className).toContain('max-w-full')
+    expect(summary.className).toContain('truncate')
+  })
+
   test('uses two-column compact cards on mobile inspiration list', async () => {
     render(<PromptLibraryView />)
 
