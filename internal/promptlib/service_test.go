@@ -121,6 +121,26 @@ func TestServiceListMeOnlyEnabledSearchCategoryAndPaging(t *testing.T) {
 	}
 }
 
+
+func TestServiceListPublicMatchesEnabledOnlySemantics(t *testing.T) {
+	store := newFakePromptStore()
+	base := time.Date(2026, 4, 29, 9, 0, 0, 0, time.UTC)
+	store.items[1] = &PromptLibraryItem{ID: 1, Title: "启用一", Content: "可见", Category: "摄影", Enabled: true, SortOrder: 1, CreatedAt: base, UpdatedAt: base}
+	store.items[2] = &PromptLibraryItem{ID: 2, Title: "停用二", Content: "隐藏", Category: "摄影", Enabled: false, SortOrder: 2, CreatedAt: base, UpdatedAt: base}
+	svc := NewService(store)
+
+	out, err := svc.ListPublic(context.Background(), ListInput{Limit: 20, Offset: 0})
+	if err != nil {
+		t.Fatalf("ListPublic: %v", err)
+	}
+	if out.Total != 1 {
+		t.Fatalf("total = %d, want 1", out.Total)
+	}
+	if len(out.Items) != 1 || out.Items[0].Title != "启用一" {
+		t.Fatalf("unexpected items: %#v", out.Items)
+	}
+}
+
 func TestServiceCreateNormalizesInputAndTags(t *testing.T) {
 	store := newFakePromptStore()
 	base := time.Date(2026, 4, 29, 10, 0, 0, 0, time.UTC)

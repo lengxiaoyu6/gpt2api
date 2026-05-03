@@ -36,6 +36,10 @@ func (s *Service) ListAdmin(ctx context.Context, input ListInput) (*ListOutput, 
 	return s.list(ctx, input, false)
 }
 
+func (s *Service) ListPublic(ctx context.Context, input ListInput) (*ListOutput, error) {
+	return s.list(ctx, input, true)
+}
+
 func (s *Service) ListMe(ctx context.Context, input ListInput) (*ListOutput, error) {
 	return s.list(ctx, input, true)
 }

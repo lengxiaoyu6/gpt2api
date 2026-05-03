@@ -11,10 +11,9 @@
 //	    return gateway.BuildImageProxyURL(taskID, idx, imageproxy.ResourceOriginal, gateway.ImageProxyTTL)
 //	})
 //
-// 之后所有走 image 包的视图层(MeHandler / AdminHandler)在响应里都会
-// 把上游 result_urls 替换成 /p/img/<task>/<idx>?... 的本地代理地址,
-// 浏览器直接 <img src> 打开,既不会泄漏上游鉴权 URL,也不会因为
-// estuary 防盗链而出现 403。
+// 之后 image 包内需要按 taskID + idx 访问站内代理的场景
+// 可以统一通过该构造函数生成 /p/img/<task>/<idx>?... 地址。
+// 云存储模式下的 image_urls 保持原始链接,避免影响外部缓存与 CDN。
 package image
 
 import "sync/atomic"

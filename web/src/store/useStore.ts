@@ -12,6 +12,24 @@ export type BootstrapStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type { AspectRatio, OutputQualityValue } from '../features/image/options'
 
 export interface HistoryRecord extends meApi.ImageTask {}
+export interface HistoryFilters {
+  keyword?: string
+  status?: string
+  startAt?: string
+  endAt?: string
+}
+export interface PendingGenerateDraft {
+  source: 'history-repeat' | 'history-continue-edit'
+  mode: 'txt' | 'img'
+  prompt: string
+  modelSlug?: string | null
+  aspectRatio?: AspectRatio
+  quality?: OutputQualityValue
+  count?: 1 | 2 | 3 | 4
+  useOriginalSize?: boolean
+  requestedSize?: string
+  referenceImageUrls?: string[]
+}
 
 const HISTORY_PAGE_LIMIT = 20
 
@@ -26,7 +44,37 @@ const defaultSiteInfo: Record<string, string> = {
 }
 
 function isProtectedTab(tab: TabKey) {
-  return tab === 'generate' || tab === 'history' || tab === 'profile' || tab === 'promptLibrary'
+  return tab === 'generate' || tab === 'history' || tab === 'profile'
+}
+
+function normalizeHistoryFilters(filters?: HistoryFilters): HistoryFilters {
+  if (!filters) {
+    return {}
+  }
+
+  const nextFilters: HistoryFilters = {}
+  const keyword = filters.keyword?.trim()
+  const status = filters.status?.trim()
+  const startAt = filters.startAt?.trim()
+  const endAt = filters.endAt?.trim()
+
+  if (keyword) nextFilters.keyword = keyword
+  if (status) nextFilters.status = status
+  if (startAt) nextFilters.startAt = startAt
+  if (endAt) nextFilters.endAt = endAt
+
+  return nextFilters
+}
+
+function toHistoryQuery(filters: HistoryFilters, limit: number, offset: number): meApi.ListMyImageTasksParams {
+  return {
+    limit,
+    offset,
+    keyword: filters.keyword,
+    status: filters.status,
+    start_at: filters.startAt,
+    end_at: filters.endAt,
+  }
 }
 
 export function allowRegister(siteInfo: Record<string, string>) {
@@ -97,10 +145,12 @@ interface AppState {
   historyHasMore: boolean
   historyOffset: number
   historyLimit: number
+  historyFilters: HistoryFilters
   isDark: boolean
   activeTab: TabKey
   pendingTab: TabKey
   pendingPrompt: string
+  pendingGenerateDraft: PendingGenerateDraft | null
   authOverlayOpen: boolean
 
   bootstrapApp: () => Promise<void>
@@ -112,7 +162,7 @@ interface AppState {
   fetchMe: () => Promise<authApi.UserInfo | null>
   fetchCheckin: () => Promise<meApi.CheckinStatus | null>
   fetchImageModels: () => Promise<meApi.ImageModel[]>
-  fetchHistory: (force?: boolean, append?: boolean) => Promise<HistoryRecord[]>
+  fetchHistory: (force?: boolean, append?: boolean, filters?: HistoryFilters) => Promise<HistoryRecord[]>
   deleteHistoryRecord: (taskID: string) => Promise<void>
   submitCheckin: () => Promise<meApi.CheckinStatus>
   setSelectedImageModel: (model: string | null) => void
@@ -123,6 +173,8 @@ interface AppState {
   setActiveTab: (tab: TabKey) => void
   setPendingPrompt: (prompt: string) => void
   consumePendingPrompt: () => string
+  setPendingGenerateDraft: (draft: PendingGenerateDraft | null) => void
+  consumePendingGenerateDraft: () => PendingGenerateDraft | null
   toggleTheme: () => void
   handleUnauthorized: () => void
 }
@@ -168,10 +220,12 @@ export const useStore = create<AppState>()(
       historyHasMore: false,
       historyOffset: 0,
       historyLimit: HISTORY_PAGE_LIMIT,
+      historyFilters: {},
       isDark: true,
       activeTab: 'home',
       pendingTab: 'home',
       pendingPrompt: '',
+      pendingGenerateDraft: null,
       authOverlayOpen: false,
 
       async fetchSiteInfo() {
@@ -234,10 +288,12 @@ export const useStore = create<AppState>()(
           historyHasMore: false,
           historyOffset: 0,
           historyLimit: HISTORY_PAGE_LIMIT,
+          historyFilters: {},
           authOverlayOpen: false,
           activeTab: 'home',
           pendingTab: 'home',
           pendingPrompt: '',
+          pendingGenerateDraft: null,
           bootstrapStatus: 'ready',
         })
       },
@@ -257,10 +313,12 @@ export const useStore = create<AppState>()(
           historyHasMore: false,
           historyOffset: 0,
           historyLimit: HISTORY_PAGE_LIMIT,
+          historyFilters: {},
           authOverlayOpen: true,
           activeTab: 'home',
           pendingTab: tab,
           pendingPrompt: '',
+          pendingGenerateDraft: null,
           bootstrapStatus: 'ready',
         })
       },
@@ -289,17 +347,20 @@ export const useStore = create<AppState>()(
         return available
       },
 
-      async fetchHistory(force = false, append = false) {
+      async fetchHistory(force = false, append = false, filters) {
         const current = get()
         if (!append && current.historyLoaded && !force) {
           return current.history
         }
         const limit = current.historyLimit || HISTORY_PAGE_LIMIT
         const offset = append && !force ? current.historyOffset : 0
+        const historyFilters = append || typeof filters === 'undefined'
+          ? current.historyFilters
+          : normalizeHistoryFilters(filters)
 
         set({ historyLoading: true })
         try {
-          const data = await meApi.listMyImageTasks({ limit, offset })
+          const data = await meApi.listMyImageTasks(toHistoryQuery(historyFilters, limit, offset))
           const items = data.items || []
           const responseLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : limit
           const responseOffset = typeof data.offset === 'number' ? data.offset : offset
@@ -316,6 +377,7 @@ export const useStore = create<AppState>()(
             historyHasMore,
             historyOffset: nextOffset,
             historyLimit: responseLimit,
+            historyFilters,
           })
           return history
         } catch (error) {
@@ -419,6 +481,18 @@ export const useStore = create<AppState>()(
         return prompt
       },
 
+      setPendingGenerateDraft(draft) {
+        set({ pendingGenerateDraft: draft })
+      },
+
+      consumePendingGenerateDraft() {
+        const draft = get().pendingGenerateDraft
+        if (draft) {
+          set({ pendingGenerateDraft: null })
+        }
+        return draft
+      },
+
       toggleTheme() {
         set((state) => ({ isDark: !state.isDark }))
       },
@@ -438,7 +512,9 @@ export const useStore = create<AppState>()(
           historyHasMore: false,
           historyOffset: 0,
           historyLimit: HISTORY_PAGE_LIMIT,
+          historyFilters: {},
           pendingPrompt: '',
+          pendingGenerateDraft: null,
           activeTab: isProtectedTab(activeTab) ? 'home' : activeTab,
           pendingTab: isProtectedTab(activeTab) ? activeTab : 'home',
           authOverlayOpen: true,

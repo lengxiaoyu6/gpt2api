@@ -44,6 +44,12 @@ export interface ImageTask {
   conversation_id?: string
   error?: string
   credit_cost: number
+  phase?: string
+  phase_label?: string
+  estimated_credit?: number
+  actual_count?: number
+  billing_status?: string
+  billing_note?: string
   image_urls: string[]
   thumb_urls: string[]
   reference_urls?: string[]
@@ -96,7 +102,16 @@ export function listMyModels() {
   return http.get('/api/me/models') as Promise<{ items: ImageModel[]; total: number }>
 }
 
-export function listMyImageTasks(params: { limit?: number; offset?: number } = {}) {
+export interface ListMyImageTasksParams {
+  limit?: number
+  offset?: number
+  keyword?: string
+  status?: string
+  start_at?: string
+  end_at?: string
+}
+
+export function listMyImageTasks(params: ListMyImageTasksParams = {}) {
   return http.get('/api/me/images/tasks', { params }) as Promise<{ items: ImageTask[]; total?: number; limit: number; offset: number }>
 }
 

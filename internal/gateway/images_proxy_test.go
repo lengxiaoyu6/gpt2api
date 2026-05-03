@@ -75,3 +75,41 @@ func TestLoadProxyImageFetchesCloudResultURL(t *testing.T) {
 		t.Fatalf("unexpected content types: %q %q", ct1, ct2)
 	}
 }
+
+func TestLoadProxyImageFetchesCloudReferenceURL(t *testing.T) {
+	remoteCalls := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteCalls++
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write([]byte("cloud-reference"))
+	}))
+	defer remote.Close()
+
+	task := &image.Task{
+		TaskID:         "img_cloud_reference_proxy",
+		StorageMode:    image.StorageModeCloud,
+		ReferenceCount: 1,
+		ReferenceURLs:  []byte("[\"" + remote.URL + "/ref.jpg\"]"),
+	}
+	h := &ImagesHandler{
+		imageProxyCache: newImageProxyCache(30*time.Minute, 8),
+	}
+
+	body1, ct1, err := h.loadProxyImage(context.Background(), task, 0, imageproxy.ResourceReference)
+	if err != nil {
+		t.Fatalf("first load: %v", err)
+	}
+	body2, ct2, err := h.loadProxyImage(context.Background(), task, 0, imageproxy.ResourceReference)
+	if err != nil {
+		t.Fatalf("second load: %v", err)
+	}
+	if remoteCalls != 1 {
+		t.Fatalf("remote calls = %d", remoteCalls)
+	}
+	if string(body1) != "cloud-reference" || string(body2) != "cloud-reference" {
+		t.Fatalf("unexpected bodies: %q %q", string(body1), string(body2))
+	}
+	if ct1 != "image/jpeg" || ct2 != "image/jpeg" {
+		t.Fatalf("unexpected content types: %q %q", ct1, ct2)
+	}
+}

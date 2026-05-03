@@ -61,6 +61,45 @@ export function resolveOutputSize(ratio: AspectRatio, quality: OutputQualityValu
   return OUTPUT_SIZE_BY_RATIO[ratio][quality]
 }
 
+export function parseOutputSize(size?: string | null) {
+  const raw = size?.trim() || ''
+  const matched = raw.match(/^(\d+)\s*x\s*(\d+)$/i)
+
+  if (!matched) {
+    return null
+  }
+
+  const width = Number(matched[1])
+  const height = Number(matched[2])
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null
+  }
+
+  return { width, height }
+}
+
+export function matchOutputPresetBySize(size?: string | null) {
+  const normalized = size?.trim().toLowerCase() || ''
+
+  if (!normalized) {
+    return null
+  }
+
+  for (const ratio of Object.keys(OUTPUT_SIZE_BY_RATIO) as AspectRatio[]) {
+    for (const quality of Object.keys(OUTPUT_SIZE_BY_RATIO[ratio]) as OutputQualityValue[]) {
+      if (OUTPUT_SIZE_BY_RATIO[ratio][quality].toLowerCase() === normalized) {
+        return {
+          aspectRatio: ratio,
+          quality,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 function gcdInt(a: number, b: number) {
   let x = Math.abs(Math.round(a))
   let y = Math.abs(Math.round(b))

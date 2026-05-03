@@ -1,16 +1,22 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-vi.mock('../api/site', () => ({
+vi.mock("../api/site", () => ({
   fetchSiteInfo: vi.fn(),
-}))
+}));
 
-vi.mock('../api/auth', () => ({
+vi.mock("../api/auth", () => ({
   login: vi.fn(),
   register: vi.fn(),
-}))
+}));
 
-vi.mock('../api/me', () => ({
+vi.mock("../api/me", () => ({
   getMe: vi.fn(),
   getMyCheckinStatus: vi.fn(),
   checkinToday: vi.fn(),
@@ -18,395 +24,842 @@ vi.mock('../api/me', () => ({
   listMyImageTasks: vi.fn(),
   playGenerateImage: vi.fn(),
   playEditImage: vi.fn(),
-}))
+}));
 
-vi.mock('../api/recharge', () => ({
+vi.mock("../api/recharge", () => ({
   redeemCode: vi.fn(),
-}))
+}));
 
-vi.mock('../api/credit', () => ({
+vi.mock("../api/credit", () => ({
   listMyCreditLogs: vi.fn(),
-}))
+}));
 
-vi.mock('../api/announcement', () => ({
+vi.mock("../api/announcement", () => ({
   listPublicAnnouncements: vi.fn(),
-}))
+}));
 
-vi.mock('../api/update-log', () => ({
+vi.mock("../api/update-log", () => ({
   listPublicUpdateLogs: vi.fn(),
-}))
+}));
 
-vi.mock('../api/apikey', () => ({
+vi.mock("../api/apikey", () => ({
   listKeys: vi.fn(),
   createKey: vi.fn(),
   updateKey: vi.fn(),
   deleteKey: vi.fn(),
-}))
+}));
 
-const siteApi = await import('../api/site')
-const meApi = await import('../api/me')
-const rechargeApi = await import('../api/recharge')
-const creditApi = await import('../api/credit')
-const announcementApi = await import('../api/announcement')
-const updateLogApi = await import('../api/update-log')
-const storeModule = await import('../store/useStore')
-const useStore = storeModule.useStore
-const { default: App } = await import('../App')
-const { default: HomeView } = await import('./views/Home')
-const { default: GenerateView } = await import('./views/Generate')
+const siteApi = await import("../api/site");
+const meApi = await import("../api/me");
+const rechargeApi = await import("../api/recharge");
+const creditApi = await import("../api/credit");
+const announcementApi = await import("../api/announcement");
+const updateLogApi = await import("../api/update-log");
+const storeModule = await import("../store/useStore");
+const useStore = storeModule.useStore;
+const { default: App } = await import("../App");
+const { default: HomeView } = await import("./views/Home");
+const { default: GenerateView } = await import("./views/Generate");
 
 function resetStore() {
-  const initial = useStore.getInitialState()
-  useStore.setState(initial, true)
-  localStorage.clear()
+  const initial = useStore.getInitialState();
+  useStore.setState(initial, true);
+  localStorage.clear();
 }
 
 function hasTextContent(text: string, tagName?: string) {
   return (_: string, node: Element | null) => {
     if (!node?.textContent?.includes(text)) {
-      return false
+      return false;
     }
     if (!tagName) {
-      return true
+      return true;
     }
-    return node.tagName === tagName.toUpperCase()
-  }
+    return node.tagName === tagName.toUpperCase();
+  };
 }
 
 function compactText(text: string | null | undefined) {
-  return text?.replace(/\s+/g, '') ?? ''
+  return text?.replace(/\s+/g, "") ?? "";
 }
 
-describe('web integration', () => {
+describe("web integration", () => {
   beforeEach(() => {
-    resetStore()
-    vi.clearAllMocks()
+    resetStore();
+    vi.clearAllMocks();
     vi.mocked(siteApi.fetchSiteInfo).mockResolvedValue({
-      'site.name': 'OAI Hub',
-      'auth.allow_register': 'true',
-    })
+      "site.name": "OAI Hub",
+      "auth.allow_register": "true",
+    });
     vi.mocked(meApi.listMyImageTasks).mockResolvedValue({
       items: [],
       limit: 20,
       offset: 0,
-    })
+    });
     vi.mocked(creditApi.listMyCreditLogs).mockResolvedValue({
       items: [],
       total: 0,
       limit: 20,
       offset: 0,
-    })
+    });
     vi.mocked(announcementApi.listPublicAnnouncements).mockResolvedValue({
       items: [],
       total: 0,
-    })
+    });
     vi.mocked(updateLogApi.listPublicUpdateLogs).mockResolvedValue({
       items: [],
       total: 0,
       limit: 20,
       offset: 0,
-    })
-  })
+    });
+  });
 
   afterEach(() => {
-    resetStore()
-  })
+    resetStore();
+  });
 
-  test('anonymous navigation to history opens auth overlay and keeps current tab', async () => {
-    render(<App />)
+  test("anonymous navigation to history opens auth overlay and keeps current tab", async () => {
+    render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: '记录' }))
+    fireEvent.click(screen.getByRole("button", { name: "记录" }));
 
-    await waitFor(() => expect(screen.getByText('欢迎回来')).toBeInTheDocument())
-    expect(useStore.getState().pendingTab).toBe('history')
-    expect(useStore.getState().activeTab).toBe('home')
-  })
+    await waitFor(() =>
+      expect(screen.getByText("欢迎回来")).toBeInTheDocument(),
+    );
+    expect(useStore.getState().pendingTab).toBe("history");
+    expect(useStore.getState().activeTab).toBe("home");
+  });
 
-  test('app header renders scaled credit balance', () => {
+  test("anonymous navigation to prompt library stays on the public page", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "灵感库" }));
+
+    await waitFor(() => {
+      expect(useStore.getState().activeTab).toBe("promptLibrary");
+    });
+    expect(useStore.getState().authOverlayOpen).toBe(false);
+    expect(screen.getByText("选择 Prompt 开始创作")).toBeInTheDocument();
+  });
+
+  test("history detail repeat for image edit task keeps reference images after navigating to generate view", async () => {
+    const blob = new Blob(["history-reference"], { type: "image/png" });
+    const originalCreateObjectURL = URL.createObjectURL;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(blob),
+        headers: { get: vi.fn(() => "image/png") },
+      }),
+    );
+    URL.createObjectURL = vi.fn().mockReturnValue("blob:history-repeat-source");
+
+    useStore.setState({
+      activeTab: "history",
+      historyLoaded: true,
+      user: {
+        id: 1,
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        {
+          id: 1,
+          slug: "gpt-image-1",
+          type: "image",
+          description: "标准模型",
+          image_price_per_call: 1500,
+        },
+      ],
+      selectedImageModel: "gpt-image-1",
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+      history: [
+        {
+          id: 1,
+          task_id: "task-image-edit",
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: "Cloud city",
+          n: 1,
+          size: "1024x1024",
+          status: "succeeded",
+          credit_cost: 5,
+          image_urls: ["/p/img/task-image-edit/0"],
+          thumb_urls: ["/p/thumb/task-image-edit/0"],
+          reference_urls: ["/p/ref/task-image-edit/0"],
+          reference_thumb_urls: ["/p/ref-thumb/task-image-edit/0"],
+          created_at: "2026-04-22T10:00:00Z",
+        },
+      ],
+    } as any);
+
+    try {
+      render(<App />);
+
+      fireEvent.click(screen.getByAltText("Cloud city"));
+      fireEvent.click(screen.getByRole("button", { name: "同参数再生成" }));
+      fireEvent.click(screen.getByRole("button", { name: "确认生成" }));
+
+      await waitFor(() => {
+        expect(useStore.getState().activeTab).toBe("generate");
+      });
+      await waitFor(() => {
+        expect(screen.getByAltText("参考图 1")).toHaveAttribute(
+          "src",
+          "blob:history-repeat-source",
+        );
+      });
+      expect(fetch).toHaveBeenCalledWith("/p/ref/task-image-edit/0");
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("history detail repeat for image edit task can use reference thumbnail fallback after navigating to generate view", async () => {
+    const blob = new Blob(["history-reference-thumb"], { type: "image/png" });
+    const originalCreateObjectURL = URL.createObjectURL;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(blob),
+        headers: { get: vi.fn(() => "image/png") },
+      }),
+    );
+    URL.createObjectURL = vi
+      .fn()
+      .mockReturnValue("blob:history-repeat-thumb-source");
+
+    useStore.setState({
+      activeTab: "history",
+      historyLoaded: true,
+      user: {
+        id: 1,
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        {
+          id: 1,
+          slug: "gpt-image-1",
+          type: "image",
+          description: "标准模型",
+          image_price_per_call: 1500,
+        },
+      ],
+      selectedImageModel: "gpt-image-1",
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+      history: [
+        {
+          id: 1,
+          task_id: "task-image-edit-thumb-only",
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: "Cloud city",
+          n: 1,
+          size: "1024x1024",
+          status: "succeeded",
+          credit_cost: 5,
+          image_urls: ["/p/img/task-image-edit-thumb-only/0"],
+          thumb_urls: ["/p/thumb/task-image-edit-thumb-only/0"],
+          reference_urls: [],
+          reference_thumb_urls: ["/p/ref-thumb/task-image-edit-thumb-only/0"],
+          created_at: "2026-04-22T10:00:00Z",
+        },
+      ],
+    } as any);
+
+    try {
+      render(<App />);
+
+      fireEvent.click(screen.getByAltText("Cloud city"));
+      fireEvent.click(screen.getByRole("button", { name: "同参数再生成" }));
+      fireEvent.click(screen.getByRole("button", { name: "确认生成" }));
+
+      await waitFor(() => {
+        expect(useStore.getState().activeTab).toBe("generate");
+      });
+      await waitFor(() => {
+        expect(screen.getByAltText("参考图 1")).toHaveAttribute(
+          "src",
+          "blob:history-repeat-thumb-source",
+        );
+      });
+      expect(fetch).toHaveBeenCalledWith(
+        "/p/ref-thumb/task-image-edit-thumb-only/0",
+      );
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("history detail continue edit fills source image from preview after navigating to generate view", async () => {
+    const blob = new Blob(["history-result"], { type: "image/png" });
+    const originalCreateObjectURL = URL.createObjectURL;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(blob),
+        headers: { get: vi.fn(() => "image/png") },
+      }),
+    );
+    URL.createObjectURL = vi.fn().mockReturnValue("blob:history-continue-source");
+
+    useStore.setState({
+      activeTab: "history",
+      historyLoaded: true,
+      user: {
+        id: 1,
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        {
+          id: 1,
+          slug: "gpt-image-1",
+          type: "image",
+          description: "标准模型",
+          image_price_per_call: 1500,
+        },
+      ],
+      selectedImageModel: "gpt-image-1",
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+      history: [
+        {
+          id: 1,
+          task_id: "task-image-result",
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: "Cloud city",
+          n: 1,
+          size: "1024x1024",
+          status: "succeeded",
+          credit_cost: 5,
+          image_urls: ["/p/img/task-image-result/0"],
+          thumb_urls: ["/p/thumb/task-image-result/0"],
+          created_at: "2026-04-22T10:00:00Z",
+        },
+      ],
+    } as any);
+
+    try {
+      render(<App />);
+
+      fireEvent.click(screen.getByAltText("Cloud city"));
+      fireEvent.click(screen.getByRole("button", { name: "基于此图继续编辑" }));
+
+      await waitFor(() => {
+        expect(useStore.getState().activeTab).toBe("generate");
+      });
+      await waitFor(() => {
+        expect(screen.getByAltText("参考图 1")).toHaveAttribute(
+          "src",
+          "blob:history-continue-source",
+        );
+      });
+      expect(fetch).toHaveBeenCalledWith("/p/thumb/task-image-result/0");
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("history detail continue edit falls back to preview image after navigating to generate view", async () => {
+    const blob = new Blob(["history-result-thumb"], { type: "image/png" });
+    const originalCreateObjectURL = URL.createObjectURL;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(blob),
+        headers: { get: vi.fn(() => "image/png") },
+      }),
+    );
+    URL.createObjectURL = vi.fn().mockReturnValue("blob:history-continue-thumb-source");
+
+    useStore.setState({
+      activeTab: "history",
+      historyLoaded: true,
+      user: {
+        id: 1,
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        {
+          id: 1,
+          slug: "gpt-image-1",
+          type: "image",
+          description: "标准模型",
+          image_price_per_call: 1500,
+        },
+      ],
+      selectedImageModel: "gpt-image-1",
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+      history: [
+        {
+          id: 1,
+          task_id: "task-image-result-thumb-only",
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: "Cloud city",
+          n: 1,
+          size: "1024x1024",
+          status: "succeeded",
+          credit_cost: 5,
+          image_urls: [],
+          thumb_urls: ["/p/thumb/task-image-result-thumb-only/0"],
+          created_at: "2026-04-22T10:00:00Z",
+        },
+      ],
+    } as any);
+
+    try {
+      render(<App />);
+
+      fireEvent.click(screen.getByAltText("Cloud city"));
+      fireEvent.click(screen.getByRole("button", { name: "基于此图继续编辑" }));
+
+      await waitFor(() => {
+        expect(useStore.getState().activeTab).toBe("generate");
+      });
+      await waitFor(() => {
+        expect(screen.getByAltText("参考图 1")).toHaveAttribute(
+          "src",
+          "blob:history-continue-thumb-source",
+        );
+      });
+      expect(fetch).toHaveBeenCalledWith("/p/thumb/task-image-result-thumb-only/0");
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("app header renders scaled credit balance", () => {
     useStore.setState({
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    expect(screen.getAllByText('8.99 积分').length).toBeGreaterThan(0)
-  })
+    expect(screen.getAllByText("8.99 积分").length).toBeGreaterThan(0);
+  });
 
-  test('mobile home header keeps credit balance on one line', async () => {
+  test("mobile home header keeps credit balance on one line", async () => {
     useStore.setState({
-      activeTab: 'home',
+      activeTab: "home",
       siteInfo: {
-        'site.name': '星河图像创作平台',
-        'site.description': 'AI 创作平台',
-        'site.logo_url': '',
-        'site.footer': '',
-        'auth.allow_register': 'true',
+        "site.name": "星河图像创作平台",
+        "site.description": "AI 创作平台",
+        "site.logo_url": "",
+        "site.footer": "",
+        "auth.allow_register": "true",
       },
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    const { container } = render(<App />)
+    const { container } = render(<App />);
 
-    await waitFor(() => expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(1),
+    );
 
-    const mobileHeader = container.querySelector('header')
-    expect(mobileHeader).not.toBeNull()
-    const [brandArea, actionArea] = Array.from(mobileHeader?.children ?? [])
-    const creditText = within(mobileHeader as HTMLElement).getByText('8.99 积分')
-    const announcementButton = within(mobileHeader as HTMLElement).getByRole('button', { name: '公告' })
-    const updateLogButton = within(mobileHeader as HTMLElement).getByRole('button', { name: '更新日志' })
+    const mobileHeader = container.querySelector("header");
+    expect(mobileHeader).not.toBeNull();
+    const [brandArea, actionArea] = Array.from(mobileHeader?.children ?? []);
+    const creditText = within(mobileHeader as HTMLElement).getByText(
+      "8.99 积分",
+    );
+    const announcementButton = within(mobileHeader as HTMLElement).getByRole(
+      "button",
+      { name: "公告" },
+    );
+    const updateLogButton = within(mobileHeader as HTMLElement).getByRole(
+      "button",
+      { name: "更新日志" },
+    );
 
-    expect(brandArea.className).toContain('min-w-0')
-    expect(brandArea.className).toContain('flex-1')
-    expect(actionArea.className).toContain('shrink-0')
-    expect(creditText.className).toContain('whitespace-nowrap')
-    expect(creditText.parentElement?.className).toContain('shrink-0')
-    expect(creditText.parentElement?.className).toContain('whitespace-nowrap')
-    expect(announcementButton.className).toContain('px-2.5')
-    expect(announcementButton.querySelector('span')?.className).toContain('hidden')
-    expect(announcementButton.querySelector('span')?.className).toContain('sm:inline')
-    expect(updateLogButton.className).toContain('px-2.5')
-    expect(updateLogButton.querySelector('span')?.className).toContain('hidden')
-    expect(updateLogButton.querySelector('span')?.className).toContain('sm:inline')
-    expect(updateLogApi.listPublicUpdateLogs).not.toHaveBeenCalled()
-  })
+    expect(brandArea.className).toContain("min-w-0");
+    expect(brandArea.className).toContain("flex-1");
+    expect(actionArea.className).toContain("shrink-0");
+    expect(creditText.className).toContain("whitespace-nowrap");
+    expect(creditText.parentElement?.className).toContain("shrink-0");
+    expect(creditText.parentElement?.className).toContain("whitespace-nowrap");
+    expect(announcementButton.className).toContain("px-2.5");
+    expect(announcementButton.querySelector("span")?.className).toContain(
+      "hidden",
+    );
+    expect(announcementButton.querySelector("span")?.className).toContain(
+      "sm:inline",
+    );
+    expect(updateLogButton.className).toContain("px-2.5");
+    expect(updateLogButton.querySelector("span")?.className).toContain(
+      "hidden",
+    );
+    expect(updateLogButton.querySelector("span")?.className).toContain(
+      "sm:inline",
+    );
+    expect(updateLogApi.listPublicUpdateLogs).toHaveBeenCalledWith({
+      limit: 3,
+      offset: 0,
+    });
+  });
 
-  test('desktop home header keeps credit balance card on one line', async () => {
+  test("desktop home header keeps credit balance card on one line", async () => {
     useStore.setState({
-      activeTab: 'home',
+      activeTab: "home",
       siteInfo: {
-        'site.name': '星河图像创作平台',
-        'site.description': 'AI 创作平台',
-        'site.logo_url': '',
-        'site.footer': '',
-        'auth.allow_register': 'true',
+        "site.name": "星河图像创作平台",
+        "site.description": "AI 创作平台",
+        "site.logo_url": "",
+        "site.footer": "",
+        "auth.allow_register": "true",
       },
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    await waitFor(() => expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(1),
+    );
 
-    const desktopInfoBar = screen.getByRole('region', { name: '桌面信息栏' })
-    const actionArea = desktopInfoBar.lastElementChild
-    const creditText = within(desktopInfoBar).getByText('8.99 积分')
-    const updateLogButton = within(desktopInfoBar).getByRole('button', { name: '更新日志' })
-    const creditCard = creditText.parentElement
-    const creditIcon = creditCard?.querySelector('.lucide-coins')
+    const desktopInfoBar = screen.getByRole("region", { name: "桌面信息栏" });
+    const actionArea = desktopInfoBar.lastElementChild;
+    const creditText = within(desktopInfoBar).getByText("8.99 积分");
+    const updateLogButton = within(desktopInfoBar).getByRole("button", {
+      name: "更新日志",
+    });
+    const creditCard = creditText.parentElement;
+    const creditIcon = creditCard?.querySelector(".lucide-coins");
 
-    expect(actionArea?.className).toContain('shrink-0')
-    expect(actionArea?.className).toContain('whitespace-nowrap')
-    expect(creditCard?.className).toContain('shrink-0')
-    expect(creditCard?.className).toContain('inline-flex')
-    expect(creditCard?.className).toContain('items-center')
-    expect(creditCard?.className).toContain('gap-2')
-    expect(creditCard?.className).toContain('whitespace-nowrap')
-    expect(creditIcon?.getAttribute('class')).toContain('shrink-0')
-    expect(creditText.className).toContain('whitespace-nowrap')
-    expect(updateLogButton.className).toContain('px-2.5')
-    expect(within(desktopInfoBar).queryByText('当前积分')).toBeNull()
-    expect(updateLogApi.listPublicUpdateLogs).not.toHaveBeenCalled()
-  })
+    expect(actionArea?.className).toContain("shrink-0");
+    expect(actionArea?.className).toContain("whitespace-nowrap");
+    expect(creditCard?.className).toContain("shrink-0");
+    expect(creditCard?.className).toContain("inline-flex");
+    expect(creditCard?.className).toContain("items-center");
+    expect(creditCard?.className).toContain("gap-2");
+    expect(creditCard?.className).toContain("whitespace-nowrap");
+    expect(creditIcon?.getAttribute("class")).toContain("shrink-0");
+    expect(creditText.className).toContain("whitespace-nowrap");
+    expect(updateLogButton.className).toContain("px-2.5");
+    expect(within(desktopInfoBar).queryByText("当前积分")).toBeNull();
+    expect(updateLogApi.listPublicUpdateLogs).toHaveBeenCalledWith({
+      limit: 3,
+      offset: 0,
+    });
+  });
 
-  test('update log header entry opens timeline page', async () => {
+  test("home header reuses one announcement manager for desktop and mobile entries", async () => {
+    useStore.setState({
+      activeTab: "home",
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(announcementApi.listPublicAnnouncements).toHaveBeenCalledTimes(1),
+    );
+    expect(screen.getAllByRole("button", { name: "公告" })).toHaveLength(2);
+  });
+
+  test("update log header entry opens timeline page", async () => {
     vi.mocked(updateLogApi.listPublicUpdateLogs).mockResolvedValue({
       items: [
         {
           id: 1,
-          version: 'v1.2.0',
-          title: '系统更新',
-          content: '更新日志使用时间线页面展示',
+          version: "v1.2.0",
+          title: "系统更新",
+          content: "更新日志使用时间线页面展示",
           enabled: true,
           sort_order: 10,
-          published_at: '2026-04-29T08:00:00Z',
-          created_at: '2026-04-29T08:00:00Z',
-          updated_at: '2026-04-29T08:00:00Z',
+          published_at: "2026-04-29T08:00:00Z",
+          created_at: "2026-04-29T08:00:00Z",
+          updated_at: "2026-04-29T08:00:00Z",
         },
       ],
       total: 1,
       limit: 20,
       offset: 0,
-    })
+    });
     useStore.setState({
-      activeTab: 'home',
+      activeTab: "home",
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: '更新日志' })[0])
+    fireEvent.click(screen.getAllByRole("button", { name: "更新日志" })[0]);
 
-    expect(useStore.getState().activeTab).toBe('updateLogs')
-    expect(await screen.findByText('更新日志使用时间线页面展示')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '系统更新日志' })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '系统更新日志时间线' })).toBeInTheDocument()
-    expect(screen.queryByRole('dialog', { name: '系统更新日志' })).toBeNull()
-    expect(updateLogApi.listPublicUpdateLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
+    expect(useStore.getState().activeTab).toBe("updateLogs");
+    expect(
+      await screen.findByText("更新日志使用时间线页面展示"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "系统更新日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "系统更新日志时间线" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "系统更新日志" })).toBeNull();
+    expect(updateLogApi.listPublicUpdateLogs).toHaveBeenCalledWith({
+      limit: 20,
+      offset: 0,
+    });
 
-    fireEvent.click(screen.getAllByRole('button', { name: '前往首页' })[0])
-    expect(useStore.getState().activeTab).toBe('home')
-  })
+    fireEvent.click(screen.getAllByRole("button", { name: "前往首页" })[0]);
+    expect(useStore.getState().activeTab).toBe("home");
+  });
 
-  test('mobile shell uses paint-friendly fixed bars and desktop-only ambient background', () => {
-    const { container } = render(<App />)
+  test("home page renders a compact update block and opens timeline page from it", async () => {
+    vi.mocked(updateLogApi.listPublicUpdateLogs).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          version: "v1.3.0",
+          title: "系统更新",
+          content: "首页新增小型更新区块",
+          enabled: true,
+          sort_order: 10,
+          published_at: "2026-04-29T08:00:00Z",
+          created_at: "2026-04-29T08:00:00Z",
+          updated_at: "2026-04-29T08:00:00Z",
+        },
+      ],
+      total: 1,
+      limit: 3,
+      offset: 0,
+    });
 
-    const mobileHeader = container.querySelector('header')
-    const mobileNavigation = screen.getByRole('navigation', { name: '移动底部导航' })
-    const ambientBackdrop = container.querySelector('[data-testid="desktop-ambient-backdrop"]')
+    useStore.setState({
+      activeTab: "home",
+      bootstrapApp: vi.fn().mockResolvedValue(undefined),
+    });
 
-    expect(mobileHeader).not.toBeNull()
-    expect(mobileHeader?.className).toContain('mobile-scroll-surface')
-    expect(mobileHeader?.className).not.toContain('backdrop-blur')
-    expect(mobileNavigation.className).toContain('mobile-scroll-surface')
-    expect(mobileNavigation.className).not.toContain('backdrop-blur')
-    expect(ambientBackdrop).not.toBeNull()
-    expect(ambientBackdrop?.className).toContain('hidden')
-    expect(ambientBackdrop?.className).toContain('lg:block')
-  })
+    render(<App />);
 
-  test('app exposes named desktop and mobile navigation containers', () => {
-    render(<App />)
+    expect(await screen.findByText("首页新增小型更新区块")).toBeInTheDocument();
+    expect(screen.getByText("最近更新")).toBeInTheDocument();
 
-    expect(screen.getByRole('navigation', { name: '桌面侧边导航' })).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: '移动底部导航' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '桌面信息栏' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '生图' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '生成' })).toBeNull()
-  })
+    fireEvent.click(screen.getByRole("button", { name: "查看全部更新日志" }));
 
-  test('home hero keeps particle animation workload on desktop breakpoint', () => {
-    render(<HomeView onStartGeneration={vi.fn()} siteName="OAI Hub" />)
+    await waitFor(() => {
+      expect(useStore.getState().activeTab).toBe("updateLogs");
+    });
+    expect(
+      screen.getByRole("region", { name: "系统更新日志时间线" }),
+    ).toBeInTheDocument();
+  });
 
-    const particleField = screen.getByTestId('home-hero-particle-field')
-    const particles = particleField.querySelectorAll('.hero-particle')
-    const desktopEffects = screen.getAllByTestId('home-hero-desktop-effect')
-    const featureCard = screen.getByRole('button', { name: '文生图，开始生成' })
+  test("mobile shell uses paint-friendly fixed bars and desktop-only ambient background", () => {
+    const { container } = render(<App />);
 
-    expect(particleField.className).toContain('mobile-static-particle-field')
-    expect(particles).toHaveLength(24)
+    const mobileHeader = container.querySelector("header");
+    const mobileNavigation = screen.getByRole("navigation", {
+      name: "移动底部导航",
+    });
+    const ambientBackdrop = container.querySelector(
+      '[data-testid="desktop-ambient-backdrop"]',
+    );
+
+    expect(mobileHeader).not.toBeNull();
+    expect(mobileHeader?.className).toContain("mobile-scroll-surface");
+    expect(mobileHeader?.className).not.toContain("backdrop-blur");
+    expect(mobileNavigation.className).toContain("mobile-scroll-surface");
+    expect(mobileNavigation.className).not.toContain("backdrop-blur");
+    expect(ambientBackdrop).not.toBeNull();
+    expect(ambientBackdrop?.className).toContain("hidden");
+    expect(ambientBackdrop?.className).toContain("lg:block");
+  });
+
+  test("app exposes named desktop and mobile navigation containers", () => {
+    render(<App />);
+
+    expect(
+      screen.getByRole("navigation", { name: "桌面侧边导航" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "移动底部导航" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "桌面信息栏" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生图" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成" })).toBeNull();
+  });
+
+  test("home hero keeps particle animation workload on desktop breakpoint", () => {
+    render(<HomeView onStartGeneration={vi.fn()} siteName="OAI Hub" />);
+
+    const particleField = screen.getByTestId("home-hero-particle-field");
+    const particles = particleField.querySelectorAll(".hero-particle");
+    const desktopEffects = screen.getAllByTestId("home-hero-desktop-effect");
+    const featureCard = screen.getByRole("button", {
+      name: "文生图，开始生成",
+    });
+
+    expect(particleField.className).toContain("mobile-static-particle-field");
+    expect(particles).toHaveLength(24);
     desktopEffects.forEach((effect) => {
-      expect(effect.className).toContain('hidden')
-      expect(effect.className).toContain('lg:block')
-    })
-    expect(featureCard.className).toContain('lg:backdrop-blur')
-    expect(featureCard.className).toContain('lg:hover:-translate-y-1')
-    expect(featureCard.className).not.toContain(' backdrop-blur ')
-    expect(screen.queryByText('Live Render')).toBeNull()
-  })
+      expect(effect.className).toContain("hidden");
+      expect(effect.className).toContain("lg:block");
+    });
+    expect(featureCard.className).toContain("lg:backdrop-blur");
+    expect(featureCard.className).toContain("lg:hover:-translate-y-1");
+    expect(featureCard.className).not.toContain(" backdrop-blur ");
+    expect(screen.queryByText("Live Render")).toBeNull();
+  });
 
-  test('mobile tab panel switches without page motion workload', () => {
-    render(<App />)
+  test("mobile tab panel switches without page motion workload", () => {
+    render(<App />);
 
-    const tabPanel = screen.getByTestId('active-tab-panel')
+    const tabPanel = screen.getByTestId("active-tab-panel");
 
-    expect(tabPanel.className).toContain('mobile-page-panel-static')
-    expect(tabPanel.getAttribute('data-motion-enabled')).toBe('false')
-  })
+    expect(tabPanel.className).toContain("mobile-page-panel-static");
+    expect(tabPanel.getAttribute("data-motion-enabled")).toBe("false");
+  });
 
-  test('app resets document scroll after switching tabs', () => {
-    const observedCalls: string[] = []
-    const scrollTo = vi.fn()
-    Object.defineProperty(window, 'scrollTo', {
+  test("app resets document scroll after switching tabs", () => {
+    const observedCalls: string[] = [];
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, "scrollTo", {
       configurable: true,
       writable: true,
       value: scrollTo.mockImplementation(() => {
-        observedCalls.push('scroll')
+        observedCalls.push("scroll");
       }),
-    })
+    });
     useStore.setState({
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
       },
       setActiveTab: vi.fn((tab) => {
-        observedCalls.push(`set:${tab}`)
-        useStore.setState({ activeTab: tab })
+        observedCalls.push(`set:${tab}`);
+        useStore.setState({ activeTab: tab });
       }),
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
-    scrollTo.mockClear()
-    observedCalls.length = 0
+    render(<App />);
+    scrollTo.mockClear();
+    observedCalls.length = 0;
 
-    fireEvent.click(screen.getByRole('button', { name: '生图' }))
+    fireEvent.click(screen.getByRole("button", { name: "生图" }));
 
-    expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' })
-    expect(observedCalls).toEqual(['set:generate', 'scroll'])
-  })
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+    expect(observedCalls).toEqual(["set:generate", "scroll"]);
+  });
 
-  test('home footer uses site name from site info', () => {
+  test("home footer uses site name from site info", () => {
     useStore.setState({
       siteInfo: {
-        'site.name': 'OAI Hub',
-        'site.description': 'AI 创作平台',
-        'site.logo_url': '',
-        'site.footer': '',
-        'auth.allow_register': 'true',
+        "site.name": "OAI Hub",
+        "site.description": "AI 创作平台",
+        "site.logo_url": "",
+        "site.footer": "",
+        "auth.allow_register": "true",
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    expect(screen.getAllByText('OAI Hub')).toHaveLength(2)
-    expect(screen.getByText('© OAI Hub')).toBeInTheDocument()
-    expect(screen.queryByText('OAI Hub • Creative Studio')).toBeNull()
-  })
+    expect(screen.getAllByText("OAI Hub")).toHaveLength(2);
+    expect(screen.getByText("© OAI Hub")).toBeInTheDocument();
+    expect(screen.queryByText("OAI Hub • Creative Studio")).toBeNull();
+  });
 
-  test('profile footer uses site name from site info', () => {
+  test("profile footer uses site name from site info", () => {
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       siteInfo: {
-        'site.name': '星河图像',
-        'site.description': 'AI 创作平台',
-        'site.logo_url': '',
-        'site.footer': '',
-        'auth.allow_register': 'true',
+        "site.name": "星河图像",
+        "site.description": "AI 创作平台",
+        "site.logo_url": "",
+        "site.footer": "",
+        "auth.allow_register": "true",
       },
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -414,40 +867,40 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    expect(screen.getAllByText('星河图像')).toHaveLength(2)
-    expect(screen.getByText('© 星河图像')).toBeInTheDocument()
-    expect(screen.queryByText('Creative Intelligent Systems')).toBeNull()
-  })
+    expect(screen.getAllByText("星河图像")).toHaveLength(2);
+    expect(screen.getByText("© 星河图像")).toBeInTheDocument();
+    expect(screen.queryByText("Creative Intelligent Systems")).toBeNull();
+  });
 
-  test('profile layout keeps bottom spacing compact when content is short', () => {
+  test("profile layout keeps bottom spacing compact when content is short", () => {
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       siteInfo: {
-        'site.name': '星河图像',
-        'site.description': 'AI 创作平台',
-        'site.logo_url': '',
-        'site.footer': '',
-        'auth.allow_register': 'true',
+        "site.name": "星河图像",
+        "site.description": "AI 创作平台",
+        "site.logo_url": "",
+        "site.footer": "",
+        "auth.allow_register": "true",
       },
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -455,46 +908,46 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    const main = screen.getByRole('main')
-    expect(main.className).toContain('flex-1')
-    expect(main.className).toContain('flex')
-    expect(main.className).toContain('flex-col')
+    const main = screen.getByRole("main");
+    expect(main.className).toContain("flex-1");
+    expect(main.className).toContain("flex");
+    expect(main.className).toContain("flex-col");
 
-    const profileFooter = screen.getByText('© 星河图像').parentElement
-    expect(profileFooter).not.toBeNull()
-    expect(profileFooter?.className).toContain('mt-auto')
-    expect(profileFooter?.className).toContain('pb-6')
-    expect(profileFooter?.className).not.toContain('pb-12')
+    const profileFooter = screen.getByText("© 星河图像").parentElement;
+    expect(profileFooter).not.toBeNull();
+    expect(profileFooter?.className).toContain("mt-auto");
+    expect(profileFooter?.className).toContain("pb-6");
+    expect(profileFooter?.className).not.toContain("pb-12");
 
-    const profileContentColumn = profileFooter?.parentElement
-    expect(profileContentColumn).not.toBeNull()
-    expect(profileContentColumn?.className).toContain('flex')
-    expect(profileContentColumn?.className).toContain('flex-1')
-    expect(profileContentColumn?.className).toContain('flex-col')
-  })
+    const profileContentColumn = profileFooter?.parentElement;
+    expect(profileContentColumn).not.toBeNull();
+    expect(profileContentColumn?.className).toContain("flex");
+    expect(profileContentColumn?.className).toContain("flex-1");
+    expect(profileContentColumn?.className).toContain("flex-col");
+  });
 
-  test('profile menu does not render help entry', () => {
+  test("profile menu does not render help entry", () => {
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -502,35 +955,35 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    expect(screen.getByText('我的会员')).toBeInTheDocument()
-    expect(screen.getByText('API Keys')).toBeInTheDocument()
-    expect(screen.getByText('充值积分')).toBeInTheDocument()
-    expect(screen.getByText('安全中心')).toBeInTheDocument()
-    expect(screen.queryByText('帮助与反馈')).toBeNull()
-  })
+    expect(screen.getByText("我的会员")).toBeInTheDocument();
+    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByText("充值积分")).toBeInTheDocument();
+    expect(screen.getByText("安全中心")).toBeInTheDocument();
+    expect(screen.queryByText("帮助与反馈")).toBeNull();
+  });
 
-  test('profile header does not render settings icon button', () => {
+  test("profile header does not render settings icon button", () => {
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -538,32 +991,32 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    const { container } = render(<App />)
+    const { container } = render(<App />);
 
-    expect(screen.getByText('个人中心')).toBeInTheDocument()
-    expect(container.querySelector('.lucide-settings')).toBeNull()
-  })
+    expect(screen.getByText("个人中心")).toBeInTheDocument();
+    expect(container.querySelector(".lucide-settings")).toBeNull();
+  });
 
-  test('profile does not render account status card', () => {
+  test("profile does not render account status card", () => {
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -571,32 +1024,32 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    expect(screen.queryByText('账号状态')).toBeNull()
-    expect(screen.queryByText('创作数量')).toBeNull()
-  })
+    expect(screen.queryByText("账号状态")).toBeNull();
+    expect(screen.queryByText("创作数量")).toBeNull();
+  });
 
-  test('desktop sidebar places logout action under user summary', () => {
+  test("desktop sidebar places logout action under user summary", () => {
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -604,54 +1057,60 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    })
+    });
 
-    render(<App />)
+    render(<App />);
 
-    const desktopSidebar = screen.getByRole('navigation', { name: '桌面侧边导航' }).closest('aside')
+    const desktopSidebar = screen
+      .getByRole("navigation", { name: "桌面侧边导航" })
+      .closest("aside");
 
-    expect(desktopSidebar).not.toBeNull()
-    expect(within(desktopSidebar as HTMLElement).getByRole('button', { name: '退出登录' })).toBeInTheDocument()
+    expect(desktopSidebar).not.toBeNull();
+    expect(
+      within(desktopSidebar as HTMLElement).getByRole("button", {
+        name: "退出登录",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen
-        .getAllByRole('button', { name: '退出登录' })
-        .some((button) => button.className.includes('lg:hidden')),
-    ).toBe(true)
-  })
+        .getAllByRole("button", { name: "退出登录" })
+        .some((button) => button.className.includes("lg:hidden")),
+    ).toBe(true);
+  });
 
-  test('profile recharge entry opens redeem dialog and submits redeem code', async () => {
+  test("profile recharge entry opens redeem dialog and submits redeem code", async () => {
     vi.mocked(rechargeApi.redeemCode).mockResolvedValue({
-      code: 'ABC123',
+      code: "ABC123",
       credits: 310000,
       balance_after: 120000,
-    })
+    });
 
     const fetchMe = vi.fn().mockImplementation(async () => {
       useStore.setState((state) => ({
         user: state.user
           ? { ...state.user, credit_balance: 120000 }
           : state.user,
-      }))
-      return useStore.getState().user
-    })
+      }));
+      return useStore.getState().user;
+    });
 
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -659,71 +1118,71 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       fetchMe,
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    } as any)
+    } as any);
 
-    render(<App />)
+    render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: /充值积分/ }))
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('请输入兑换码')).toBeInTheDocument()
-    })
-
-    fireEvent.change(screen.getByPlaceholderText('请输入兑换码'), {
-      target: { value: 'ABC123' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '立即充值' }))
+    fireEvent.click(screen.getByRole("button", { name: /充值积分/ }));
 
     await waitFor(() => {
-      expect(rechargeApi.redeemCode).toHaveBeenCalledWith('ABC123')
-    })
-    await waitFor(() => {
-      expect(fetchMe).toHaveBeenCalledTimes(1)
-    })
-    await waitFor(() => {
-      expect(screen.queryByPlaceholderText('请输入兑换码')).toBeNull()
-    })
-    expect(screen.getAllByText('12.00').length).toBeGreaterThan(0)
-  })
+      expect(screen.getByPlaceholderText("请输入兑换码")).toBeInTheDocument();
+    });
 
-  test('profile available credits card opens credit log detail and can navigate back', async () => {
+    fireEvent.change(screen.getByPlaceholderText("请输入兑换码"), {
+      target: { value: "ABC123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "立即充值" }));
+
+    await waitFor(() => {
+      expect(rechargeApi.redeemCode).toHaveBeenCalledWith("ABC123");
+    });
+    await waitFor(() => {
+      expect(fetchMe).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText("请输入兑换码")).toBeNull();
+    });
+    expect(screen.getAllByText("12.00").length).toBeGreaterThan(0);
+  });
+
+  test("profile available credits card opens credit log detail and can navigate back", async () => {
     vi.mocked(creditApi.listMyCreditLogs).mockResolvedValue({
       items: [
         {
           id: 1,
           user_id: 1,
           key_id: 0,
-          type: 'consume',
+          type: "consume",
           amount: -120000,
           balance_after: 89900,
-          ref_id: 'img_task_1',
-          remark: '图片生成消费',
-          created_at: '2026-04-23 10:00:00',
+          ref_id: "img_task_1",
+          remark: "图片生成消费",
+          created_at: "2026-04-23 10:00:00",
         },
       ],
       total: 1,
       limit: 20,
       offset: 0,
-    })
+    });
 
     useStore.setState({
-      activeTab: 'profile',
+      activeTab: "profile",
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 89900,
         credit_frozen: 0,
@@ -731,208 +1190,270 @@ describe('web integration', () => {
       history: [],
       checkin: {
         enabled: true,
-        today: '2026-04-22',
+        today: "2026-04-22",
         checked_in: false,
         today_reward_credits: 0,
-        checked_at: '',
-        last_checked_at: '',
+        checked_at: "",
+        last_checked_at: "",
         balance_after: 0,
         awarded_credits: 0,
       },
       bootstrapApp: vi.fn().mockResolvedValue(undefined),
-    } as any)
+    } as any);
 
-    render(<App />)
+    render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: '查看可用积分使用记录' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('积分使用记录')).toBeInTheDocument()
-    })
-    expect(creditApi.listMyCreditLogs).toHaveBeenCalledWith({ limit: 20, offset: 0 })
-    expect(await screen.findByText('图片生成消费')).toBeInTheDocument()
-    expect(await screen.findByText('-12.00')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '返回个人中心' }))
+    fireEvent.click(
+      screen.getByRole("button", { name: "查看可用积分使用记录" }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByText('个人中心')).toBeInTheDocument()
-    })
-  })
+      expect(screen.getByText("积分使用记录")).toBeInTheDocument();
+    });
+    expect(creditApi.listMyCreditLogs).toHaveBeenCalledWith({
+      limit: 20,
+      offset: 0,
+    });
+    expect(await screen.findByText("图片生成消费")).toBeInTheDocument();
+    expect(await screen.findByText("-12.00")).toBeInTheDocument();
 
-  test('home page renders video capability card and reserved entry dialog copy', async () => {
-    render(<HomeView onStartGeneration={() => {}} />)
-
-    const heroSection = screen.getByRole('region', { name: '首页创作横幅' })
-    const particleField = screen.getByTestId('home-hero-particle-field')
-    const heroContent = screen.getByTestId('home-hero-content')
-    const featureGrid = screen.getByRole('region', { name: '核心功能列表' })
-    const heroTitle = screen.getByRole('heading', { level: 1, name: /超越想象/ })
-
-    expect(screen.queryByAltText('Hero')).toBeNull()
-    expect(particleField.children.length).toBeGreaterThanOrEqual(18)
-    expect(screen.getByText('OAI Hub 绘影')).toBeInTheDocument()
-    expect(heroTitle.querySelector('br')).toBeNull()
-    expect(heroTitle.className).toContain('whitespace-nowrap')
-    expect(heroTitle.className).toContain('text-[clamp(1.75rem,8vw,3.75rem)]')
-    expect(heroTitle.className).toContain('lg:text-6xl')
-    expect(heroTitle.className).not.toContain('text-4xl')
-    expect(heroTitle.className).not.toContain('text-5xl')
-    expect(heroTitle.className).not.toContain('lg:text-8xl')
-    expect(screen.getByText('文生图')).toBeInTheDocument()
-    expect(screen.getByText('图生图')).toBeInTheDocument()
-    expect(screen.getByText('生成视频')).toBeInTheDocument()
-    expect(screen.getByText('选择功能入口，文生图与图生图将进入统一创作台，视频入口保留预告弹窗。')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '文生图，开始生成' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '图生图，上传参考图' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '生成视频，查看预告' })).toBeInTheDocument()
-    expect(screen.getByText('3 个功能')).toBeInTheDocument()
-    expect(screen.getByText('开始生成')).toBeInTheDocument()
-    expect(screen.getByText('上传参考图')).toBeInTheDocument()
-    expect(screen.getByText('查看预告')).toBeInTheDocument()
-    expect(screen.getByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toBeInTheDocument()
-    expect(screen.queryByText('极致优化')).toBeNull()
-    expect(screen.queryByText('灵感图鉴')).toBeNull()
-    expect(screen.queryByText('更多作品')).toBeNull()
-    expect(heroSection?.parentElement?.className).toContain('pt-3')
-    expect(heroSection?.className).toContain('h-[280px]')
-    expect(heroSection?.className).not.toContain('h-[320px]')
-    expect(heroSection?.className).toContain('lg:min-h-[460px]')
-    expect(heroContent.className).toContain('justify-center')
-    expect(heroContent.className).toContain('lg:items-center')
-    expect(heroContent.className).not.toContain('lg:items-end')
-    expect(heroContent.className).toContain('px-6')
-    expect(heroContent.className).toContain('py-6')
-    expect(heroContent.className).not.toContain('p-8')
-    expect(featureGrid.className).toContain('lg:grid-cols-3')
-    expect(featureGrid.className).toContain('items-stretch')
-
-    fireEvent.click(screen.getByText('生成视频'))
+    fireEvent.click(screen.getByRole("button", { name: "返回个人中心" }));
 
     await waitFor(() => {
-      expect(screen.getAllByText('视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨')).toHaveLength(2)
-    })
-  })
+      expect(screen.getByText("个人中心")).toBeInTheDocument();
+    });
+  });
 
-  test('home capability card triggers generation when clicking card content', () => {
-    const onStartGeneration = vi.fn()
+  test("home page renders video capability card and reserved entry dialog copy", async () => {
+    render(<HomeView onStartGeneration={() => {}} />);
 
-    render(<HomeView onStartGeneration={onStartGeneration} />)
+    const heroSection = screen.getByRole("region", { name: "首页创作横幅" });
+    const particleField = screen.getByTestId("home-hero-particle-field");
+    const heroContent = screen.getByTestId("home-hero-content");
+    const featureGrid = screen.getByRole("region", { name: "核心功能列表" });
+    const heroTitle = screen.getByRole("heading", {
+      level: 1,
+      name: /超越想象/,
+    });
 
-    fireEvent.click(screen.getByText('文生图'))
+    expect(screen.queryByAltText("Hero")).toBeNull();
+    expect(particleField.children.length).toBeGreaterThanOrEqual(18);
+    expect(screen.getByText("OAI Hub 绘影")).toBeInTheDocument();
+    expect(heroTitle.querySelector("br")).toBeNull();
+    expect(heroTitle.className).toContain("whitespace-nowrap");
+    expect(heroTitle.className).toContain("text-[clamp(1.75rem,8vw,3.75rem)]");
+    expect(heroTitle.className).toContain("lg:text-6xl");
+    expect(heroTitle.className).not.toContain("text-4xl");
+    expect(heroTitle.className).not.toContain("text-5xl");
+    expect(heroTitle.className).not.toContain("lg:text-8xl");
+    expect(screen.getByText("文生图")).toBeInTheDocument();
+    expect(screen.getByText("图生图")).toBeInTheDocument();
+    expect(screen.getByText("生成视频")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "选择功能入口，文生图与图生图将进入统一创作台，视频入口保留预告弹窗。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "文生图，开始生成" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "图生图，上传参考图" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "生成视频，查看预告" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("3 个功能")).toBeInTheDocument();
+    expect(screen.getByText("开始生成")).toBeInTheDocument();
+    expect(screen.getByText("上传参考图")).toBeInTheDocument();
+    expect(screen.getByText("查看预告")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("极致优化")).toBeNull();
+    expect(screen.queryByText("灵感图鉴")).toBeNull();
+    expect(screen.queryByText("更多作品")).toBeNull();
+    expect(heroSection?.parentElement?.className).toContain("pt-3");
+    expect(heroSection?.className).toContain("h-[280px]");
+    expect(heroSection?.className).not.toContain("h-[320px]");
+    expect(heroSection?.className).toContain("lg:min-h-[460px]");
+    expect(heroContent.className).toContain("justify-center");
+    expect(heroContent.className).toContain("lg:items-center");
+    expect(heroContent.className).not.toContain("lg:items-end");
+    expect(heroContent.className).toContain("px-6");
+    expect(heroContent.className).toContain("py-6");
+    expect(heroContent.className).not.toContain("p-8");
+    expect(featureGrid.className).toContain("lg:grid-cols-3");
+    expect(featureGrid.className).toContain("items-stretch");
 
-    expect(onStartGeneration).toHaveBeenCalledTimes(1)
-  })
+    fireEvent.click(screen.getByText("生成视频"));
 
-  test('generate page supports model selection, count pricing copy and multi-image results', async () => {
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(
+          "视频生成功能正在蓄力中，很快就能把你的想法变成动态画面啦✨",
+        ),
+      ).toHaveLength(2);
+    });
+  });
+
+  test("home capability card triggers generation when clicking card content", () => {
+    const onStartGeneration = vi.fn();
+
+    render(<HomeView onStartGeneration={onStartGeneration} />);
+
+    fireEvent.click(screen.getByText("文生图"));
+
+    expect(onStartGeneration).toHaveBeenCalledTimes(1);
+  });
+
+  test("generate page supports model selection, count pricing copy and multi-image results", async () => {
     const generateImage = vi.fn().mockResolvedValue({
       created: 1,
-      task_id: 'task-1',
+      task_id: "task-1",
       data: [
-        { url: '/p/img/task-1/0' },
-        { url: '/p/img/task-1/1' },
-        { url: '/p/img/task-1/2' },
-        { url: '/p/img/task-1/3' },
+        { url: "/p/img/task-1/0" },
+        { url: "/p/img/task-1/1" },
+        { url: "/p/img/task-1/2" },
+        { url: "/p/img/task-1/3" },
       ],
       is_preview: false,
-    })
+    });
 
     useStore.setState({
       user: {
         id: 1,
-        email: 'demo@example.com',
-        nickname: 'Demo',
-        role: 'user',
-        status: 'active',
+        email: "demo@example.com",
+        nickname: "Demo",
+        role: "user",
+        status: "active",
         group_id: 1,
         credit_balance: 2300,
         credit_frozen: 0,
       },
       generateImage,
       imageModels: [
-        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
-        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高质量模型', image_price_per_call: 3000 },
+        {
+          id: 1,
+          slug: "gpt-image-1",
+          type: "image",
+          description: "标准模型",
+          image_price_per_call: 1500,
+        },
+        {
+          id: 2,
+          slug: "gpt-image-2",
+          type: "image",
+          description: "高质量模型",
+          image_price_per_call: 3000,
+        },
       ],
-      selectedImageModel: 'gpt-image-1',
-      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
-    } as any)
+      selectedImageModel: "gpt-image-1",
+      setSelectedImageModel: (slug: string | null) =>
+        useStore.setState({ selectedImageModel: slug }),
+    } as any);
 
-    render(<GenerateView />)
+    render(<GenerateView />);
+    const mobileSummary = screen.getByTestId("mobile-generation-summary");
+    const mobileSummaryScope = within(mobileSummary);
 
-    expect(screen.queryByText('极致优化')).toBeNull()
-    expect(screen.getByText(hasTextContent('当前质量价格：0.15 积分 / 张', 'p'))).toBeInTheDocument()
-    expect(screen.getByText('多张生成会按张数累计扣费')).toBeInTheDocument()
-    expect(screen.getByText(hasTextContent('当前 1 张，预计消耗 0.15 积分', 'p'))).toBeInTheDocument()
+    expect(screen.queryByText("极致优化")).toBeNull();
+    expect(screen.queryByText("当前质量价格：0.15 积分 / 张")).toBeNull();
+    expect(screen.queryByText("多张生成会按张数累计扣费")).toBeNull();
+    expect(screen.queryByText("当前 1 张，预计消耗 0.15 积分")).toBeNull();
+    expect(mobileSummaryScope.getByText("1张")).toBeInTheDocument();
+    expect(mobileSummaryScope.getByText("0.15积分")).toBeInTheDocument();
 
-    const modelTrigger = screen.getByRole('button', { name: /图片模型.*gpt-image-1/ })
-    expect(modelTrigger).toBeInTheDocument()
-    expect(compactText(modelTrigger.textContent)).toBe('gpt-image-1标准模型')
-    expect(screen.queryByRole('listbox', { name: '图片模型列表' })).toBeNull()
+    const modelTrigger = screen.getByRole("button", {
+      name: /图片模型.*gpt-image-1/,
+    });
+    expect(modelTrigger).toBeInTheDocument();
+    expect(compactText(modelTrigger.textContent)).toBe("gpt-image-1标准模型");
+    expect(screen.queryByRole("listbox", { name: "图片模型列表" })).toBeNull();
 
-    fireEvent.click(modelTrigger)
+    fireEvent.click(modelTrigger);
 
-    const modelList = screen.getByRole('listbox', { name: '图片模型列表' })
-    expect(modelList).toBeInTheDocument()
-    expect(modelTrigger.className).toContain('ring-2')
-    expect(modelTrigger.className).toContain('border-primary/80')
-    expect(modelTrigger.className).toContain('bg-card')
+    const modelList = screen.getByRole("listbox", { name: "图片模型列表" });
+    expect(modelList).toBeInTheDocument();
+    expect(modelTrigger.className).toContain("ring-2");
+    expect(modelTrigger.className).toContain("border-primary/80");
+    expect(modelTrigger.className).toContain("bg-card");
 
-    const modelPickerPanel = document.querySelector('[data-model-picker-panel="true"]')
-    expect(modelPickerPanel).toBeInTheDocument()
-    expect(modelPickerPanel?.className).toContain('ring-primary/20')
-    expect(modelPickerPanel?.className).toContain('bg-popover')
-    expect(modelPickerPanel?.className).toContain('shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]')
+    const modelPickerPanel = document.querySelector(
+      '[data-model-picker-panel="true"]',
+    );
+    expect(modelPickerPanel).toBeInTheDocument();
+    expect(modelPickerPanel?.className).toContain("ring-primary/20");
+    expect(modelPickerPanel?.className).toContain("bg-popover");
+    expect(modelPickerPanel?.className).toContain(
+      "shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]",
+    );
 
-    const highQualityOption = screen.getByRole('button', { name: /gpt-image-2.*高质量模型/ })
-    expect(compactText(highQualityOption.textContent)).toBe('gpt-image-2高质量模型')
+    const highQualityOption = screen.getByRole("button", {
+      name: /gpt-image-2.*高质量模型/,
+    });
+    expect(compactText(highQualityOption.textContent)).toBe(
+      "gpt-image-2高质量模型",
+    );
 
-    fireEvent.click(highQualityOption)
+    fireEvent.click(highQualityOption);
 
     await waitFor(() => {
-      expect(screen.queryByRole('listbox', { name: '图片模型列表' })).toBeNull()
-    })
+      expect(
+        screen.queryByRole("listbox", { name: "图片模型列表" }),
+      ).toBeNull();
+    });
 
-    expect(screen.getByText(hasTextContent('当前质量价格：0.30 积分 / 张', 'p'))).toBeInTheDocument()
-    expect(compactText(modelTrigger.textContent)).toBe('gpt-image-2高质量模型')
+    expect(screen.queryByText("当前质量价格：0.30 积分 / 张")).toBeNull();
+    expect(mobileSummaryScope.getByText("0.30积分")).toBeInTheDocument();
+    expect(compactText(modelTrigger.textContent)).toBe("gpt-image-2高质量模型");
 
-    const createButton = screen.getByRole('button', { name: '开始创作' })
-    expect(createButton).toBeInTheDocument()
-    expect(createButton.className).not.toContain('text-white')
+    const createButton = screen.getByRole("button", { name: "开始创作" });
+    expect(createButton).toBeInTheDocument();
+    expect(createButton.className).not.toContain("text-white");
 
-    const ratioDesc = screen.getByText('社交媒体')
-    expect(ratioDesc.className).not.toContain('text-white')
-    expect(screen.getByRole('button', { name: '16:9 宽屏' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '2:3 竖版' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '1K' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '2K' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '4K' })).toBeInTheDocument()
-    expect(screen.queryByText('Catmull-Rom 插值')).toBeNull()
+    const ratioDesc = screen.getByText("社交媒体");
+    expect(ratioDesc.className).not.toContain("text-white");
+    expect(
+      screen.getByRole("button", { name: "16:9 宽屏" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "2:3 竖版" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1K" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2K" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "4K" })).toBeInTheDocument();
+    expect(screen.queryByText("Catmull-Rom 插值")).toBeNull();
 
-    fireEvent.click(screen.getByRole('tab', { name: '图生图' }))
-    expect(screen.queryByText('Catmull-Rom 插值')).toBeNull()
-    fireEvent.click(screen.getByRole('tab', { name: '文生图' }))
+    fireEvent.click(screen.getByRole("tab", { name: "图生图" }));
+    expect(screen.queryByText("Catmull-Rom 插值")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "文生图" }));
 
-    fireEvent.click(screen.getByRole('button', { name: '16:9 宽屏' }))
-    fireEvent.click(screen.getByRole('button', { name: '4K' }))
-    fireEvent.click(screen.getByRole('button', { name: '4 张' }))
-    expect(screen.getByText(hasTextContent('当前 4 张，预计消耗 1.20 积分', 'p'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "16:9 宽屏" }));
+    fireEvent.click(screen.getByRole("button", { name: "4K" }));
+    fireEvent.click(screen.getByRole("button", { name: "4 张" }));
+    expect(screen.queryByText("当前 4 张，预计消耗 1.20 积分")).toBeNull();
+    expect(mobileSummaryScope.getByText("4张")).toBeInTheDocument();
+    expect(mobileSummaryScope.getByText("1.20积分")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
-      target: { value: '未来城市夜景' },
-    })
-    fireEvent.click(createButton)
+    fireEvent.change(screen.getByPlaceholderText("描述想看到的画面..."), {
+      target: { value: "未来城市夜景" },
+    });
+    fireEvent.click(createButton);
 
     await waitFor(() => {
       expect(generateImage).toHaveBeenCalledWith({
-        prompt: '未来城市夜景',
-        aspectRatio: '16:9',
-        quality: '4K',
+        prompt: "未来城市夜景",
+        aspectRatio: "16:9",
+        quality: "4K",
         count: 4,
-      })
-    })
+      });
+    });
 
     await waitFor(() => {
-      expect(screen.getAllByAltText(/Result /)).toHaveLength(4)
-    })
-  })
-})
+      expect(screen.getAllByAltText(/Result /)).toHaveLength(4);
+    });
+  });
+});

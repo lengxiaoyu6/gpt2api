@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import PageShell from '@/components/PageShell';
+import { matchOutputPresetBySize, type AspectRatio, type OutputQualityValue } from '../../features/image/options';
 
 type TaskStateKind = 'success' | 'processing' | 'failed';
 
@@ -269,13 +270,24 @@ function buildDownloadImageURL(imageUrl: string) {
 }
 
 export default function HistoryView() {
-  const { user, history, historyLoading, historyHasMore, fetchHistory, imageModels, deleteHistoryRecord } = useStore();
+  const {
+    user,
+    history,
+    historyLoading,
+    historyHasMore,
+    fetchHistory,
+    imageModels,
+    deleteHistoryRecord,
+    setActiveTab,
+    setPendingGenerateDraft,
+  } = useStore();
   const [selectedImage, setSelectedImage] = useState<HistoryRecord | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [loadedPreviewUrls, setLoadedPreviewUrls] = useState<Record<string, boolean>>({});
   const [loadingPreviewUrl, setLoadingPreviewUrl] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<HistoryRecord | null>(null);
+  const [repeatTarget, setRepeatTarget] = useState<HistoryRecord | null>(null);
   const [deletingTaskID, setDeletingTaskID] = useState<string | null>(null);
   const [downloadingOriginal, setDownloadingOriginal] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
@@ -314,6 +326,7 @@ export default function HistoryView() {
   const selectedPreviewUrl = selectedPreviewUrls[previewIndex] || null;
   const selectedOriginalUrl = selectedOriginalUrls[previewIndex] || null;
   const selectedDisplayUrl = selectedPreviewUrl || selectedOriginalUrl;
+  const selectedContinueEditUrl = selectedPreviewUrl || selectedOriginalUrl;
   const hasSelectedResultImages = selectedPreviewUrls.length > 0 || selectedOriginalUrls.length > 0;
   const selectedImageSizeLabel = formatImageSize(selectedImage?.size);
   const hasMultiplePreviewImages = selectedPreviewUrls.length > 1;
@@ -332,6 +345,75 @@ export default function HistoryView() {
   const deleteTargetImageCountLabel = deleteTargetImageCount > 0 ? `${deleteTargetImageCount} 张` : '未知';
   const deleteTargetSizeLabel = formatImageSize(deleteTarget?.size);
   const deleteTargetCreatedAtLabel = deleteTarget ? new Date(deleteTarget.created_at).toLocaleString() : '';
+
+  function resolveDraftOptions(item: HistoryRecord): { aspectRatio: AspectRatio; quality: OutputQualityValue } {
+    const matchedPreset = matchOutputPresetBySize(item.size);
+
+    return {
+      aspectRatio: matchedPreset?.aspectRatio || '1:1',
+      quality: matchedPreset?.quality || '1K',
+    };
+  }
+
+  function resolveModelSlug(item: HistoryRecord) {
+    return imageModels.find((model) => model.id === item.model_id)?.slug || null;
+  }
+
+  function handleCopyPrompt(item: HistoryRecord) {
+    const copiedPrompt = item.prompt?.trim();
+
+    if (!copiedPrompt) {
+      return;
+    }
+
+    void navigator.clipboard.writeText(copiedPrompt)
+      .then(() => {
+        toast.success('提示词已复制');
+      })
+      .catch(() => {
+        toast.error('复制提示词失败，请稍后重试');
+      });
+  }
+
+  function commitRepeatDraft(item: HistoryRecord) {
+    const { aspectRatio, quality } = resolveDraftOptions(item);
+    const historicalReferences = getReferenceImages(item).map((image) => image.originalUrl).filter(Boolean);
+    const isImageEdit = historicalReferences.length > 0;
+
+    setPendingGenerateDraft({
+      source: 'history-repeat',
+      mode: isImageEdit ? 'img' : 'txt',
+      prompt: item.prompt,
+      modelSlug: resolveModelSlug(item),
+      aspectRatio,
+      quality,
+      count: isImageEdit ? 1 : (Math.min(Math.max(item.n || 1, 1), 4) as 1 | 2 | 3 | 4),
+      requestedSize: item.size,
+      referenceImageUrls: isImageEdit ? historicalReferences : [],
+    });
+    setActiveTab('generate');
+    setRepeatTarget(null);
+  }
+
+  function handleContinueEditFromResult(item: HistoryRecord) {
+    if (!selectedContinueEditUrl) {
+      return;
+    }
+
+    const { quality } = resolveDraftOptions(item);
+
+    setPendingGenerateDraft({
+      source: 'history-continue-edit',
+      mode: 'img',
+      prompt: item.prompt,
+      modelSlug: resolveModelSlug(item),
+      quality,
+      count: 1,
+      requestedSize: item.size,
+      referenceImageUrls: [selectedContinueEditUrl],
+    });
+    setActiveTab('generate');
+  }
 
   useEffect(() => {
     if (!selectedImage) {
@@ -683,6 +765,9 @@ export default function HistoryView() {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="记录详情"
               className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg shrink-0 flex-col overflow-y-auto rounded-3xl bg-card shadow-2xl lg:overflow-hidden"
             >
               <div
@@ -845,6 +930,40 @@ export default function HistoryView() {
                   </Button>
                 </div>
 
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setRepeatTarget(selectedImage);
+                    }}
+                    className="rounded-2xl h-12 font-bold"
+                  >
+                    同参数再生成
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!selectedContinueEditUrl}
+                    onClick={() => {
+                      handleContinueEditFromResult(selectedImage);
+                    }}
+                    className="rounded-2xl h-12 font-bold"
+                  >
+                    基于此图继续编辑
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      handleCopyPrompt(selectedImage);
+                    }}
+                    className="rounded-2xl h-12 font-bold sm:col-span-2"
+                  >
+                    复制本次提示词
+                  </Button>
+                </div>
+
                 {selectedReferenceImages.length > 0 ? (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
@@ -980,6 +1099,45 @@ export default function HistoryView() {
             >
               <Trash2 className="h-4 w-4" />
               {deletingTaskID ? '删除中' : '确认删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(repeatTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRepeatTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm rounded-[28px] border-border/60 bg-background/95 p-0 shadow-2xl backdrop-blur" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle className="text-xl font-black tracking-tight">确认再次生成</DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-6">
+              将使用刚才相同的模型、比例、质量和提示词再次提交任务。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mx-0 mb-0 mt-5 flex flex-col gap-3 rounded-b-[28px] border-border/60 bg-secondary/20 px-6 py-4 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRepeatTarget(null)}
+              className="h-12 w-full rounded-2xl font-bold sm:flex-1"
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (repeatTarget) {
+                  commitRepeatDraft(repeatTarget);
+                }
+              }}
+              className="h-12 w-full rounded-2xl font-bold sm:flex-1"
+            >
+              确认生成
             </Button>
           </DialogFooter>
         </DialogContent>

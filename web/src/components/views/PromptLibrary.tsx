@@ -2,7 +2,7 @@ import React from 'react'
 import { BookOpen, Copy, Loader2, Search, Send, Tags, X, ZoomIn } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { listMyPromptCategories, listMyPrompts, type PromptLibraryItem } from '@/api/prompt'
+import { listPublicPromptCategories, listPublicPrompts, type PromptLibraryItem } from '@/api/prompt'
 import PageShell from '@/components/PageShell'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -90,7 +90,7 @@ function cacheImageDimensions(url: string, width: number, height: number) {
 }
 
 export default function PromptLibraryView({ pageSize = 20 }: Props) {
-  const { setActiveTab, setPendingPrompt } = useStore()
+  const { user, openAuthForTab, setActiveTab, setPendingPrompt } = useStore()
   const [items, setItems] = React.useState<PromptLibraryItem[]>([])
   const [total, setTotal] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
@@ -106,7 +106,7 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
   const loadPage = React.useCallback(async (offset: number, append: boolean, nextKeyword = keyword, nextCategory = category) => {
     setLoading(true)
     try {
-      const data = await listMyPrompts(buildListParams(nextKeyword, nextCategory, pageSize, offset))
+      const data = await listPublicPrompts(buildListParams(nextKeyword, nextCategory, pageSize, offset))
       const nextItems = data.items || []
       setItems((current) => (append ? [...current, ...nextItems] : nextItems))
       setTotal(Number.isFinite(data.total) ? data.total : nextItems.length)
@@ -124,7 +124,7 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
 
   React.useEffect(() => {
     let ignore = false
-    void listMyPromptCategories()
+    void listPublicPromptCategories()
       .then((data) => {
         if (!ignore) {
           setCategories(data.items || [])
@@ -136,7 +136,7 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
         }
       })
     setLoading(true)
-    void listMyPrompts({ limit: pageSize, offset: 0 })
+    void listPublicPrompts({ limit: pageSize, offset: 0 })
       .then((data) => {
         if (ignore) return
         const nextItems = data.items || []
@@ -179,7 +179,11 @@ export default function PromptLibraryView({ pageSize = 20 }: Props) {
   const sendSelectedToGenerate = () => {
     if (!selected) return
     setPendingPrompt(selected.content)
-    setActiveTab('generate')
+    if (user) {
+      setActiveTab('generate')
+    } else {
+      openAuthForTab('generate')
+    }
     toast.success('已带入生图页')
   }
 

@@ -763,7 +763,7 @@ IMG2 正式上线后,`gpt2api` 默认 SSE 解析完成后最多短轮询 **300 �
 <details>
 <summary><b>Q4. 部署后图片 403 / 图片刷不出来?</b></summary>
 
-`chatgpt.com` 的 `estuary/content` 图片 CDN 有防盗链。本项目已内置带 HMAC 签名的图片代理(`/p/img/...`),所有返回给下游的 `image_urls` 都已经是**代理后的签名 URL**。如果你仍然拿到了 `chatgpt.com` 原始 URL,说明是老版本,拉取 main 分支重建即可。
+`chatgpt.com` 的 `estuary/content` 图片 CDN 有防盗链。本项目已内置带 HMAC 签名的图片代理(`/p/img/...`)；本地存储任务会返回站内代理地址，云存储任务的 `image_urls` 保持原始链接，便于配合外部 CDN 与缓存策略使用。
 </details>
 
 <details>

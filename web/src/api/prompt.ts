@@ -34,3 +34,18 @@ export function listMyPrompts(params: ListMyPromptsParams = {}) {
 export function listMyPromptCategories() {
   return http.get('/api/me/prompts/categories') as Promise<{ items: string[] }>
 }
+
+export interface ListPublicPromptsParams {
+  keyword?: string
+  category?: string
+  limit?: number
+  offset?: number
+}
+
+export function listPublicPrompts(params: ListPublicPromptsParams = {}) {
+  return http.get('/api/public/prompts', { params }) as Promise<PromptLibraryList>
+}
+
+export function listPublicPromptCategories() {
+  return http.get('/api/public/prompts/categories') as Promise<{ items: string[] }>
+}

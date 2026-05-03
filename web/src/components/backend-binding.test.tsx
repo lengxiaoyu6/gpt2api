@@ -58,6 +58,7 @@ const useStore = storeModule.useStore
 const { default: AuthOverlay } = await import('./AuthOverlay')
 const { default: HistoryView } = await import('./views/History')
 const { default: ProfileView } = await import('./views/Profile')
+const { default: App } = await import('../App')
 
 function resetStore() {
   const initial = useStore.getInitialState()
@@ -917,6 +918,376 @@ describe('web backend bindings', () => {
     await waitFor(() => expect(screen.queryByText('任务状态')).toBeNull())
     expect(screen.queryByText('Cloud city')).toBeNull()
     expect(screen.getByText('Forest city')).toBeInTheDocument()
+  })
+
+  test('history detail copies prompt and keeps dialog open', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    } as any)
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      fireEvent.click(screen.getByAltText('Cloud city'))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '复制本次提示词' }))
+
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Cloud city'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  test('history detail repeat action writes pending draft and switches to generate tab after confirmation', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      activeTab: 'history',
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 3,
+          size: '3840x2160',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    } as any)
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      fireEvent.click(screen.getByAltText('Cloud city'))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '同参数再生成' }))
+    expect(screen.getByText('确认再次生成')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '确认生成' }))
+
+    await waitFor(() => expect(useStore.getState().activeTab).toBe('generate'))
+    expect((useStore.getState() as any).pendingGenerateDraft).toMatchObject({
+      source: 'history-repeat',
+      mode: 'txt',
+      prompt: 'Cloud city',
+      modelSlug: 'gpt-image-1',
+      aspectRatio: '16:9',
+      quality: '4K',
+      count: 3,
+      requestedSize: '3840x2160',
+    })
+  })
+
+  test('history detail continue edit writes selected preview image into pending draft', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      activeTab: 'history',
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 2,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0', '/p/img/task-1/1'],
+          thumb_urls: ['/p/thumb/task-1/0', '/p/thumb/task-1/1'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    } as any)
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      fireEvent.click(screen.getByAltText('Cloud city'))
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '下一张' }))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '基于此图继续编辑' }))
+
+    await waitFor(() => expect(useStore.getState().activeTab).toBe('generate'))
+    expect((useStore.getState() as any).pendingGenerateDraft).toMatchObject({
+      source: 'history-continue-edit',
+      mode: 'img',
+      prompt: 'Cloud city',
+      modelSlug: 'gpt-image-1',
+      quality: '1K',
+      requestedSize: '1024x1024',
+      referenceImageUrls: ['/p/thumb/task-1/1'],
+    })
+  })
+
+  test('history detail continue edit falls back to selected preview image when original image is missing', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      activeTab: 'history',
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-thumb-result',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: [],
+          thumb_urls: ['/p/thumb/task-thumb-result/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    } as any)
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      fireEvent.click(screen.getByAltText('Cloud city'))
+    })
+
+    const continueEditButton = screen.getByRole('button', { name: '基于此图继续编辑' })
+    expect(continueEditButton).toBeEnabled()
+
+    fireEvent.click(continueEditButton)
+
+    await waitFor(() => expect(useStore.getState().activeTab).toBe('generate'))
+    expect((useStore.getState() as any).pendingGenerateDraft).toMatchObject({
+      source: 'history-continue-edit',
+      mode: 'img',
+      prompt: 'Cloud city',
+      modelSlug: 'gpt-image-1',
+      quality: '1K',
+      requestedSize: '1024x1024',
+      referenceImageUrls: ['/p/thumb/task-thumb-result/0'],
+    })
+  })
+
+  test('history detail repeat for image-edit task writes historical references into pending draft', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      activeTab: 'history',
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-1',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-1/0'],
+          thumb_urls: ['/p/thumb/task-1/0'],
+          reference_urls: ['/p/ref/task-1/0'],
+          reference_thumb_urls: ['/p/ref-thumb/task-1/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    } as any)
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      fireEvent.click(screen.getByAltText('Cloud city'))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '同参数再生成' }))
+    expect(screen.getByText('确认再次生成')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '确认生成' }))
+
+    await waitFor(() => expect(useStore.getState().activeTab).toBe('generate'))
+    expect((useStore.getState() as any).pendingGenerateDraft).toMatchObject({
+      source: 'history-repeat',
+      mode: 'img',
+      prompt: 'Cloud city',
+      modelSlug: 'gpt-image-1',
+      quality: '1K',
+      requestedSize: '1024x1024',
+      referenceImageUrls: ['/p/ref/task-1/0'],
+    })
+  })
+
+  test('history detail repeat for image-edit task falls back to reference thumbnails when original references are missing', async () => {
+    const fetchHistory = vi.fn().mockResolvedValue([])
+
+    useStore.setState({
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 89900,
+        credit_frozen: 0,
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      activeTab: 'history',
+      historyLoaded: false,
+      fetchHistory,
+      history: [
+        {
+          id: 1,
+          task_id: 'task-thumb-only',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: 'Cloud city',
+          n: 1,
+          size: '1024x1024',
+          status: 'succeeded',
+          credit_cost: 5,
+          image_urls: ['/p/img/task-thumb-only/0'],
+          thumb_urls: ['/p/thumb/task-thumb-only/0'],
+          reference_urls: [],
+          reference_thumb_urls: ['/p/ref-thumb/task-thumb-only/0'],
+          created_at: '2026-04-22T10:00:00Z',
+        },
+      ],
+    } as any)
+
+    render(<HistoryView />)
+
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      fireEvent.click(screen.getByAltText('Cloud city'))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '同参数再生成' }))
+    expect(screen.getByText('确认再次生成')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '确认生成' }))
+
+    await waitFor(() => expect(useStore.getState().activeTab).toBe('generate'))
+    expect((useStore.getState() as any).pendingGenerateDraft).toMatchObject({
+      source: 'history-repeat',
+      mode: 'img',
+      prompt: 'Cloud city',
+      modelSlug: 'gpt-image-1',
+      quality: '1K',
+      requestedSize: '1024x1024',
+      referenceImageUrls: ['/p/ref-thumb/task-thumb-only/0'],
+    })
   })
 
   test('history view deletes a record from grid without opening detail panel', async () => {

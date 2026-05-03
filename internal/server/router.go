@@ -199,6 +199,10 @@ func New(d *Deps) *gin.Engine {
 		if d.UpdateLogH != nil {
 			pub.GET("/update-logs", d.UpdateLogH.ListPublic)
 		}
+		if d.PromptH != nil {
+			pub.GET("/prompts", d.PromptH.ListPublic)
+			pub.GET("/prompts/categories", d.PromptH.Categories)
+		}
 		if d.RechargeH != nil {
 			pub.POST("/epay/notify", d.RechargeH.EPayNotify)
 			pub.GET("/epay/notify", d.RechargeH.EPayNotify)

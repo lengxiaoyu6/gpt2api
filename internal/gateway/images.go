@@ -705,14 +705,21 @@ func (h *ImagesHandler) ImageTask(c *gin.Context) {
 	thumbURLs := t.DecodeThumbURLs()
 	fileIDs := t.DecodeFileIDs()
 	data := buildAPIImageData(t.TaskID, t.StorageMode, urls, thumbURLs, fileIDs)
+	meta := image.BuildTaskProgressMeta(t)
 
 	c.JSON(http.StatusOK, gin.H{
 		"task_id":         t.TaskID,
 		"status":          t.Status,
+		"phase":           meta.Phase,
+		"phase_label":     meta.PhaseLabel,
 		"conversation_id": t.ConversationID,
 		"created":         t.CreatedAt.Unix(),
 		"finished_at":     nullableUnix(t.FinishedAt),
 		"error":           t.Error,
+		"estimated_credit": meta.EstimatedCredit,
+		"actual_count":     meta.ActualCount,
+		"billing_status":   meta.BillingStatus,
+		"billing_note":     meta.BillingNote,
 		"credit_cost":     t.CreditCost,
 		"data":            data,
 	})

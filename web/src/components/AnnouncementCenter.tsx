@@ -1,122 +1,303 @@
-import React from 'react'
-import { createPortal } from 'react-dom'
-import { Bell, X } from 'lucide-react'
+import React from "react";
+import { createPortal } from "react-dom";
+import { Bell, X } from "lucide-react";
 
-import { listPublicAnnouncements, type Announcement } from '@/api/announcement'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { listPublicAnnouncements, type Announcement } from "@/api/announcement";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-interface Props {
-  active: boolean
+interface TriggerButtonProps {
+  onClick?: () => void;
 }
 
-const READ_KEY = 'gpt2api.announcement.read.ids'
+interface ProviderProps {
+  active: boolean;
+  children?: React.ReactNode;
+}
+
+interface AnnouncementContextValue {
+  openList: () => void;
+}
+
+interface PopupState {
+  open: boolean;
+  items: Announcement[];
+  currentID: number | null;
+}
+
+const READ_KEY = "gpt2api.announcement.read.ids";
+
+const AnnouncementContext =
+  React.createContext<AnnouncementContextValue | null>(null);
 
 function readIDs(): number[] {
   try {
-    const parsed = JSON.parse(localStorage.getItem(READ_KEY) || '[]')
+    const parsed = JSON.parse(localStorage.getItem(READ_KEY) || "[]");
     if (Array.isArray(parsed)) {
-      return parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      return parsed
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0);
     }
   } catch {
-    return []
+    return [];
   }
-  return []
+  return [];
 }
 
 function writeIDs(ids: number[]) {
-  const uniq = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)))
-  localStorage.setItem(READ_KEY, JSON.stringify(uniq))
+  const uniq = Array.from(
+    new Set(ids.filter((id) => Number.isFinite(id) && id > 0)),
+  );
+  localStorage.setItem(READ_KEY, JSON.stringify(uniq));
 }
 
-export default function AnnouncementCenter({ active }: Props) {
-  const [items, setItems] = React.useState<Announcement[]>([])
-  const [loaded, setLoaded] = React.useState(false)
-  const [loading, setLoading] = React.useState(false)
-  const [popupOpen, setPopupOpen] = React.useState(false)
-  const [listOpen, setListOpen] = React.useState(false)
-  const [current, setCurrent] = React.useState<Announcement | null>(null)
+function buildUnreadPopupState(sourceItems: Announcement[]): PopupState {
+  const read = new Set(readIDs());
+  const unreadItems = sourceItems.filter((item) => !read.has(item.id));
+  return {
+    open: unreadItems.length > 0,
+    items: unreadItems,
+    currentID: unreadItems[0]?.id ?? null,
+  };
+}
 
-  const load = React.useCallback(async () => {
-    if (!active || loading || loaded) return
-    setLoading(true)
-    try {
-      const data = await listPublicAnnouncements()
-      const nextItems = data.items || []
-      setItems(nextItems)
-      setLoaded(true)
-      const read = new Set(readIDs())
-      const firstUnread = nextItems.find((item) => !read.has(item.id))
-      if (firstUnread) {
-        setCurrent(firstUnread)
-        setPopupOpen(true)
-      }
-    } catch {
-      setItems([])
-      setLoaded(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [active, loaded, loading])
+function getPopupPosition(items: Announcement[], currentID: number | null) {
+  const currentIndex = items.findIndex((item) => item.id === currentID);
+  return {
+    currentIndex,
+    current: currentIndex >= 0 ? items[currentIndex] : null,
+    total: items.length,
+  };
+}
 
-  React.useEffect(() => {
-    void load()
-  }, [load])
-
-  const acknowledge = () => {
-    if (current) {
-      writeIDs([...readIDs(), current.id])
-    }
-    setPopupOpen(false)
-  }
-
-  const openList = () => {
-    setListOpen(true)
-    void load()
-  }
-
-  if (!active) return null
+export function AnnouncementTriggerButton({ onClick }: TriggerButtonProps) {
+  const context = React.useContext(AnnouncementContext);
 
   return (
-    <>
-      <Button
-        type="button"
-        aria-label="公告"
-        variant="secondary"
-        size="sm"
-        onClick={openList}
-        className="h-9 rounded-full border border-border/60 bg-secondary/70 px-2.5 shadow-sm sm:px-3"
-      >
-        <Bell className="h-4 w-4 shrink-0" />
-        <span className="hidden sm:inline">公告</span>
-      </Button>
+    <Button
+      type="button"
+      aria-label="公告"
+      variant="secondary"
+      size="sm"
+      onClick={onClick ?? context?.openList}
+      className="h-9 rounded-full border border-border/60 bg-secondary/70 px-2.5 shadow-sm sm:px-3"
+    >
+      <Bell className="h-4 w-4 shrink-0" />
+      <span className="hidden sm:inline">公告</span>
+    </Button>
+  );
+}
 
-      {popupOpen && current && (
-        <AnnouncementDialog title={current.title} onClose={() => setPopupOpen(false)}>
+export function AnnouncementProvider({ active, children }: ProviderProps) {
+  const [items, setItems] = React.useState<Announcement[]>([]);
+  const [loaded, setLoaded] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+  const [listOpen, setListOpen] = React.useState(false);
+  const [popupState, setPopupState] = React.useState<PopupState>({
+    open: false,
+    items: [],
+    currentID: null,
+  });
+  const activatedRef = React.useRef(false);
+
+  const openUnreadPopup = React.useCallback((sourceItems: Announcement[]) => {
+    setPopupState(buildUnreadPopupState(sourceItems));
+  }, []);
+
+  const load = React.useCallback(
+    async ({
+      force = false,
+      autoPopup = false,
+    }: {
+      force?: boolean;
+      autoPopup?: boolean;
+    } = {}) => {
+      if (loading) return;
+      if (!force && loaded) return;
+
+      setLoading(true);
+      try {
+        const data = await listPublicAnnouncements();
+        const nextItems = data.items || [];
+        setItems(nextItems);
+        setLoaded(true);
+        setLoadFailed(false);
+        if (active && autoPopup) {
+          openUnreadPopup(nextItems);
+        }
+      } catch {
+        setItems([]);
+        setLoaded(false);
+        setLoadFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [active, loaded, loading, openUnreadPopup],
+  );
+
+  React.useEffect(() => {
+    if (!active) {
+      activatedRef.current = false;
+      return;
+    }
+
+    if (activatedRef.current) {
+      return;
+    }
+
+    activatedRef.current = true;
+    if (!loaded) {
+      void load({ autoPopup: true });
+      return;
+    }
+
+    openUnreadPopup(items);
+  }, [active, items, load, loaded, openUnreadPopup]);
+
+  const openList = React.useCallback(() => {
+    setListOpen(true);
+    if (!loaded || loadFailed) {
+      void load({ force: true });
+    }
+  }, [load, loadFailed, loaded]);
+
+  const closePopup = React.useCallback(() => {
+    setPopupState((previous) => ({ ...previous, open: false }));
+  }, []);
+
+  const showPrevious = React.useCallback(() => {
+    setPopupState((previous) => {
+      const { currentIndex } = getPopupPosition(
+        previous.items,
+        previous.currentID,
+      );
+      if (currentIndex <= 0) {
+        return previous;
+      }
+      return {
+        ...previous,
+        currentID: previous.items[currentIndex - 1]?.id ?? previous.currentID,
+      };
+    });
+  }, []);
+
+  const showNext = React.useCallback(() => {
+    setPopupState((previous) => {
+      const { currentIndex, total } = getPopupPosition(
+        previous.items,
+        previous.currentID,
+      );
+      if (currentIndex < 0 || currentIndex >= total - 1) {
+        return previous;
+      }
+      return {
+        ...previous,
+        currentID: previous.items[currentIndex + 1]?.id ?? previous.currentID,
+      };
+    });
+  }, []);
+
+  const acknowledge = React.useCallback(() => {
+    setPopupState((previous) => {
+      const { currentIndex, current } = getPopupPosition(
+        previous.items,
+        previous.currentID,
+      );
+      if (!current || currentIndex < 0) {
+        return previous;
+      }
+
+      writeIDs([...readIDs(), current.id]);
+      const nextItems = previous.items.filter((item) => item.id !== current.id);
+      if (nextItems.length === 0) {
+        return {
+          open: false,
+          items: [],
+          currentID: null,
+        };
+      }
+
+      const nextIndex = Math.min(currentIndex, nextItems.length - 1);
+      return {
+        open: true,
+        items: nextItems,
+        currentID: nextItems[nextIndex]?.id ?? null,
+      };
+    });
+  }, []);
+
+  const { currentIndex, current, total } = getPopupPosition(
+    popupState.items,
+    popupState.currentID,
+  );
+  const hasPrevious = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < total - 1;
+
+  return (
+    <AnnouncementContext.Provider value={{ openList }}>
+      {children}
+
+      {popupState.open && current && (
+        <AnnouncementDialog title={current.title} onClose={closePopup}>
           <div className="max-h-[48vh] overflow-y-auto whitespace-pre-wrap break-words rounded-2xl bg-muted/45 px-4 py-3 text-left text-sm leading-7 text-muted-foreground shadow-inner">
             {current.content}
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            <Button variant="outline" className="h-11 rounded-2xl" onClick={() => setListOpen(true)}>
+          <div className="mt-4 text-xs font-semibold tracking-[0.12em] text-muted-foreground">
+            第 {currentIndex + 1} 条，共 {total} 条
+          </div>
+          <div className="mt-5 space-y-2">
+            <Button
+              variant="outline"
+              className="h-11 w-full rounded-2xl"
+              onClick={openList}
+            >
               公告列表
             </Button>
-            <Button className="h-11 rounded-2xl" onClick={acknowledge}>
-              知道了
-            </Button>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                variant="outline"
+                className="h-11 rounded-2xl"
+                onClick={showPrevious}
+                disabled={!hasPrevious}
+              >
+                上一条
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 rounded-2xl"
+                onClick={showNext}
+                disabled={!hasNext}
+              >
+                下一条
+              </Button>
+              <Button className="h-11 rounded-2xl" onClick={acknowledge}>
+                知道了
+              </Button>
+            </div>
           </div>
         </AnnouncementDialog>
       )}
 
       {listOpen && (
         <AnnouncementDialog title="公告列表" onClose={() => setListOpen(false)}>
-          <div className={cn('max-h-[62vh] space-y-3 overflow-y-auto text-left', loading && 'opacity-60')}>
+          <div
+            className={cn(
+              "max-h-[62vh] space-y-3 overflow-y-auto text-left",
+              loading && "opacity-60",
+            )}
+          >
             {items.length === 0 && (
               <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                 暂无公告
               </div>
             )}
             {items.map((item) => (
-              <article key={item.id} className="rounded-2xl border border-border/70 bg-secondary/30 p-4">
+              <article
+                key={item.id}
+                className="rounded-2xl border border-border/70 bg-secondary/30 p-4"
+              >
                 <h3 className="text-sm font-bold leading-6">{item.title}</h3>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-muted-foreground">
                   {item.content}
@@ -126,8 +307,16 @@ export default function AnnouncementCenter({ active }: Props) {
           </div>
         </AnnouncementDialog>
       )}
-    </>
-  )
+    </AnnouncementContext.Provider>
+  );
+}
+
+export default function AnnouncementCenter({ active }: { active: boolean }) {
+  return (
+    <AnnouncementProvider active={active}>
+      <AnnouncementTriggerButton />
+    </AnnouncementProvider>
+  );
 }
 
 function AnnouncementDialog({
@@ -135,11 +324,11 @@ function AnnouncementDialog({
   children,
   onClose,
 }: {
-  title: string
-  children: React.ReactNode
-  onClose: () => void
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
 }) {
-  const titleId = React.useId()
+  const titleId = React.useId();
 
   return createPortal(
     <div
@@ -166,12 +355,15 @@ function AnnouncementDialog({
         <div className="relative mb-2 text-xs font-semibold tracking-[0.24em] text-muted-foreground">
           重要公告
         </div>
-        <h2 id={titleId} className="relative mb-4 text-xl font-black tracking-tight">
+        <h2
+          id={titleId}
+          className="relative mb-4 text-xl font-black tracking-tight"
+        >
           {title}
         </h2>
         {children}
       </section>
     </div>,
     document.body,
-  )
+  );
 }

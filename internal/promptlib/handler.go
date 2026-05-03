@@ -15,6 +15,15 @@ type Handler struct {
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
+func (h *Handler) ListPublic(c *gin.Context) {
+	out, err := h.svc.ListPublic(c.Request.Context(), parseListInput(c))
+	if err != nil {
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, out)
+}
+
 func (h *Handler) ListMe(c *gin.Context) {
 	out, err := h.svc.ListMe(c.Request.Context(), parseListInput(c))
 	if err != nil {

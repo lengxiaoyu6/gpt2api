@@ -63,7 +63,7 @@ func newAdminHandlerTestDB(t *testing.T) *sqlx.DB {
 	return db
 }
 
-func TestAdminListReturnsPreviewThumbsAndProxyDownloadsSeparately(t *testing.T) {
+func TestAdminListReturnsPreviewThumbsAndRawDownloadsSeparately(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAdminHandlerTestDB(t)
@@ -155,8 +155,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(
 		t.Fatalf("preview_urls_parsed=%#v want=%#v", got, want)
 	}
 	if got, want := row.ResultURLsParsed, []string{
-		"/p/img/img_admin_preview/0",
-		"/p/img/img_admin_preview/1",
+		"https://cdn.example.com/original-1.png",
+		"https://cdn.example.com/original-2.png",
 	}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("result_urls_parsed=%#v want=%#v", got, want)
 	}

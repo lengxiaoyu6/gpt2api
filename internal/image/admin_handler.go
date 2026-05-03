@@ -80,7 +80,7 @@ func (h *AdminHandler) List(c *gin.Context) {
 func buildAdminDownloadURLs(r AdminTaskRow) []string {
 	urls := r.DecodeResultURLs()
 	if len(urls) > 0 {
-		return BuildProxyURLs(r.TaskID, urls)
+		return urls
 	}
 	if fids := r.DecodeFileIDs(); len(fids) > 0 {
 		urls = make([]string, len(fids))

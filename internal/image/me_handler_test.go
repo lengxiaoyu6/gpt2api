@@ -174,7 +174,7 @@ func TestBuildHistoryReferenceURLsReturnsCloudRemoteURLsWithThumbFallback(t *tes
 	if len(references) != 2 || len(referenceThumbs) != 2 {
 		t.Fatalf("unexpected counts: references=%d thumbs=%d", len(references), len(referenceThumbs))
 	}
-	if references[0] != "https://cdn.example.com/ref-1.png" || references[1] != "https://cdn.example.com/ref-2.png" {
+	if !strings.HasPrefix(references[0], "/p/ref/img_hist_ref_cloud/0?") || !strings.HasPrefix(references[1], "/p/ref/img_hist_ref_cloud/1?") {
 		t.Fatalf("unexpected references: %#v", references)
 	}
 	if referenceThumbs[0] != "https://cdn.example.com/ref-1-thumb.jpg" {
@@ -185,7 +185,7 @@ func TestBuildHistoryReferenceURLsReturnsCloudRemoteURLsWithThumbFallback(t *tes
 	}
 }
 
-func TestToViewUsesProxyURLsForCloudOriginalsAndKeepsThumbsRemote(t *testing.T) {
+func TestToViewKeepsCloudOriginalURLsRawAndKeepsThumbsRemote(t *testing.T) {
 	SetProxyURLBuilder(func(taskID string, idx int) string {
 		return "/p/img/" + taskID + "/" + strconv.Itoa(idx) + "?exp=123&sig=abc"
 	})
@@ -215,16 +215,83 @@ func TestToViewUsesProxyURLsForCloudOriginalsAndKeepsThumbsRemote(t *testing.T) 
 			fileKey("img_hist_cloud_view", 0): true,
 		},
 	})
-	if len(view.ImageURLs) != 1 || view.ImageURLs[0] != "/p/img/img_hist_cloud_view/0?exp=123&sig=abc" {
-		t.Fatalf("cloud image urls should use proxy, got %#v", view.ImageURLs)
+	if len(view.ImageURLs) != 1 || view.ImageURLs[0] != "https://cdn.example.com/original.png" {
+		t.Fatalf("cloud image urls should stay raw, got %#v", view.ImageURLs)
 	}
 	if len(view.ThumbURLs) != 1 || view.ThumbURLs[0] != "https://cdn.example.com/thumb.jpg" {
 		t.Fatalf("cloud thumb urls should stay remote, got %#v", view.ThumbURLs)
 	}
-	if len(view.ReferenceURLs) != 1 || view.ReferenceURLs[0] != "https://cdn.example.com/ref.png" {
-		t.Fatalf("cloud reference urls should stay remote, got %#v", view.ReferenceURLs)
+	if len(view.ReferenceURLs) != 1 || !strings.HasPrefix(view.ReferenceURLs[0], "/p/ref/img_hist_cloud_view/0?") {
+		t.Fatalf("cloud reference urls should use proxy, got %#v", view.ReferenceURLs)
 	}
 	if len(view.ReferenceThumbURLs) != 1 || view.ReferenceThumbURLs[0] != "https://cdn.example.com/ref-thumb.jpg" {
 		t.Fatalf("cloud reference thumb urls should stay remote, got %#v", view.ReferenceThumbURLs)
+	}
+}
+
+func TestToViewIncludesPhaseAndBillingMetaForPartialSuccess(t *testing.T) {
+	task := &Task{
+		TaskID:          "img_hist_partial",
+		Prompt:          "partial success image",
+		N:               4,
+		Size:            "1024x1024",
+		Status:          StatusSuccess,
+		StorageMode:     StorageModeCloud,
+		EstimatedCredit: 120,
+		CreditCost:      90,
+		ResultURLs: mustJSON(t, []string{
+			"https://cdn.example.com/1.png",
+			"https://cdn.example.com/2.png",
+			"https://cdn.example.com/3.png",
+		}),
+		ThumbURLs: mustJSON(t, []string{
+			"https://cdn.example.com/1-thumb.jpg",
+			"https://cdn.example.com/2-thumb.jpg",
+			"https://cdn.example.com/3-thumb.jpg",
+		}),
+	}
+
+	view := toView(task, stubHistoryImageStore{})
+	if view.Phase != "completed" || view.PhaseLabel != "已完成" {
+		t.Fatalf("unexpected phase: %q %q", view.Phase, view.PhaseLabel)
+	}
+	if view.EstimatedCredit != 120 {
+		t.Fatalf("estimated_credit = %d", view.EstimatedCredit)
+	}
+	if view.ActualCount != 3 {
+		t.Fatalf("actual_count = %d", view.ActualCount)
+	}
+	if view.BillingStatus != "settled_partial" {
+		t.Fatalf("billing_status = %q", view.BillingStatus)
+	}
+	if view.BillingNote != "提交 4 张，成功 3 张，已按实际结果扣除 90 积分" {
+		t.Fatalf("billing_note = %q", view.BillingNote)
+	}
+}
+
+func TestToViewIncludesRefundBillingMetaForFailedTask(t *testing.T) {
+	task := &Task{
+		TaskID:          "img_hist_failed",
+		Prompt:          "failed image",
+		N:               2,
+		Size:            "1024x1024",
+		Status:          StatusFailed,
+		Error:           ErrInvalidResponse,
+		EstimatedCredit: 60,
+		CreditCost:      0,
+	}
+
+	view := toView(task, stubHistoryImageStore{})
+	if view.Phase != "failed" || view.PhaseLabel != "生成失败" {
+		t.Fatalf("unexpected phase: %q %q", view.Phase, view.PhaseLabel)
+	}
+	if view.ActualCount != 0 {
+		t.Fatalf("actual_count = %d", view.ActualCount)
+	}
+	if view.BillingStatus != "refunded" {
+		t.Fatalf("billing_status = %q", view.BillingStatus)
+	}
+	if view.BillingNote != "任务失败，已退回预扣的 60 积分" {
+		t.Fatalf("billing_note = %q", view.BillingNote)
 	}
 }

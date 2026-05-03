@@ -96,7 +96,7 @@ Content-Type: application/json
   "task_id": "img_xxx",
   "data": [
     {
-      "url": "/p/img/img_xxx/0?exp=...&sig=...",
+      "url": "https://cdn.example.com/original.png",
       "thumb_url": "/p/thumb/img_xxx/0?exp=...&sig=...",
       "revised_prompt": "",
       "file_id": "file-xxx"
@@ -104,6 +104,8 @@ Content-Type: application/json
   ]
 }
 ```
+
+`url` 返回原图地址。云存储模式下保持原始链接；本地存储模式下返回站内签名代理地址。`thumb_url` 优先返回缩略图地址。
 
 计费按实际返回图片数量结算。多图请求在上游返回数量不足时，外置渠道会继续补充到指定数量；如果最终仍失败，会返回错误，成功返回时 `data.length` 为实际出图数量。
 
@@ -175,7 +177,7 @@ Content-Type: multipart/form-data
   "task_id": "img_xxx",
   "data": [
     {
-      "url": "/p/img/img_xxx/0?exp=...&sig=...",
+      "url": "https://cdn.example.com/original.png",
       "thumb_url": "/p/thumb/img_xxx/0?exp=...&sig=...",
       "file_id": "file-xxx"
     }
@@ -203,7 +205,7 @@ Authorization: Bearer sk-...
   "credit_cost": 10000,
   "data": [
     {
-      "url": "/p/img/img_xxx/0?exp=...&sig=...",
+      "url": "https://cdn.example.com/original.png",
       "thumb_url": "/p/thumb/img_xxx/0?exp=...&sig=...",
       "file_id": "file-xxx"
     }
@@ -225,7 +227,7 @@ Authorization: Bearer sk-...
 
 ## 图片地址
 
-生图响应中的 `url` 与 `thumb_url` 为图片访问地址。站内签名地址包含 `exp` 与 `sig` 参数，有效期由服务端生成。
+生图响应中的 `url` 与 `thumb_url` 为图片访问地址。`url` 表示原图，云存储模式下保持原始链接，本地存储模式下返回站内签名地址；`thumb_url` 表示缩略图访问地址。站内签名地址包含 `exp` 与 `sig` 参数，有效期由服务端生成。
 
 ## 调用示例
 

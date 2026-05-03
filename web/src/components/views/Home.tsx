@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, Wand2, Image as ImageIcon, ChevronRight, Video } from 'lucide-react';
+import { Sparkles, Wand2, Image as ImageIcon, ChevronRight, Video, FileClock, Loader2 } from 'lucide-react';
+import { listPublicUpdateLogs, type UpdateLog } from '@/api/update-log';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +9,7 @@ import PageShell from '@/components/PageShell';
 
 interface HomeViewProps {
   onStartGeneration: () => void;
+  onOpenUpdateLogs?: () => void;
   siteName?: string;
 }
 
@@ -71,9 +73,39 @@ function useDesktopAnimationEnabled() {
   return enabled;
 }
 
-export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: HomeViewProps) {
+export default function HomeView({ onStartGeneration, onOpenUpdateLogs, siteName = 'OAI Hub' }: HomeViewProps) {
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false);
+  const [recentUpdates, setRecentUpdates] = React.useState<UpdateLog[]>([]);
+  const [updatesLoaded, setUpdatesLoaded] = React.useState(false);
   const desktopAnimationEnabled = useDesktopAnimationEnabled();
+
+  React.useEffect(() => {
+    let ignore = false;
+
+    void listPublicUpdateLogs({ limit: 3, offset: 0 })
+      .then((data) => {
+        if (ignore) {
+          return;
+        }
+        setRecentUpdates(data.items || []);
+      })
+      .catch(() => {
+        if (ignore) {
+          return;
+        }
+        setRecentUpdates([]);
+      })
+      .finally(() => {
+        if (ignore) {
+          return;
+        }
+        setUpdatesLoaded(true);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const handleFeatureKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, onClick: () => void) => {
     if (event.key !== 'Enter' && event.key !== ' ') {
@@ -322,6 +354,45 @@ export default function HomeView({ onStartGeneration, siteName = 'OAI Hub' }: Ho
             </Card>
           ))}
         </div>
+      </section>
+
+      <section aria-labelledby="home-recent-updates-title" className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h2 id="home-recent-updates-title" className="flex items-center gap-2 text-lg font-black tracking-tight">
+              <FileClock className="h-4 w-4 text-primary" />
+              最近更新
+            </h2>
+            <p className="text-sm text-muted-foreground">查看近期功能调整与界面优化。</p>
+          </div>
+          <Button type="button" variant="outline" className="rounded-2xl px-4 font-bold" onClick={onOpenUpdateLogs}>
+            查看全部更新日志
+          </Button>
+        </div>
+
+        <Card className="rounded-[2rem] border-border/60 bg-card/75 p-4 shadow-sm shadow-black/5 sm:p-5">
+          {!updatesLoaded ? (
+            <div className="flex min-h-24 items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              正在加载更新内容
+            </div>
+          ) : recentUpdates.length > 0 ? (
+            <div className="space-y-3">
+              {recentUpdates.map((item, index) => (
+                <article
+                  key={item.id}
+                  className={index === 0 ? 'rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3' : 'rounded-2xl border border-border/60 bg-background/65 px-4 py-3'}
+                >
+                  <p className="text-sm leading-6 text-foreground/90">{item.content}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="min-h-24 rounded-2xl border border-dashed border-border/60 bg-background/65 px-4 py-6 text-sm text-muted-foreground">
+              暂无更新内容
+            </div>
+          )}
+        </Card>
       </section>
 
       <Dialog open={videoDialogOpen} onOpenChange={setVideoDialogOpen}>

@@ -159,10 +159,17 @@ func (h *ImagesHandler) readLocalProxyImage(ctx context.Context, task *image.Tas
 }
 
 func (h *ImagesHandler) readCloudProxyImage(ctx context.Context, task *image.Task, idx int, resource string) ([]byte, string, bool, error) {
-	if imageproxy.NormalizeResource(resource) != imageproxy.ResourceOriginal {
-		return nil, "", false, nil
+	normalizedResource := imageproxy.NormalizeResource(resource)
+	var urls []string
+	switch normalizedResource {
+	case imageproxy.ResourceReference:
+		urls = task.DecodeReferenceURLs()
+	default:
+		if normalizedResource != imageproxy.ResourceOriginal {
+			return nil, "", false, nil
+		}
+		urls = task.DecodeResultURLs()
 	}
-	urls := task.DecodeResultURLs()
 	if idx < 0 || idx >= len(urls) {
 		return nil, "", false, nil
 	}

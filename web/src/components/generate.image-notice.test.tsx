@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import React, { StrictMode } from 'react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -168,15 +169,16 @@ describe('generate image notice', () => {
 
     render(<GenerateView />)
 
-    expect(screen.getByText('当前质量价格：0.15 积分 / 张')).toBeInTheDocument()
-    expect(screen.getByText('当前 1 张，预计消耗 0.15 积分')).toBeInTheDocument()
+    expect(screen.queryByText('按成功结果计费')).toBeNull()
+    expect(screen.queryByText('当前质量价格：0.15 积分 / 张')).toBeNull()
+    expect(screen.queryByText('当前 1 张，预计消耗 0.15 积分')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '4K' }))
-    expect(screen.getByText('当前质量价格：0.42 积分 / 张')).toBeInTheDocument()
-    expect(screen.getByText('当前 1 张，预计消耗 0.42 积分')).toBeInTheDocument()
+    expect(screen.queryByText('当前质量价格：0.42 积分 / 张')).toBeNull()
+    expect(screen.queryByText('当前 1 张，预计消耗 0.42 积分')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '3 张' }))
-    expect(screen.getByText('当前 3 张，预计消耗 1.26 积分')).toBeInTheDocument()
+    expect(screen.queryByText('当前 3 张，预计消耗 1.26 积分')).toBeNull()
   })
 
   test('generate page hides output size and count controls when model disables them', () => {
@@ -276,7 +278,8 @@ describe('generate image notice', () => {
 
     expect(screen.queryByText('生成张数')).toBeNull()
     expect(screen.queryByText('多张生成会按张数累计扣费')).toBeNull()
-    expect(screen.getByText('当前 1 张，预计消耗 0.15 积分')).toBeInTheDocument()
+    expect(screen.queryByText('按成功结果计费')).toBeNull()
+    expect(screen.queryByText('当前 1 张，预计消耗 0.15 积分')).toBeNull()
   })
 
   test('generate page omits idle inspiration placeholder at bottom', () => {
@@ -456,6 +459,547 @@ describe('generate image notice', () => {
     expect(await screen.findByText('生成结果')).toBeInTheDocument()
     expect(screen.getByAltText('Result 1')).toHaveAttribute('src', 'https://example.com/thumb.png')
     expect(screen.getByRole('link', { name: '下载原图 1' })).toHaveAttribute('href', 'https://example.com/original.png')
+  })
+
+  test('generate page shows generation summary before submit', async () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        {
+          id: 1,
+          slug: 'gpt-image-1',
+          type: 'image',
+          description: '标准模型',
+          image_price_per_call: 1500,
+          image_price_per_call_4k: 4200,
+        },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    fireEvent.click(screen.getByRole('button', { name: '16:9 宽屏' }))
+    fireEvent.click(screen.getByRole('button', { name: '4K' }))
+    fireEvent.click(screen.getByRole('button', { name: '3 张' }))
+    fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
+      target: { value: '未来海岸城市，夕阳，电影感' },
+    })
+
+    const summaryTitle = screen.getByText('本次生成摘要')
+    const summaryCard = summaryTitle.closest('.rounded-2xl')
+
+    expect(summaryCard).toBeTruthy()
+    const summary = within(summaryCard as HTMLElement)
+
+    expect(summary.getByText('生成方式')).toBeInTheDocument()
+    expect(summary.getByText('文字生成模式')).toBeInTheDocument()
+    expect(summary.getByText('使用模型')).toBeInTheDocument()
+    expect(summary.getAllByText('gpt-image-1').length).toBeGreaterThan(0)
+    expect(summary.getByText('比例摘要')).toBeInTheDocument()
+    expect(summary.getByText('16:9 比例')).toBeInTheDocument()
+    expect(summary.getByText('质量摘要')).toBeInTheDocument()
+    expect(summary.getByText('4K 档')).toBeInTheDocument()
+    expect(summary.getByText('生成数量')).toBeInTheDocument()
+    expect(summary.getByText('3 张')).toBeInTheDocument()
+    expect(summary.getByText('预计扣费')).toBeInTheDocument()
+    expect(summary.getByText('1.26 积分')).toBeInTheDocument()
+  })
+
+  test('generate page keeps a compact mobile summary before submit', async () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      imageModels: [
+        {
+          id: 1,
+          slug: 'gpt-image-1',
+          type: 'image',
+          description: '标准模型',
+          image_price_per_call: 1500,
+          image_price_per_call_4k: 4200,
+        },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    fireEvent.click(screen.getByRole('button', { name: '16:9 宽屏' }))
+    fireEvent.click(screen.getByRole('button', { name: '4K' }))
+    fireEvent.click(screen.getByRole('button', { name: '3 张' }))
+
+    const summaryTitle = screen.getByText('本次生成摘要')
+    const summaryCard = summaryTitle.closest('.rounded-2xl')
+
+    expect(summaryCard).toBeTruthy()
+    const summary = within(summaryCard as HTMLElement)
+    const compactSummary = summary.getByTestId('mobile-generation-summary')
+
+    expect(compactSummary).toHaveClass('lg:hidden')
+    expect(compactSummary).toHaveTextContent('文生图')
+    expect(compactSummary).toHaveTextContent('gpt-image-1')
+    expect(compactSummary).toHaveTextContent('16:9')
+    expect(compactSummary).toHaveTextContent('4K')
+    expect(compactSummary).toHaveTextContent('3张')
+    expect(compactSummary).toHaveTextContent('1.26积分')
+  })
+
+  test('generate page no longer renders post-submit progress panel from history task', async () => {
+    const pendingGenerate = vi.fn().mockResolvedValue({
+      created: 1,
+      task_id: 'task-100',
+      data: [{ url: 'https://example.com/result.png', thumb_url: 'https://example.com/result-thumb.png' }],
+      is_preview: true,
+    })
+
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage: pendingGenerate,
+      editImage,
+      history: [
+        {
+          id: 100,
+          task_id: 'task-100',
+          user_id: 1,
+          model_id: 1,
+          account_id: 1,
+          prompt: '城市天际线',
+          n: 2,
+          size: '1024x1024',
+          status: 'running',
+          phase: 'running',
+          phase_label: '生成中',
+          estimated_credit: 0.3,
+          actual_count: 1,
+          billing_status: 'partial',
+          billing_note: '已成功生成 1 张，按成功结果计费',
+          credit_cost: 15,
+          image_urls: ['https://example.com/result.png'],
+          thumb_urls: ['https://example.com/result-thumb.png'],
+          created_at: '2026-04-29T08:00:00Z',
+        },
+      ],
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
+      target: { value: '城市天际线' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+    await screen.findByText('生成结果')
+    expect(screen.queryByText('当前进度')).toBeNull()
+    expect(screen.queryByText('阶段 3，共 4 阶段')).toBeNull()
+    expect(screen.queryByText('计费说明')).toBeNull()
+    expect(screen.queryByText('实际返回')).toBeNull()
+    expect(screen.queryByText('已成功生成 1 张，按成功结果计费')).toBeNull()
+  })
+
+  test('generate result exposes follow-up actions after images are ready', async () => {
+    const generateDone = vi.fn().mockResolvedValue({
+      created: 1,
+      task_id: 'task-101',
+      data: [{ url: 'https://example.com/result.png', thumb_url: 'https://example.com/result-thumb.png' }],
+      is_preview: false,
+    })
+
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage: generateDone,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    })
+
+    render(<GenerateView />)
+
+    fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
+      target: { value: '山谷中的未来建筑' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+    expect(await screen.findByAltText('Result 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '同参数再生成' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '基于此图继续编辑' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '复制本次提示词' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '复制本次提示词' }))
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('山谷中的未来建筑')
+    })
+  })
+
+  test('continue edit writes the first result image back into source images', async () => {
+    const generateDone = vi.fn().mockResolvedValue({
+      created: 1,
+      task_id: 'task-102',
+      data: [{ url: 'https://example.com/result.png', thumb_url: 'https://example.com/result-thumb.png' }],
+      is_preview: false,
+    })
+    const resultBlob = new Blob(['continued-image'], { type: 'image/png' })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(resultBlob),
+      headers: {
+        get: vi.fn((name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null)),
+      },
+    })
+    const originalCreateObjectURL = URL.createObjectURL
+
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage: generateDone,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    vi.stubGlobal('fetch', fetchMock)
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:continued-result')
+
+    try {
+      render(<GenerateView />)
+
+      fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
+        target: { value: '山谷中的未来建筑' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+      expect(await screen.findByAltText('Result 1')).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '基于此图继续编辑' }))
+      })
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith('https://example.com/result.png')
+      })
+      await waitFor(() => {
+        expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:continued-result')
+      })
+      expect(screen.getByRole('tab', { name: '图生图' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...')).toHaveValue('山谷中的未来建筑')
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('generate view consumes pending text draft and fills prompt, model, ratio, quality and count', async () => {
+    useStore.setState({
+      pendingGenerateDraft: {
+        source: 'history-repeat',
+        mode: 'txt',
+        prompt: '历史回填提示词',
+        modelSlug: 'gpt-image-2',
+        aspectRatio: '16:9',
+        quality: '4K',
+        count: 3,
+        requestedSize: '3840x2160',
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+        { id: 2, slug: 'gpt-image-2', type: 'image', description: '高清模型', image_price_per_call: 2500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+      generateImage,
+      editImage,
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+    } as any)
+
+    render(<GenerateView />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('描述想看到的画面...')).toHaveValue('历史回填提示词')
+    })
+    expect(useStore.getState().selectedImageModel).toBe('gpt-image-2')
+    expect(screen.getByRole('button', { name: '16:9 宽屏' })).toHaveClass('border-primary/50')
+    expect(screen.getByRole('button', { name: '4K' })).toHaveClass('border-primary/50')
+    expect(screen.getByRole('button', { name: '3 张' })).toHaveClass('border-primary/50')
+    expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+  })
+
+  test('generate view consumes pending image draft and loads remote result into source images', async () => {
+    const blob = new Blob(['history-image'], { type: 'image/png' })
+    const originalCreateObjectURL = URL.createObjectURL
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+      headers: { get: vi.fn(() => 'image/png') },
+    }))
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:history-source')
+
+    useStore.setState({
+      pendingGenerateDraft: {
+        source: 'history-continue-edit',
+        mode: 'img',
+        prompt: '历史图生图提示词',
+        modelSlug: 'gpt-image-1',
+        requestedSize: '1024x1024',
+        quality: '1K',
+        referenceImageUrls: ['https://example.com/history-result.png'],
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+      generateImage,
+      editImage,
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+    } as any)
+
+    try {
+      render(<GenerateView />)
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: '图生图' })).toHaveAttribute('aria-selected', 'true'))
+      await waitFor(() => expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:history-source'))
+      expect(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...')).toHaveValue('历史图生图提示词')
+      expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('generate view keeps pending image draft available across strict mode remount and still loads source image', async () => {
+    const blob = new Blob(['history-image-strict'], { type: 'image/png' })
+    const originalCreateObjectURL = URL.createObjectURL
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+      headers: { get: vi.fn(() => 'image/png') },
+    }))
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:history-source-strict')
+
+    useStore.setState({
+      pendingGenerateDraft: {
+        source: 'history-continue-edit',
+        mode: 'img',
+        prompt: '严格模式历史图生图提示词',
+        modelSlug: 'gpt-image-1',
+        requestedSize: '1024x1024',
+        quality: '1K',
+        referenceImageUrls: ['https://example.com/history-result-strict.png'],
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+      generateImage,
+      editImage,
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+    } as any)
+
+    try {
+      render(
+        <StrictMode>
+          <GenerateView />
+        </StrictMode>,
+      )
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: '图生图' })).toHaveAttribute('aria-selected', 'true'))
+      await waitFor(() => expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:history-source-strict'))
+      expect(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...')).toHaveValue('严格模式历史图生图提示词')
+      expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('generate view consumes history-repeat image draft and loads historical reference images', async () => {
+    const blob = new Blob(['history-reference'], { type: 'image/png' })
+    const originalCreateObjectURL = URL.createObjectURL
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+      headers: { get: vi.fn(() => 'image/png') },
+    }))
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:history-repeat-source')
+
+    useStore.setState({
+      pendingGenerateDraft: {
+        source: 'history-repeat',
+        mode: 'img',
+        prompt: '历史图生图再次生成',
+        modelSlug: 'gpt-image-1',
+        requestedSize: '1024x1024',
+        quality: '1K',
+        referenceImageUrls: ['https://example.com/history-reference.png'],
+      },
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+      generateImage,
+      editImage,
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+    } as any)
+
+    try {
+      render(<GenerateView />)
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: '图生图' })).toHaveAttribute('aria-selected', 'true'))
+      await waitFor(() => expect(screen.getByAltText('参考图 1')).toHaveAttribute('src', 'blob:history-repeat-source'))
+      expect(screen.getByPlaceholderText('描述想要修改、增强或重绘的部分...')).toHaveValue('历史图生图再次生成')
+      expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('repeat generation requires confirmation before submitting again', async () => {
+    const generateDone = vi.fn()
+      .mockResolvedValueOnce({
+        created: 1,
+        task_id: 'task-201',
+        data: [{ url: 'https://example.com/result-a.png', thumb_url: 'https://example.com/result-a-thumb.png' }],
+        is_preview: false,
+      })
+      .mockResolvedValueOnce({
+        created: 1,
+        task_id: 'task-202',
+        data: [{ url: 'https://example.com/result-b.png', thumb_url: 'https://example.com/result-b-thumb.png' }],
+        is_preview: false,
+      })
+
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage: generateDone,
+      editImage,
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '标准模型', image_price_per_call: 1500 },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    render(<GenerateView />)
+
+    fireEvent.change(screen.getByPlaceholderText('描述想看到的画面...'), {
+      target: { value: '山谷中的未来建筑' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始创作' }))
+
+    expect(await screen.findByAltText('Result 1')).toBeInTheDocument()
+    expect(generateDone).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '同参数再生成' }))
+
+    expect(screen.getByText('确认再次生成')).toBeInTheDocument()
+    expect(screen.getByText('将使用刚才相同的模型、比例、质量和提示词再次提交任务。')).toBeInTheDocument()
+    expect(generateDone).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '确认生成' }))
+
+    await waitFor(() => {
+      expect(generateDone).toHaveBeenCalledTimes(2)
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('确认再次生成')).toBeNull()
+    })
   })
 
   test('generate result download triggers file download instead of opening a new page', async () => {

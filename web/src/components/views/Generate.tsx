@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import PageShell from '@/components/PageShell';
 import { cn, formatCredit } from '@/lib/utils';
-import { useStore } from '../../store/useStore';
+import { useStore, type PendingGenerateDraft } from '../../store/useStore';
 import {
   convertHEICToJPEG,
   detectSourceImageFormat,
@@ -22,6 +22,8 @@ import {
   IMAGE_RATIO_OPTIONS,
   OUTPUT_QUALITY_OPTIONS,
   getRatioPreviewStyle,
+  matchOutputPresetBySize,
+  parseOutputSize,
   resolveOriginalOutputSize,
   simplifyImageRatio,
   type AspectRatio,
@@ -46,6 +48,20 @@ interface SourceImage {
 interface GeneratedImage {
   originalUrl: string;
   displayUrl: string;
+}
+
+interface SubmissionSnapshot {
+  mode: 'txt' | 'img';
+  prompt: string;
+  requestAspectRatio: AspectRatio;
+  displayAspectRatio: string;
+  quality: OutputQualityValue;
+  qualityLabel: string;
+  count: number;
+  estimatedCredit: number;
+  size?: string;
+  files: File[];
+  modelLabel: string;
 }
 
 const IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
@@ -190,17 +206,17 @@ const resolveImageUnitPrice = (
 const getModelPrimaryLabel = (
   model:
     | {
-        slug?: string | null;
-      }
+      slug?: string | null;
+    }
     | undefined,
 ) => model?.slug?.trim() || '暂无可用模型';
 
 const getModelSecondaryLabel = (
   model:
     | {
-        slug?: string | null;
-        description?: string | null;
-      }
+      slug?: string | null;
+      description?: string | null;
+    }
     | undefined,
 ) => {
   const description = model?.description?.trim();
@@ -247,6 +263,46 @@ const triggerLinkDownload = (href: string, fileName: string) => {
   anchor.click();
   anchor.remove();
 };
+
+const resolveAspectRatioFallback = (size?: string | null): AspectRatio => {
+  const parsed = parseOutputSize(size);
+  if (!parsed) {
+    return '1:1';
+  }
+
+  const ratio = simplifyImageRatio(parsed.width, parsed.height);
+  const matched = IMAGE_RATIO_OPTIONS.find((item) => item.ratio === ratio);
+  return matched?.ratio || '1:1';
+};
+
+const resolveDraftRatioAndQuality = (draft: PendingGenerateDraft) => {
+  const matchedPreset = matchOutputPresetBySize(draft.requestedSize);
+  const aspectRatio = draft.aspectRatio || matchedPreset?.aspectRatio || resolveAspectRatioFallback(draft.requestedSize);
+  const quality = draft.quality || matchedPreset?.quality || '1K';
+
+  return { aspectRatio, quality };
+};
+
+const createRemoteImageFile = async (url: string, index: number) => {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error('载入参考图失败');
+  }
+
+  const contentType = response.headers.get('content-type') || 'image/png';
+  const blob = await response.blob();
+
+  return new File(
+    [blob],
+    getGeneratedDownloadFileName(url, index, contentType),
+    {
+      type: blob.type || contentType,
+      lastModified: Date.now(),
+    },
+  );
+};
+
 type ImageAspectRatioValue = AspectRatio | typeof ORIGINAL_SIZE_RATIO;
 
 export default function GenerateView() {
@@ -257,6 +313,7 @@ export default function GenerateView() {
     siteInfo,
     selectedImageModel,
     setSelectedImageModel,
+    consumePendingGenerateDraft,
     consumePendingPrompt,
   } = useStore();
   const [mode, setMode] = useState<'txt' | 'img'>('txt');
@@ -264,6 +321,7 @@ export default function GenerateView() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImages, setResultImages] = useState<GeneratedImage[]>([]);
   const [isPreviewResult, setIsPreviewResult] = useState(false);
+  const [lastSubmittedParams, setLastSubmittedParams] = useState<SubmissionSnapshot | null>(null);
   const [textAspectRatio, setTextAspectRatio] = useState<AspectRatio>('1:1');
   const [imageAspectRatio, setImageAspectRatio] = useState<ImageAspectRatioValue>('1:1');
   const [textOutputQuality, setTextOutputQuality] = useState<OutputQualityValue>('1K');
@@ -271,6 +329,7 @@ export default function GenerateView() {
   const [imageCount, setImageCount] = useState<1 | 2 | 3 | 4>(1);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [submissionDialogOpen, setSubmissionDialogOpen] = useState(false);
+  const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
   const [sourceImages, setSourceImages] = useState<SourceImage[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -288,14 +347,31 @@ export default function GenerateView() {
   const singleSourceImage = mode === 'img' && sourceImages.length === 1 ? sourceImages[0] : null;
   const originalSizeOption = singleSourceImage?.width && singleSourceImage?.height
     ? {
-        ratio: ORIGINAL_SIZE_RATIO,
-        ratioText: simplifyImageRatio(singleSourceImage.width, singleSourceImage.height),
-        size: resolveOriginalOutputSize(singleSourceImage.width, singleSourceImage.height, imageOutputQuality),
-      }
+      ratio: ORIGINAL_SIZE_RATIO,
+      ratioText: simplifyImageRatio(singleSourceImage.width, singleSourceImage.height),
+      size: resolveOriginalOutputSize(singleSourceImage.width, singleSourceImage.height, imageOutputQuality),
+    }
     : null;
   const currentQualityPrice = resolveImageUnitPrice(currentModel, activeOutputQuality, supportsOutputSize);
   const effectiveImageCount = mode === 'img' ? 1 : (supportsMultiImage ? imageCount : 1);
   const totalPrice = currentQualityPrice * effectiveImageCount;
+  const currentSummaryRatio = mode === 'img' && imageAspectRatio === ORIGINAL_SIZE_RATIO
+    ? originalSizeOption?.ratioText || '原图尺寸'
+    : activeAspectRatio;
+  const currentSummaryQualityLabel = supportsOutputSize ? activeOutputQuality : '默认';
+  const summaryModeValue = mode === 'txt' ? '文字生成模式' : '图片编辑模式';
+  const summaryModelValue = selectedImageModel ? `${selectedImageModel}` : '暂无可用模型';
+  const summaryRatioValue = `${currentSummaryRatio} 比例`;
+  const summaryQualityValue = `${currentSummaryQualityLabel} 档`;
+  const summaryCountValue = lastSubmittedParams ? `共 ${effectiveImageCount} 张` : `${effectiveImageCount} 张`;
+  const compactSummaryItems = [
+    { label: '模式', value: mode === 'txt' ? '文生图' : '图生图' },
+    { label: '模型', value: currentModelTitle },
+    { label: '比例', value: currentSummaryRatio },
+    { label: '质量', value: currentQualityPrice > 0 ? currentSummaryQualityLabel : '默认' },
+    { label: '数量', value: `${effectiveImageCount}张` },
+    { label: '费用', value: `${formatCredit(totalPrice)}积分` },
+  ];
 
   useEffect(() => {
     if (mode !== 'img') {
@@ -310,12 +386,112 @@ export default function GenerateView() {
   }, [imageAspectRatio, mode, originalSizeOption?.size, sourceImages.length]);
 
   useEffect(() => {
-    const nextPrompt = consumePendingPrompt();
-    if (nextPrompt) {
-      setMode('txt');
-      setPrompt(nextPrompt);
-    }
-  }, [consumePendingPrompt]);
+    let active = true;
+
+    const applyPendingDraft = async (draft: PendingGenerateDraft) => {
+      const { aspectRatio, quality } = resolveDraftRatioAndQuality(draft);
+
+      if (draft.modelSlug && imageModels.some((item) => item.slug === draft.modelSlug)) {
+        setSelectedImageModel(draft.modelSlug);
+      }
+
+      setPrompt(draft.prompt || '');
+
+      if (draft.mode === 'txt') {
+        setMode('txt');
+        setTextAspectRatio(aspectRatio);
+        setTextOutputQuality(quality);
+        setImageCount(Math.min(Math.max(draft.count ?? 1, 1), 4) as 1 | 2 | 3 | 4);
+        return;
+      }
+
+      setMode('img');
+      setImageOutputQuality(quality);
+      setImageAspectRatio(draft.useOriginalSize ? ORIGINAL_SIZE_RATIO : aspectRatio);
+
+      const referenceUrls = (draft.referenceImageUrls || []).filter(Boolean).slice(0, MAX_SOURCE_IMAGES);
+      if (referenceUrls.length === 0) {
+        replaceSourceImages([]);
+        return;
+      }
+
+      const loadedImages: SourceImage[] = [];
+
+      for (let index = 0; index < referenceUrls.length; index += 1) {
+        const url = referenceUrls[index];
+        const file = await createRemoteImageFile(url, index);
+        const sourceImage = await resolveSourceImage(file);
+
+        if (!sourceImage) {
+          throw new Error('当前参考图暂时无法载入');
+        }
+
+        loadedImages.push(sourceImage);
+      }
+
+      if (!active) {
+        loadedImages.forEach((image) => {
+          if (image.preview?.startsWith('blob:')) {
+            URL.revokeObjectURL(image.preview);
+          }
+        });
+        return;
+      }
+
+      replaceSourceImages(loadedImages);
+
+      if (loadedImages.length === 1 && draft.requestedSize) {
+        try {
+          const preview = loadedImages[0].preview;
+          if (preview) {
+            const { width, height } = await readImageDimensions(preview);
+
+            if (!active) {
+              return;
+            }
+
+            const matchesOriginalSize = (
+              resolveOriginalOutputSize(width, height, quality) || ''
+            ).toLowerCase() === (draft.requestedSize || '').trim().toLowerCase();
+
+            if (matchesOriginalSize) {
+              setImageAspectRatio(ORIGINAL_SIZE_RATIO);
+            }
+          }
+        } catch (error) {
+          console.error('pending draft image dimension read failed', error);
+        }
+      }
+    };
+
+    const applyPendingState = async () => {
+      const draft = consumePendingGenerateDraft();
+
+      if (draft) {
+        try {
+          await applyPendingDraft(draft);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : '历史参数载入失败，请稍后重试');
+        }
+        return;
+      }
+
+      const nextPrompt = consumePendingPrompt();
+      if (nextPrompt) {
+        setMode('txt');
+        setPrompt(nextPrompt);
+      }
+    };
+
+    const pendingStateTimer = window.setTimeout(() => {
+      void applyPendingState();
+    }, 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(pendingStateTimer);
+    };
+  }, [consumePendingGenerateDraft, consumePendingPrompt, imageModels, setSelectedImageModel]);
 
   useEffect(() => {
     sourceImagesRef.current = sourceImages;
@@ -362,41 +538,99 @@ export default function GenerateView() {
     setIsPreviewResult(false);
   };
 
-  const handleGenerate = async () => {
-    const nextPrompt = prompt.trim();
+  const syncSourceImageDimensions = (images: SourceImage[]) => {
+    images.forEach((image) => {
+      if (!image.preview) {
+        return;
+      }
 
-    if (!selectedImageModel) {
-      toast.error('当前暂无可用图像模型');
-      return;
+      void readImageDimensions(image.preview)
+        .then(({ width, height }) => {
+          setSourceImages((prev) => prev.map((item) => (
+            item.id === image.id ? { ...item, width, height } : item
+          )));
+        })
+        .catch((error) => {
+          console.error('reference image dimension read failed', error);
+        });
+    });
+  };
+
+  const replaceSourceImages = (images: SourceImage[]) => {
+    setSourceImages((prev) => {
+      prev.forEach((item) => {
+        if (item.preview?.startsWith('blob:')) {
+          URL.revokeObjectURL(item.preview);
+        }
+      });
+      return images;
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
-    if (!nextPrompt && mode === 'txt') {
+
+    syncSourceImageDimensions(images);
+  };
+
+  const buildSubmissionSnapshot = (): SubmissionSnapshot | null => {
+    if (!selectedImageModel) {
+      return null;
+    }
+
+    const nextPrompt = prompt.trim();
+    const submittedPrompt = mode === 'txt'
+      ? nextPrompt
+      : (nextPrompt || '增强细节，提升画面质感');
+
+    return {
+      mode,
+      prompt: submittedPrompt,
+      requestAspectRatio: mode === 'txt'
+        ? textAspectRatio
+        : (imageAspectRatio === ORIGINAL_SIZE_RATIO ? '1:1' : imageAspectRatio),
+      displayAspectRatio: currentSummaryRatio,
+      quality: activeOutputQuality,
+      qualityLabel: currentSummaryQualityLabel,
+      count: effectiveImageCount,
+      estimatedCredit: totalPrice,
+      size: mode === 'img' && imageAspectRatio === ORIGINAL_SIZE_RATIO ? originalSizeOption?.size || undefined : undefined,
+      files: sourceImages.map((image) => image.uploadFile),
+      modelLabel: selectedImageModel,
+    };
+  };
+
+  const runGeneration = async (snapshot: SubmissionSnapshot) => {
+    if (!snapshot.prompt && snapshot.mode === 'txt') {
       toast.error('请输入提示词');
       return;
     }
-    if (sourceImages.length === 0 && mode === 'img') {
+    if (snapshot.mode === 'img' && snapshot.files.length === 0) {
       toast.error('请上传参考图');
       return;
     }
 
     setIsGenerating(true);
     setSubmissionDialogOpen(true);
+    setLastSubmittedParams(snapshot);
     clearResults();
+
     try {
-      const response = mode === 'txt'
+      const response = snapshot.mode === 'txt'
         ? await generateImage({
-            prompt: nextPrompt,
-            aspectRatio: textAspectRatio,
-            quality: textOutputQuality,
-            count: effectiveImageCount,
-          })
+          prompt: snapshot.prompt,
+          aspectRatio: snapshot.requestAspectRatio,
+          quality: snapshot.quality,
+          count: snapshot.count,
+        })
         : await editImage({
-            prompt: nextPrompt || '增强细节，提升画面质感',
-            aspectRatio: imageAspectRatio === ORIGINAL_SIZE_RATIO ? '1:1' : imageAspectRatio,
-            quality: imageOutputQuality,
-            size: imageAspectRatio === ORIGINAL_SIZE_RATIO ? originalSizeOption?.size || undefined : undefined,
-            files: sourceImages.map((image) => image.uploadFile),
-            count: effectiveImageCount,
-          });
+          prompt: snapshot.prompt,
+          aspectRatio: snapshot.requestAspectRatio,
+          quality: snapshot.quality,
+          size: snapshot.size,
+          files: snapshot.files,
+          count: snapshot.count,
+        });
 
       const images = (response.data || [])
         .filter((item) => Boolean(item.url))
@@ -404,16 +638,22 @@ export default function GenerateView() {
           originalUrl: item.url,
           displayUrl: item.thumb_url || item.url,
         }));
-      if (images.length === 0) {
+
+      if (images.length === 0 && !response.task_id) {
         throw new Error('当前任务尚未返回图像结果');
       }
 
-      setResultImages(images);
+      if (images.length > 0) {
+        setResultImages(images);
+      }
       setIsPreviewResult(!!response.is_preview);
-      if (response.is_preview) {
+
+      if (response.is_preview && images.length > 0) {
         toast.message('当前结果为预览图，稍后可在记录页查看任务状态');
-      } else {
+      } else if (images.length > 0) {
         toast.success(`创作完成，共 ${images.length} 张`);
+      } else {
+        toast.message('任务已经提交，当前暂无可预览结果');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成失败，请稍后重试');
@@ -421,6 +661,15 @@ export default function GenerateView() {
       setSubmissionDialogOpen(false);
       setIsGenerating(false);
     }
+  };
+
+  const handleGenerate = async () => {
+    const snapshot = buildSubmissionSnapshot();
+    if (!snapshot) {
+      toast.error('当前暂无可用图像模型');
+      return;
+    }
+    await runGeneration(snapshot);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -466,20 +715,7 @@ export default function GenerateView() {
     }
 
     setSourceImages((prev) => [...prev, ...acceptedFiles]);
-    acceptedFiles.forEach((image) => {
-      if (!image.preview) {
-        return;
-      }
-      void readImageDimensions(image.preview)
-        .then(({ width, height }) => {
-          setSourceImages((prev) => prev.map((item) => (
-            item.id === image.id ? { ...item, width, height } : item
-          )));
-        })
-        .catch((error) => {
-          console.error('reference image dimension read failed', error);
-        });
-    });
+    syncSourceImageDimensions(acceptedFiles);
     e.target.value = '';
   };
 
@@ -542,6 +778,78 @@ export default function GenerateView() {
     }
   };
 
+  const handleRepeatGeneration = () => {
+    if (!lastSubmittedParams || isGenerating) {
+      return;
+    }
+    setRepeatConfirmOpen(true);
+  };
+
+  const handleConfirmRepeatGeneration = async () => {
+    if (!lastSubmittedParams || isGenerating) {
+      return;
+    }
+    setRepeatConfirmOpen(false);
+    await runGeneration(lastSubmittedParams);
+  };
+
+  const handleContinueEdit = async () => {
+    const resultImage = resultImages[0];
+
+    setMode('img');
+    if (lastSubmittedParams?.prompt?.trim()) {
+      setPrompt(lastSubmittedParams.prompt);
+    }
+    if (lastSubmittedParams?.requestAspectRatio) {
+      setImageAspectRatio(lastSubmittedParams.requestAspectRatio);
+    }
+    if (!resultImage) {
+      return;
+    }
+
+    try {
+      const response = await fetch(resultImage.originalUrl);
+
+      if (!response.ok) {
+        throw new Error('载入结果图失败');
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/png';
+      const blob = await response.blob();
+      const resultFile = new File(
+        [blob],
+        getGeneratedDownloadFileName(resultImage.originalUrl, 0, contentType),
+        {
+          type: blob.type || contentType,
+          lastModified: Date.now(),
+        },
+      );
+      const sourceImage = await resolveSourceImage(resultFile);
+
+      if (!sourceImage) {
+        throw new Error('当前结果图暂时无法作为参考图继续编辑');
+      }
+
+      replaceSourceImages([sourceImage]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '载入结果图失败，请稍后重试');
+    }
+  };
+
+  const handleCopyLastPrompt = async () => {
+    const copiedPrompt = lastSubmittedParams?.prompt?.trim();
+    if (!copiedPrompt) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(copiedPrompt);
+      toast.success('提示词已复制');
+    } catch {
+      toast.error('复制提示词失败，请稍后重试');
+    }
+  };
+
   return (
     <PageShell width="wide" className="space-y-6 lg:space-y-8">
       <Dialog open={submissionDialogOpen} onOpenChange={setSubmissionDialogOpen}>
@@ -568,6 +876,38 @@ export default function GenerateView() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={repeatConfirmOpen} onOpenChange={setRepeatConfirmOpen}>
+        <DialogContent className="rounded-3xl p-5" showCloseButton={false}>
+          <div className="space-y-5">
+            <div className="space-y-2 text-center">
+              <DialogTitle className="text-lg font-black">确认再次生成</DialogTitle>
+              <DialogDescription className="text-sm leading-6">
+                将使用刚才相同的模型、比例、质量和提示词再次提交任务。
+              </DialogDescription>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11 rounded-2xl font-bold"
+                onClick={() => setRepeatConfirmOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                className="h-11 rounded-2xl font-bold"
+                onClick={() => {
+                  void handleConfirmRepeatGeneration();
+                }}
+              >
+                确认生成
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {imageNotice ? (
         <Card className="rounded-3xl border-amber-500/25 bg-amber-500/10 px-4 py-3">
           <div className="flex items-start gap-3">
@@ -581,18 +921,9 @@ export default function GenerateView() {
         </Card>
       ) : null}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight lg:text-3xl">创意实验室</h1>
-          <p className="text-xs font-medium text-muted-foreground lg:text-sm">释放视觉想象力</p>
-        </div>
-        <div className="rounded-[1.75rem] border border-primary/20 bg-primary/10 px-4 py-3 text-right text-[10px] font-bold text-primary shadow-sm shadow-primary/10 lg:min-w-[18rem] lg:text-xs">
-          <p>当前质量价格：{formatCredit(currentQualityPrice)} 积分 / 张</p>
-          {mode === 'txt' && supportsMultiImage ? (
-            <p className="mt-1 text-[9px] font-medium text-foreground/80">多张生成会按张数累计扣费</p>
-          ) : null}
-          <p className="mt-1 text-[9px] font-medium text-foreground/80">当前 {effectiveImageCount} 张，预计消耗 {formatCredit(totalPrice)} 积分</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-black tracking-tight lg:text-3xl">创意实验室</h1>
+        <p className="text-xs font-medium text-muted-foreground lg:text-sm">释放视觉想象力</p>
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:gap-8">
@@ -884,7 +1215,7 @@ export default function GenerateView() {
                 </div>
               </div>
 
-              {supportsOutputSize ? (
+              {supportsOutputSize && !lastSubmittedParams ? (
                 <div className="space-y-3">
                   <p className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">输出质量</p>
                   <div className="grid grid-cols-3 gap-2">
@@ -921,6 +1252,7 @@ export default function GenerateView() {
                         <button
                           key={count}
                           type="button"
+                          aria-label={`${count} 张`}
                           onClick={() => setImageCount(count)}
                           className={cn(
                             'rounded-2xl border px-3 py-3 text-sm font-bold transition-all',
@@ -929,7 +1261,7 @@ export default function GenerateView() {
                               : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground',
                           )}
                         >
-                          {count} 张
+                          {count}张
                         </button>
                       );
                     })}
@@ -937,6 +1269,53 @@ export default function GenerateView() {
                 </div>
               ) : null}
             </div>
+
+            <Card className="rounded-2xl border-primary/15 bg-background/60 p-3 sm:p-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-black">本次生成摘要</h3>
+              </div>
+              <div
+                data-testid="mobile-generation-summary"
+                className="mt-3 flex flex-wrap gap-2 lg:hidden"
+              >
+                {compactSummaryItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-primary/[0.06] px-2.5 py-1 text-[11px] font-semibold text-foreground/90"
+                  >
+                    <span className="text-muted-foreground">{item.label}</span>
+                    <span className="max-w-[8rem] truncate text-foreground">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 hidden grid-cols-2 gap-3 sm:grid-cols-3 lg:grid">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">生成方式</p>
+                  <p className="text-sm font-semibold">{summaryModeValue}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">使用模型</p>
+                  <p className="truncate text-sm font-semibold">{summaryModelValue}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">比例摘要</p>
+                  <p className="text-sm font-semibold">{summaryRatioValue}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">质量摘要</p>
+                  <p className="text-sm font-semibold">{summaryQualityValue}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">生成数量</p>
+                  <p className="text-sm font-semibold">{summaryCountValue}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">预计扣费</p>
+                  <p className="text-sm font-semibold">{formatCredit(totalPrice)} 积分</p>
+                </div>
+              </div>
+            </Card>
 
             <Button
               className="h-14 w-full rounded-2xl bg-primary text-lg font-black text-primary-foreground shadow-xl shadow-primary/25 hover:bg-primary/90 disabled:opacity-50"
@@ -971,30 +1350,64 @@ export default function GenerateView() {
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
-                className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+                className="space-y-4"
               >
-                {resultImages.map((image, index) => (
-                  <div key={`${image.originalUrl}-${index}`} className="relative overflow-hidden rounded-[2rem] border border-primary/20 bg-card shadow-xl">
-                    <img src={image.displayUrl} alt={`Result ${index + 1}`} decoding="async" className="aspect-square w-full object-cover" />
-                    {isPreviewResult ? (
-                      <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
-                        预览图
-                      </div>
-                    ) : null}
-                    <a
-                      href={image.originalUrl}
-                      download
-                      rel="noopener"
-                      aria-label={`下载原图 ${index + 1}`}
-                      onClick={(event) => {
-                        void handleDownloadResultImage(event, image, index);
-                      }}
-                      className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg lg:backdrop-blur-sm"
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {resultImages.map((image, index) => (
+                    <div key={`${image.originalUrl}-${index}`} className="relative overflow-hidden rounded-[2rem] border border-primary/20 bg-card shadow-xl">
+                      <img src={image.displayUrl} alt={`Result ${index + 1}`} decoding="async" className="aspect-square w-full object-cover" />
+                      {isPreviewResult ? (
+                        <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
+                          预览图
+                        </div>
+                      ) : null}
+                      <a
+                        href={image.originalUrl}
+                        download
+                        rel="noopener"
+                        aria-label={`下载原图 ${index + 1}`}
+                        onClick={(event) => {
+                          void handleDownloadResultImage(event, image, index);
+                        }}
+                        className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg lg:backdrop-blur-sm"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+
+                <Card className="rounded-[2rem] border-primary/15 bg-background/70 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-2xl"
+                      onClick={handleRepeatGeneration}
+                      disabled={isGenerating || !lastSubmittedParams}
                     >
-                      <Download className="h-4 w-4" />
-                    </a>
+                      同参数再生成
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-2xl"
+                      onClick={handleContinueEdit}
+                    >
+                      基于此图继续编辑
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-2xl"
+                      onClick={() => {
+                        void handleCopyLastPrompt();
+                      }}
+                    >
+                      复制本次提示词
+                    </Button>
                   </div>
-                ))}
+                </Card>
               </motion.div>
             ) : isGenerating ? (
               <motion.div

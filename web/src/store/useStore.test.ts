@@ -167,6 +167,39 @@ describe('useStore backend integration', () => {
     expect(state.consumePendingPrompt()).toBe('')
   })
 
+  test('pending generate draft can be stored, consumed once and cleared by auth resets', () => {
+    const state = useStore.getState() as any
+    const draft = {
+      source: 'history-repeat',
+      mode: 'txt',
+      prompt: 'Cloud city',
+      modelSlug: 'gpt-image-1',
+      aspectRatio: '1:1',
+      quality: '1K',
+      count: 2,
+      requestedSize: '1024x1024',
+      referenceImageUrls: [],
+    }
+
+    state.setPendingGenerateDraft(draft)
+
+    expect((useStore.getState() as any).pendingGenerateDraft).toEqual(draft)
+    expect(state.consumePendingGenerateDraft()).toEqual(draft)
+    expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+
+    state.setPendingGenerateDraft(draft)
+    state.logout()
+    expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+
+    state.setPendingGenerateDraft(draft)
+    state.forceRelogin('generate')
+    expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+
+    state.setPendingGenerateDraft(draft)
+    state.handleUnauthorized()
+    expect((useStore.getState() as any).pendingGenerateDraft).toBeNull()
+  })
+
   test('openAuthForTab records pending protected tab and opens overlay', () => {
     const state = useStore.getState() as any
 
@@ -174,6 +207,33 @@ describe('useStore backend integration', () => {
 
     expect((useStore.getState() as any).pendingTab).toBe('history')
     expect((useStore.getState() as any).authOverlayOpen).toBe(true)
+  })
+
+  test('handleUnauthorized keeps prompt library active because it is public', () => {
+    useStore.setState({
+      activeTab: 'promptLibrary',
+      pendingTab: 'promptLibrary',
+      user: {
+        id: 1,
+        email: 'demo@example.com',
+        nickname: 'Demo',
+        role: 'user',
+        status: 'active',
+        group_id: 1,
+        credit_balance: 88,
+        credit_frozen: 0,
+      },
+      role: 'user',
+      permissions: ['self:profile'],
+    } as any)
+
+    const state = useStore.getState() as any
+    state.handleUnauthorized()
+
+    const next = useStore.getState() as any
+    expect(next.activeTab).toBe('promptLibrary')
+    expect(next.pendingTab).toBe('home')
+    expect(next.authOverlayOpen).toBe(true)
   })
 
   test('login stores tokens, closes auth overlay and switches to pending tab', async () => {
@@ -392,6 +452,58 @@ describe('useStore backend integration', () => {
     ])
     expect((useStore.getState() as any).historyHasMore).toBe(false)
     expect((useStore.getState() as any).historyOffset).toBe(21)
+  })
+
+  test('fetchHistory forwards filters and reuses them when loading the next page', async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => mockImageTask(index + 1))
+    const secondPage = [mockImageTask(21)]
+
+    vi.mocked(meApi.listMyImageTasks)
+      .mockResolvedValueOnce({
+        items: firstPage,
+        total: 21,
+        limit: 20,
+        offset: 0,
+      } as any)
+      .mockResolvedValueOnce({
+        items: secondPage,
+        total: 21,
+        limit: 20,
+        offset: 20,
+      } as any)
+
+    const state = useStore.getState() as any
+
+    await state.fetchHistory(true, false, {
+      keyword: 'forest',
+      status: 'failed',
+      startAt: '2026-04-01',
+      endAt: '2026-04-30',
+    })
+    await (useStore.getState() as any).fetchHistory(false, true)
+
+    expect(meApi.listMyImageTasks).toHaveBeenNthCalledWith(1, {
+      keyword: 'forest',
+      status: 'failed',
+      start_at: '2026-04-01',
+      end_at: '2026-04-30',
+      limit: 20,
+      offset: 0,
+    })
+    expect(meApi.listMyImageTasks).toHaveBeenNthCalledWith(2, {
+      keyword: 'forest',
+      status: 'failed',
+      start_at: '2026-04-01',
+      end_at: '2026-04-30',
+      limit: 20,
+      offset: 20,
+    })
+    expect((useStore.getState() as any).historyFilters).toEqual({
+      keyword: 'forest',
+      status: 'failed',
+      startAt: '2026-04-01',
+      endAt: '2026-04-30',
+    })
   })
 
   test('generateImage lazily prefers image model with upstream channel when no selection exists', async () => {

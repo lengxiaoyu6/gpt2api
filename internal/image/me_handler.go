@@ -53,6 +53,12 @@ type taskView struct {
 	ConversationID     string     `json:"conversation_id,omitempty"`
 	Error              string     `json:"error,omitempty"`
 	CreditCost         int64      `json:"credit_cost"`
+	Phase              string     `json:"phase"`
+	PhaseLabel         string     `json:"phase_label"`
+	EstimatedCredit    int64      `json:"estimated_credit"`
+	ActualCount        int        `json:"actual_count"`
+	BillingStatus      string     `json:"billing_status"`
+	BillingNote        string     `json:"billing_note"`
 	ImageURLs          []string   `json:"image_urls"`
 	ThumbURLs          []string   `json:"thumb_urls"`
 	ReferenceURLs      []string   `json:"reference_urls"`
@@ -66,30 +72,21 @@ type taskView struct {
 func toView(t *Task, files historyImageStore) taskView {
 	urls, thumbs := buildHistoryImageURLs(t, files)
 	referenceURLs, referenceThumbURLs := buildHistoryReferenceURLs(t, files)
+	meta := BuildTaskProgressMeta(t)
 	fids := t.DecodeFileIDs()
 	for i, id := range fids {
 		fids[i] = strings.TrimPrefix(id, "sed:")
-	}
-	// 关键:对外暴露的原图 URL 一律改成站内签名代理地址,避免:
-	//   1) 上游防盗链或跨域响应导致浏览器把下载操作当成普通打开
-	//   2) 上游短时效签名过期后,历史记录里的原图无法继续访问
-	// 缩略图继续保留各自存储地址,让列表与详情预览优先走更轻量的资源。
-	if len(urls) > 0 {
-		urls = BuildProxyURLs(t.TaskID, urls)
-	} else if NormalizeStorageMode(t.StorageMode) != StorageModeCloud && len(fids) > 0 {
-		// 极少数老数据 result_urls 为空但 file_ids 完整:
-		// 同样按 idx 走代理,代理端能根据 file_ids 现取签名 URL。
-		urls = make([]string, len(fids))
-		for i := range fids {
-			urls[i] = BuildProxyURL(t.TaskID, i, "")
-		}
 	}
 	return taskView{
 		ID: t.ID, TaskID: t.TaskID, UserID: t.UserID, ModelID: t.ModelID,
 		AccountID: t.AccountID, Prompt: t.Prompt, N: t.N, Size: t.Size,
 		Upscale: t.Upscale,
 		Status:  t.Status, ConversationID: t.ConversationID, Error: t.Error,
-		CreditCost: t.CreditCost, ImageURLs: urls, ThumbURLs: thumbs,
+		CreditCost: t.CreditCost,
+		Phase:      meta.Phase, PhaseLabel: meta.PhaseLabel,
+		EstimatedCredit: meta.EstimatedCredit, ActualCount: meta.ActualCount,
+		BillingStatus: meta.BillingStatus, BillingNote: meta.BillingNote,
+		ImageURLs: urls, ThumbURLs: thumbs,
 		ReferenceURLs: referenceURLs, ReferenceThumbURLs: referenceThumbURLs, FileIDs: fids,
 		CreatedAt: t.CreatedAt, StartedAt: t.StartedAt, FinishedAt: t.FinishedAt,
 	}
@@ -161,9 +158,7 @@ func buildHistoryReferenceURLs(t *Task, files historyImageStore) ([]string, []st
 		references := make([]string, count)
 		thumbs := make([]string, count)
 		for i := 0; i < count; i++ {
-			if i < len(storedURLs) {
-				references[i] = strings.TrimSpace(storedURLs[i])
-			}
+			references[i] = imageproxy.BuildURL(t.TaskID, i, imageproxy.ResourceReference, imageproxy.DefaultTTL)
 			if i < len(storedThumbURLs) {
 				thumbs[i] = strings.TrimSpace(storedThumbURLs[i])
 			}
