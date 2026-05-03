@@ -31,6 +31,13 @@ type promptRow struct {
 	UpdatedAt       time.Time      `db:"updated_at"`
 }
 
+type promptCategoryRow struct {
+	ID        uint64    `db:"id"`
+	Name      string    `db:"name"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
 func (d *DAO) List(ctx context.Context, params ListParams) ([]PromptLibraryItem, int, error) {
 	where, args := buildListWhere(params)
 	var total int
@@ -72,6 +79,76 @@ func (d *DAO) Categories(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (d *DAO) AdminCategories(ctx context.Context) ([]PromptCategory, error) {
+	rows := make([]promptCategoryRow, 0)
+	err := d.db.SelectContext(ctx, &rows,
+		`SELECT id, name, created_at, updated_at
+           FROM prompt_library_categories
+          ORDER BY name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]PromptCategory, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, PromptCategory{
+			ID:        row.ID,
+			Name:      row.Name,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return items, nil
+}
+
+func (d *DAO) CategoryExists(ctx context.Context, name string) (bool, error) {
+	var total int
+	if err := d.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM prompt_library_categories WHERE name = ?`, name); err != nil {
+		return false, err
+	}
+	return total > 0, nil
+}
+
+func (d *DAO) CreateCategory(ctx context.Context, input PromptCategory) (*PromptCategory, error) {
+	res, err := d.db.ExecContext(ctx,
+		`INSERT INTO prompt_library_categories (name, created_at, updated_at)
+         VALUES (?, ?, ?)`,
+		input.Name, input.CreatedAt, input.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if id, err := res.LastInsertId(); err == nil {
+		input.ID = uint64(id)
+	}
+	return &input, nil
+}
+
+func (d *DAO) DeleteCategory(ctx context.Context, id uint64, fallbackName string) error {
+	tx, err := d.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var row promptCategoryRow
+	if err := tx.GetContext(ctx, &row, `SELECT id, name, created_at, updated_at FROM prompt_library_categories WHERE id = ?`, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE prompt_library_items SET category = ? WHERE category = ?`, fallbackName, row.Name); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM prompt_library_categories WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
 }
 
 func (d *DAO) Create(ctx context.Context, input PromptLibraryItem) (*PromptLibraryItem, error) {

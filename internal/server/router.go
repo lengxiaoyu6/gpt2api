@@ -421,6 +421,12 @@ func New(d *Deps) *gin.Engine {
 					pg.PUT("/:id", d.PromptH.Update)
 					pg.DELETE("/:id", d.PromptH.Delete)
 				}
+				cg := admin.Group("/prompt-categories", middleware.RequirePerm(rbac.PermSystemSetting))
+				{
+					cg.GET("", d.PromptH.ListAdminCategories)
+					cg.POST("", d.PromptH.CreateCategory)
+					cg.DELETE("/:id", d.PromptH.DeleteCategory)
+				}
 			}
 
 			// 系统设置(站点 / 注册 / SMTP 测试 等)

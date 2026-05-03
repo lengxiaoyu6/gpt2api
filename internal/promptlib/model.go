@@ -24,6 +24,13 @@ type PromptLibraryItem struct {
 	UpdatedAt       time.Time `db:"updated_at" json:"updated_at"`
 }
 
+type PromptCategory struct {
+	ID        uint64    `db:"id" json:"id"`
+	Name      string    `db:"name" json:"name"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
 // SaveInput 是创建与修改 Prompt 时的输入。
 type SaveInput struct {
 	Title           string   `json:"title"`
@@ -33,6 +40,10 @@ type SaveInput struct {
 	Tags            []string `json:"tags"`
 	Enabled         bool     `json:"enabled"`
 	SortOrder       int      `json:"sort_order"`
+}
+
+type SaveCategoryInput struct {
+	Name string `json:"name"`
 }
 
 // ListInput 是列表接口接收的筛选与分页参数。
@@ -65,4 +76,8 @@ type ListOutput struct {
 // CategoriesOutput 是分类列表接口返回值。
 type CategoriesOutput struct {
 	Items []string `json:"items"`
+}
+
+type AdminCategoriesOutput struct {
+	Items []PromptCategory `json:"items"`
 }

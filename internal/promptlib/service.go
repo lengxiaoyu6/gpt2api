@@ -18,6 +18,10 @@ const (
 type Store interface {
 	List(ctx context.Context, params ListParams) ([]PromptLibraryItem, int, error)
 	Categories(ctx context.Context) ([]string, error)
+	AdminCategories(ctx context.Context) ([]PromptCategory, error)
+	CategoryExists(ctx context.Context, name string) (bool, error)
+	CreateCategory(ctx context.Context, input PromptCategory) (*PromptCategory, error)
+	DeleteCategory(ctx context.Context, id uint64, fallbackName string) error
 	Create(ctx context.Context, input PromptLibraryItem) (*PromptLibraryItem, error)
 	Update(ctx context.Context, id uint64, input PromptLibraryItem) (*PromptLibraryItem, error)
 	Delete(ctx context.Context, id uint64) error
@@ -61,9 +65,60 @@ func (s *Service) Categories(ctx context.Context) (*CategoriesOutput, error) {
 	return &CategoriesOutput{Items: rows}, nil
 }
 
+func (s *Service) ListAdminCategories(ctx context.Context) (*AdminCategoriesOutput, error) {
+	rows, err := s.store.AdminCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminCategoriesOutput{Items: rows}, nil
+}
+
+func (s *Service) CreateCategory(ctx context.Context, input SaveCategoryInput) (*PromptCategory, error) {
+	name := strings.TrimSpace(input.Name)
+	if utf8.RuneCountInString(name) == 0 || utf8.RuneCountInString(name) > 80 {
+		return nil, ErrInvalidInput
+	}
+	exists, err := s.store.CategoryExists(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrInvalidInput
+	}
+	now := s.now().UTC()
+	return s.store.CreateCategory(ctx, PromptCategory{
+		Name:      name,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+}
+
+func (s *Service) DeleteCategory(ctx context.Context, id uint64) error {
+	if id == 0 {
+		return ErrNotFound
+	}
+	rows, err := s.store.AdminCategories(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row.ID != id {
+			continue
+		}
+		if row.Name == defaultCategory {
+			return ErrInvalidInput
+		}
+		return s.store.DeleteCategory(ctx, id, defaultCategory)
+	}
+	return ErrNotFound
+}
+
 func (s *Service) Create(ctx context.Context, input SaveInput) (*PromptLibraryItem, error) {
 	item, err := normalizeInput(input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateCategory(ctx, item.Category); err != nil {
 		return nil, err
 	}
 	now := s.now().UTC()
@@ -78,6 +133,9 @@ func (s *Service) Update(ctx context.Context, id uint64, input SaveInput) (*Prom
 	}
 	item, err := normalizeInput(input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateCategory(ctx, item.Category); err != nil {
 		return nil, err
 	}
 	item.UpdatedAt = s.now().UTC()
@@ -120,6 +178,17 @@ func normalizeInput(input SaveInput) (PromptLibraryItem, error) {
 		Enabled:         input.Enabled,
 		SortOrder:       input.SortOrder,
 	}, nil
+}
+
+func (s *Service) validateCategory(ctx context.Context, category string) error {
+	exists, err := s.store.CategoryExists(ctx, category)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrInvalidInput
+	}
+	return nil
 }
 
 func validPreviewImageURL(value string) bool {

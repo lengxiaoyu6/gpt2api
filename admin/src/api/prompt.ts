@@ -13,6 +13,13 @@ export interface PromptLibraryItem {
   updated_at: string
 }
 
+export interface PromptCategory {
+  id: number
+  name: string
+  created_at: string
+  updated_at: string
+}
+
 export interface PromptLibraryPayload {
   title: string
   content: string
@@ -38,8 +45,28 @@ export interface PromptLibraryListParams {
   offset?: number
 }
 
+export interface PromptCategoryPayload {
+  name: string
+}
+
+export interface PromptCategoryList {
+  items: PromptCategory[]
+}
+
 export function adminListPrompts(params: PromptLibraryListParams = {}): Promise<PromptLibraryList> {
   return http.get('/api/admin/prompts', { params })
+}
+
+export function adminListPromptCategories(): Promise<PromptCategoryList> {
+  return http.get('/api/admin/prompt-categories')
+}
+
+export function adminCreatePromptCategory(payload: PromptCategoryPayload): Promise<PromptCategory> {
+  return http.post('/api/admin/prompt-categories', payload)
+}
+
+export function adminDeletePromptCategory(id: number) {
+  return http.delete(`/api/admin/prompt-categories/${id}`)
 }
 
 export function adminCreatePrompt(payload: PromptLibraryPayload): Promise<PromptLibraryItem> {

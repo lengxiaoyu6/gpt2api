@@ -54,3 +54,30 @@ func TestPromptLibraryPreviewImageMigrationAddsOptionalURL(t *testing.T) {
 		}
 	}
 }
+
+func TestPromptLibraryCategoriesMigrationCreatesManagementTableAndSeedsDefault(t *testing.T) {
+	body, err := os.ReadFile("../../sql/migrations/20260503000005_prompt_library_categories.sql")
+	if err != nil {
+		t.Fatalf("read prompt library categories migration: %v", err)
+	}
+	sql := string(body)
+	checks := []string{
+		"-- +goose Up",
+		"-- +goose StatementBegin",
+		"-- +goose StatementEnd",
+		"-- +goose Down",
+		"CREATE TABLE IF NOT EXISTS `prompt_library_categories`",
+		"`name` VARCHAR(80) NOT NULL",
+		"UNIQUE KEY `uk_prompt_library_categories_name` (`name`)",
+		"INSERT INTO `prompt_library_categories` (`name`, `created_at`, `updated_at`)",
+		"SELECT DISTINCT",
+		"COALESCE(NULLIF(TRIM(`category`), ''), '通用')",
+		"FROM `prompt_library_items`",
+		"DROP TABLE IF EXISTS `prompt_library_categories`",
+	}
+	for _, check := range checks {
+		if !strings.Contains(sql, check) {
+			t.Fatalf("prompt library categories migration missing %q", check)
+		}
+	}
+}

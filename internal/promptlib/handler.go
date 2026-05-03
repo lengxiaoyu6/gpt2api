@@ -51,6 +51,38 @@ func (h *Handler) Categories(c *gin.Context) {
 	resp.OK(c, out)
 }
 
+func (h *Handler) ListAdminCategories(c *gin.Context) {
+	out, err := h.svc.ListAdminCategories(c.Request.Context())
+	if err != nil {
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, out)
+}
+
+func (h *Handler) CreateCategory(c *gin.Context) {
+	var req SaveCategoryInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.BadRequest(c, err.Error())
+		return
+	}
+	item, err := h.svc.CreateCategory(c.Request.Context(), req)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	resp.OK(c, item)
+}
+
+func (h *Handler) DeleteCategory(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err := h.svc.DeleteCategory(c.Request.Context(), id); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"ok": true})
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	var req SaveInput
 	if err := c.ShouldBindJSON(&req); err != nil {

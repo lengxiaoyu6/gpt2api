@@ -3,18 +3,25 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatDateTime } from '@/utils/format'
 import {
+  adminCreatePromptCategory,
   adminCreatePrompt,
+  adminDeletePromptCategory,
+  adminListPromptCategories,
   adminDeletePrompt,
   adminListPrompts,
   adminUpdatePrompt,
+  type PromptCategory,
   type PromptLibraryItem,
   type PromptLibraryPayload,
 } from '@/api/prompt'
 
 const rows = ref<PromptLibraryItem[]>([])
+const categoryRows = ref<PromptCategory[]>([])
 const total = ref(0)
 const loading = ref(false)
+const categoryLoading = ref(false)
 const submitting = ref(false)
+const categorySubmitting = ref(false)
 const dialogVisible = ref(false)
 const editingID = ref<number | null>(null)
 const page = reactive({ limit: 20, offset: 0 })
@@ -23,6 +30,7 @@ const filters = reactive<{ keyword: string; category: string; enabled: boolean |
   category: '',
   enabled: '',
 })
+const categoryForm = reactive({ name: '' })
 
 const form = reactive<PromptLibraryPayload & { tagText: string }>({
   title: '',
@@ -42,14 +50,26 @@ const currentPage = computed({
   },
 })
 
-const categories = computed(() => {
-  const set = new Set<string>()
-  rows.value.forEach((row) => {
-    const value = row.category?.trim()
-    if (value) set.add(value)
-  })
-  return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-})
+const categories = computed(() => categoryRows.value.map((item) => item.name))
+
+async function loadCategories() {
+  categoryLoading.value = true
+  try {
+    const data = await adminListPromptCategories()
+    categoryRows.value = data.items || []
+    const exists = new Set(categoryRows.value.map((item) => item.name))
+    if (filters.category && !exists.has(filters.category)) {
+      filters.category = ''
+    }
+    if (!exists.has(form.category)) {
+      form.category = '通用'
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '分类列表加载失败')
+  } finally {
+    categoryLoading.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -72,6 +92,39 @@ async function load() {
 async function search() {
   page.offset = 0
   await load()
+}
+
+async function createCategory() {
+  const name = categoryForm.name.trim()
+  if (!name) {
+    ElMessage.warning('请输入分类名称')
+    return
+  }
+  if (name.length > 80) {
+    ElMessage.warning('分类最多 80 个字符')
+    return
+  }
+  categorySubmitting.value = true
+  try {
+    await adminCreatePromptCategory({ name })
+    categoryForm.name = ''
+    ElMessage.success('分类已创建')
+    await loadCategories()
+  } finally {
+    categorySubmitting.value = false
+  }
+}
+
+async function removeCategory(row: PromptCategory) {
+  const confirmed = await ElMessageBox.confirm(
+    `确认删除分类“${row.name}”？关联 Prompt 将迁移到通用。`,
+    '删除分类',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+  ).then(() => true).catch(() => false)
+  if (!confirmed || !row.id) return
+  await adminDeletePromptCategory(row.id)
+  ElMessage.success('分类已删除')
+  await Promise.all([loadCategories(), load()])
 }
 
 function resetForm() {
@@ -142,6 +195,10 @@ function validateForm() {
     ElMessage.warning('分类最多 80 个字符')
     return false
   }
+  if (!categories.value.includes(category)) {
+    ElMessage.warning('请选择有效分类')
+    return false
+  }
   if (previewImageURL.length > 2048) {
     ElMessage.warning('预览图 URL 最多 2048 个字符')
     return false
@@ -190,7 +247,9 @@ async function submit() {
       ElMessage.success('Prompt 已创建')
     }
     dialogVisible.value = false
-    await load()
+    await Promise.all([load(), loadCategories()])
+  } catch (error: any) {
+    ElMessage.error(error?.message || '保存 Prompt 失败')
   } finally {
     submitting.value = false
   }
@@ -225,7 +284,9 @@ function contentSummary(value: string) {
   return `${text.slice(0, 80)}…`
 }
 
-onMounted(load)
+onMounted(async () => {
+  await Promise.all([loadCategories(), load()])
+})
 </script>
 
 <template>
@@ -246,7 +307,9 @@ onMounted(load)
           <el-input v-model="filters.keyword" clearable placeholder="标题、内容、标签" @keyup.enter="search" />
         </el-form-item>
         <el-form-item label="分类">
-          <el-input v-model="filters.category" clearable placeholder="输入分类" @keyup.enter="search" />
+          <el-select v-model="filters.category" clearable placeholder="全部分类" style="width: 180px">
+            <el-option v-for="name in categories" :key="name" :label="name" :value="name" />
+          </el-select>
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="filters.enabled" clearable placeholder="全部" style="width: 120px">
@@ -261,8 +324,28 @@ onMounted(load)
         </el-form-item>
       </el-form>
 
-      <div v-if="categories.length" class="prompt-category-strip">
-        <el-tag v-for="name in categories" :key="name" effect="plain">{{ name }}</el-tag>
+      <div class="prompt-category-panel" v-loading="categoryLoading">
+        <div class="prompt-category-panel__title">分类管理</div>
+        <div class="prompt-category-panel__actions">
+          <el-input
+            v-model.trim="categoryForm.name"
+            maxlength="80"
+            placeholder="新增分类名称"
+            @keyup.enter="createCategory"
+          />
+          <el-button type="primary" :loading="categorySubmitting" @click="createCategory">新增分类</el-button>
+        </div>
+        <div v-if="categoryRows.length" class="prompt-category-strip">
+          <div v-for="item in categoryRows" :key="item.id" class="prompt-category-chip">
+            <el-tag effect="plain">{{ item.name }}</el-tag>
+            <el-button
+              v-if="item.name !== '通用'"
+              link
+              type="danger"
+              @click="removeCategory(item)"
+            >删除</el-button>
+          </div>
+        </div>
       </div>
 
       <el-table :data="rows" stripe v-loading="loading">
@@ -335,7 +418,9 @@ onMounted(load)
           <el-input v-model.trim="form.title" maxlength="160" show-word-limit placeholder="请输入 Prompt 标题" />
         </el-form-item>
         <el-form-item label="分类">
-          <el-input v-model.trim="form.category" maxlength="80" placeholder="默认通用" />
+          <el-select v-model="form.category" placeholder="请选择分类" style="width: 100%">
+            <el-option v-for="name in categories" :key="name" :label="name" :value="name" />
+          </el-select>
         </el-form-item>
         <el-form-item label="预览图 URL">
           <el-input
@@ -405,6 +490,33 @@ onMounted(load)
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.prompt-category-panel {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.prompt-category-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.prompt-category-panel__actions {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 240px) auto;
+  margin-bottom: 12px;
+  max-width: 420px;
+}
+
+.prompt-category-chip {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
 }
 
 .tag-list {

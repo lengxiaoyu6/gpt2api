@@ -10,12 +10,19 @@ import (
 )
 
 type fakePromptStore struct {
-	items  map[uint64]*PromptLibraryItem
-	nextID uint64
+	items      map[uint64]*PromptLibraryItem
+	categories map[uint64]*PromptCategory
+	nextID     uint64
+	nextCateID uint64
 }
 
 func newFakePromptStore() *fakePromptStore {
-	return &fakePromptStore{items: map[uint64]*PromptLibraryItem{}, nextID: 1}
+	return &fakePromptStore{
+		items:      map[uint64]*PromptLibraryItem{},
+		categories: map[uint64]*PromptCategory{1: {ID: 1, Name: defaultCategory}},
+		nextID:     1,
+		nextCateID: 2,
+	}
 }
 
 func (s *fakePromptStore) List(ctx context.Context, params ListParams) ([]PromptLibraryItem, int, error) {
@@ -74,10 +81,56 @@ func (s *fakePromptStore) Categories(ctx context.Context) ([]string, error) {
 	return rows, nil
 }
 
+func (s *fakePromptStore) AdminCategories(ctx context.Context) ([]PromptCategory, error) {
+	rows := make([]PromptCategory, 0, len(s.categories))
+	for _, item := range s.categories {
+		rows = append(rows, *item)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].Name < rows[j].Name
+	})
+	return rows, nil
+}
+
 func (s *fakePromptStore) Create(ctx context.Context, input PromptLibraryItem) (*PromptLibraryItem, error) {
+	for {
+		if _, exists := s.items[s.nextID]; exists {
+			s.nextID++
+			continue
+		}
+		break
+	}
 	input.ID = s.nextID
 	s.nextID++
 	s.items[input.ID] = &input
+	return &input, nil
+}
+
+func (s *fakePromptStore) CategoryExists(ctx context.Context, name string) (bool, error) {
+	for _, item := range s.categories {
+		if item.Name == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *fakePromptStore) CreateCategory(ctx context.Context, input PromptCategory) (*PromptCategory, error) {
+	for _, item := range s.categories {
+		if item.Name == input.Name {
+			return nil, ErrInvalidInput
+		}
+	}
+	for {
+		if _, exists := s.categories[s.nextCateID]; exists {
+			s.nextCateID++
+			continue
+		}
+		break
+	}
+	input.ID = s.nextCateID
+	s.nextCateID++
+	s.categories[input.ID] = &input
 	return &input, nil
 }
 
@@ -97,6 +150,20 @@ func (s *fakePromptStore) Delete(ctx context.Context, id uint64) error {
 		return ErrNotFound
 	}
 	delete(s.items, id)
+	return nil
+}
+
+func (s *fakePromptStore) DeleteCategory(ctx context.Context, id uint64, fallbackName string) error {
+	current, ok := s.categories[id]
+	if !ok {
+		return ErrNotFound
+	}
+	for _, item := range s.items {
+		if item.Category == current.Name {
+			item.Category = fallbackName
+		}
+	}
+	delete(s.categories, id)
 	return nil
 }
 
@@ -120,7 +187,6 @@ func TestServiceListMeOnlyEnabledSearchCategoryAndPaging(t *testing.T) {
 		t.Fatalf("unexpected items: %#v", out.Items)
 	}
 }
-
 
 func TestServiceListPublicMatchesEnabledOnlySemantics(t *testing.T) {
 	store := newFakePromptStore()
@@ -200,5 +266,68 @@ func TestServiceValidateInputPagingAndNotFound(t *testing.T) {
 	params := normalizeListInput(ListInput{Limit: 1000, Offset: -10}, true)
 	if params.Limit != 100 || params.Offset != 0 || !params.EnabledOnly {
 		t.Fatalf("unexpected normalized paging: %#v", params)
+	}
+}
+
+func TestServiceCreatePromptRejectsUnknownCategory(t *testing.T) {
+	svc := NewService(newFakePromptStore())
+
+	_, err := svc.Create(context.Background(), SaveInput{
+		Title:    "电影感人像",
+		Content:  "高细节，柔和侧光",
+		Category: "不存在分类",
+		Enabled:  true,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestServiceCategoryCreateListAndDeleteMigratesPromptsToDefault(t *testing.T) {
+	store := newFakePromptStore()
+	base := time.Date(2026, 5, 3, 9, 0, 0, 0, time.UTC)
+	store.categories[2] = &PromptCategory{ID: 2, Name: "摄影", CreatedAt: base, UpdatedAt: base}
+	store.items[1] = &PromptLibraryItem{ID: 1, Title: "城市夜景", Content: "赛博朋克街道", Category: "摄影", Enabled: true, CreatedAt: base, UpdatedAt: base}
+	svc := NewService(store)
+	svc.now = func() time.Time { return base }
+
+	created, err := svc.CreateCategory(context.Background(), SaveCategoryInput{Name: "插画"})
+	if err != nil {
+		t.Fatalf("CreateCategory: %v", err)
+	}
+	if created.Name != "插画" {
+		t.Fatalf("created = %#v", created)
+	}
+
+	out, err := svc.ListAdminCategories(context.Background())
+	if err != nil {
+		t.Fatalf("ListAdminCategories: %v", err)
+	}
+	if len(out.Items) != 3 {
+		t.Fatalf("len = %d, want 3", len(out.Items))
+	}
+
+	if err := svc.DeleteCategory(context.Background(), 2); err != nil {
+		t.Fatalf("DeleteCategory: %v", err)
+	}
+	if store.items[1].Category != defaultCategory {
+		t.Fatalf("category = %q, want %q", store.items[1].Category, defaultCategory)
+	}
+}
+
+func TestServiceCategoryCreateRejectsDuplicateAndDeleteDefaultRejected(t *testing.T) {
+	store := newFakePromptStore()
+	base := time.Date(2026, 5, 3, 9, 0, 0, 0, time.UTC)
+	store.categories[2] = &PromptCategory{ID: 2, Name: "摄影", CreatedAt: base, UpdatedAt: base}
+	svc := NewService(store)
+	svc.now = func() time.Time { return base }
+
+	_, err := svc.CreateCategory(context.Background(), SaveCategoryInput{Name: "摄影"})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("duplicate err = %v, want ErrInvalidInput", err)
+	}
+
+	if err := svc.DeleteCategory(context.Background(), 1); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("delete default err = %v, want ErrInvalidInput", err)
 	}
 }
