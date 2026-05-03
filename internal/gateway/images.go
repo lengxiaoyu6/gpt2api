@@ -538,8 +538,10 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 
 	// 4) 预扣(图像按定价,est = actual)
 	cost := billing.ComputeImageCost(m, req.N, ratio, req.Size)
+	taskCtx, cancelTask := detachedTaskContext(c.Request.Context(), 7*time.Minute)
+	defer cancelTask()
 	if cost > 0 {
-		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "image prepay"); err != nil {
+		if err := h.Billing.PreDeduct(taskCtx, ak.UserID, ak.ID, cost, refID, "image prepay"); err != nil {
 			if errors.Is(err, billing.ErrInsufficient) {
 				fail("insufficient_balance")
 				openAIError(c, http.StatusPaymentRequired, "insufficient_balance",
@@ -578,14 +580,14 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 		EstimatedCredit: cost,
 	}
 	if h.DAO != nil {
-		if err := h.DAO.Create(c.Request.Context(), task); err != nil {
+		if err := h.DAO.Create(taskCtx, task); err != nil {
 			refund("billing_error")
 			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
 			return
 		}
-		if err := h.archiveTaskReferences(c.Request.Context(), taskID, taskStorageMode, refs); err != nil {
+		if err := h.archiveTaskReferences(taskCtx, taskID, taskStorageMode, refs); err != nil {
 			refund(image.ErrArchive)
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			_ = h.DAO.MarkFailed(context.Background(), taskID, image.ErrArchive)
 			openAIError(c, http.StatusBadGateway, image.ErrArchive, "参考图归档失败:"+err.Error())
 			return
 		}
@@ -596,8 +598,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	// 单请求硬上限 7 分钟:Runner 默认 per-attempt 6 分钟
 	// (SSE ~60s + PollMaxWait 300s + 缓冲),外层再留 1 分钟
 	// 给账号调度 + 签名 URL 换取等周边耗时。IMG2 已正式上线,不再做 preview_only 重试。
-	runCtx, cancel := context.WithTimeout(c.Request.Context(), 7*time.Minute)
-	defer cancel()
+	runCtx := taskCtx
 
 	// 带参考图时,多轮重试没什么意义(反而会重复上传参考图),只留 1 次尝试。
 	maxAttempts := 2
@@ -638,7 +639,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 	if actualN == 0 {
 		refund("upstream_error")
 		if h.DAO != nil {
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+			_ = h.DAO.MarkFailed(context.Background(), taskID, "upstream_error")
 		}
 		openAIError(c, http.StatusBadGateway, "upstream_error", "上游未返回图片结果")
 		return
@@ -659,7 +660,7 @@ func (h *ImagesHandler) ImageGenerations(c *gin.Context) {
 
 	// 9) DAO 回写 credit_cost(Runner 已经 MarkSuccess,这里只补 credit_cost)
 	if h.DAO != nil {
-		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, actualCost)
+		_ = h.DAO.UpdateCost(context.Background(), taskID, actualCost)
 	}
 
 	// 10) 响应:URL 统一走自家代理,防止 chatgpt.com estuary/content 防盗链
@@ -772,8 +773,10 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 	// 预扣
 	size := "1024x1024"
 	cost := billing.ComputeImageCost(m, 1, ratio, size)
+	taskCtx, cancelTask := detachedTaskContext(c.Request.Context(), 7*time.Minute)
+	defer cancelTask()
 	if cost > 0 {
-		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "chat->image prepay"); err != nil {
+		if err := h.Billing.PreDeduct(taskCtx, ak.UserID, ak.ID, cost, refID, "chat->image prepay"); err != nil {
 			rec.Status = usage.StatusFailed
 			if errors.Is(err, billing.ErrInsufficient) {
 				rec.ErrorCode = "insufficient_balance"
@@ -799,7 +802,7 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 
 	taskID := image.GenerateTaskID()
 	if h.DAO != nil {
-		_ = h.DAO.Create(c.Request.Context(), &image.Task{
+		_ = h.DAO.Create(taskCtx, &image.Task{
 			TaskID:          taskID,
 			UserID:          ak.UserID,
 			KeyID:           ak.ID,
@@ -813,8 +816,7 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 		})
 	}
 
-	runCtx, cancel := context.WithTimeout(c.Request.Context(), 7*time.Minute)
-	defer cancel()
+	runCtx := taskCtx
 
 	res := h.Runner.Run(runCtx, image.RunOptions{
 		TaskID:        taskID,
@@ -845,7 +847,7 @@ func (h *ImagesHandler) handleChatAsImage(c *gin.Context, rec *usage.Log, ak *ap
 	}
 	_ = h.Keys.DAO().TouchUsage(context.Background(), ak.ID, c.ClientIP(), cost)
 	if h.DAO != nil {
-		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, cost)
+		_ = h.DAO.UpdateCost(context.Background(), taskID, cost)
 	}
 
 	rec.Status = usage.StatusSuccess
@@ -1114,8 +1116,10 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	n, size = normalizeLocalImageRequestByModel(m, n, size)
 
 	cost := billing.ComputeImageCost(m, n, ratio, size)
+	taskCtx, cancelTask := detachedTaskContext(c.Request.Context(), 8*time.Minute)
+	defer cancelTask()
 	if cost > 0 {
-		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "image-edit prepay"); err != nil {
+		if err := h.Billing.PreDeduct(taskCtx, ak.UserID, ak.ID, cost, refID, "image-edit prepay"); err != nil {
 			if errors.Is(err, billing.ErrInsufficient) {
 				fail("insufficient_balance")
 				openAIError(c, http.StatusPaymentRequired, "insufficient_balance",
@@ -1140,7 +1144,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	taskID := image.GenerateTaskID()
 	if h.DAO != nil {
 		taskStorageMode := h.currentStorageMode()
-		if err := h.DAO.Create(c.Request.Context(), &image.Task{
+		if err := h.DAO.Create(taskCtx, &image.Task{
 			TaskID:          taskID,
 			UserID:          ak.UserID,
 			KeyID:           ak.ID,
@@ -1157,16 +1161,15 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
 			return
 		}
-		if err := h.archiveTaskReferences(c.Request.Context(), taskID, taskStorageMode, refs); err != nil {
+		if err := h.archiveTaskReferences(taskCtx, taskID, taskStorageMode, refs); err != nil {
 			refund(image.ErrArchive)
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			_ = h.DAO.MarkFailed(context.Background(), taskID, image.ErrArchive)
 			openAIError(c, http.StatusBadGateway, image.ErrArchive, "参考图归档失败:"+err.Error())
 			return
 		}
 	}
 
-	runCtx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Minute)
-	defer cancel()
+	runCtx := taskCtx
 
 	res := h.Runner.Run(runCtx, image.RunOptions{
 		TaskID:        taskID,
@@ -1198,7 +1201,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	if actualN == 0 {
 		refund("upstream_error")
 		if h.DAO != nil {
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+			_ = h.DAO.MarkFailed(context.Background(), taskID, "upstream_error")
 		}
 		openAIError(c, http.StatusBadGateway, "upstream_error", "上游未返回图片结果")
 		return
@@ -1215,7 +1218,7 @@ func (h *ImagesHandler) ImageEdits(c *gin.Context) {
 	rec.ImageCount = actualN
 	rec.CreditCost = actualCost
 	if h.DAO != nil {
-		_ = h.DAO.UpdateCost(c.Request.Context(), taskID, actualCost)
+		_ = h.DAO.UpdateCost(context.Background(), taskID, actualCost)
 	}
 
 	out := ImageGenResponse{

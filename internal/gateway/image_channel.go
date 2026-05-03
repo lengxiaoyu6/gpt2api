@@ -54,7 +54,10 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	if len(routes) == 0 {
 		return false
 	}
-	ir, routes, err := h.buildChannelImageRequest(c.Request.Context(), routes, req, refs)
+	taskCtx, cancel := detachedTaskContext(c.Request.Context(), 7*time.Minute)
+	defer cancel()
+
+	ir, routes, err := h.buildChannelImageRequest(taskCtx, routes, req, refs)
 	if err != nil {
 		if errors.Is(err, errNoReferenceCapableImageRoute) {
 			rec.Status = usage.StatusFailed
@@ -74,7 +77,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 
 	cost := billing.ComputeImageCost(m, req.N, ratio, req.Size)
 	if cost > 0 {
-		if err := h.Billing.PreDeduct(c.Request.Context(), ak.UserID, ak.ID, cost, refID, "image prepay"); err != nil {
+		if err := h.Billing.PreDeduct(taskCtx, ak.UserID, ak.ID, cost, refID, "image prepay"); err != nil {
 			rec.Status = usage.StatusFailed
 			if errors.Is(err, billing.ErrInsufficient) {
 				rec.ErrorCode = "insufficient_balance"
@@ -98,9 +101,6 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 		_ = h.Billing.Refund(context.Background(), ak.UserID, ak.ID, cost, refID, "image refund")
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 7*time.Minute)
-	defer cancel()
-
 	taskID := ""
 	if h.Runner != nil || h.DAO != nil {
 		taskID = image.GenerateTaskID()
@@ -110,7 +110,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 		taskStorageMode = image.StorageModeCloud
 	}
 	if h.DAO != nil {
-		if err := h.DAO.Create(c.Request.Context(), &image.Task{
+		if err := h.DAO.Create(taskCtx, &image.Task{
 			TaskID:          taskID,
 			UserID:          ak.UserID,
 			KeyID:           ak.ID,
@@ -127,15 +127,15 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 			openAIError(c, http.StatusInternalServerError, "internal_error", "创建任务失败:"+err.Error())
 			return true
 		}
-		if err := h.archiveTaskReferences(c.Request.Context(), taskID, taskStorageMode, refs); err != nil {
+		if err := h.archiveTaskReferences(taskCtx, taskID, taskStorageMode, refs); err != nil {
 			refund(image.ErrArchive)
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+			_ = h.DAO.MarkFailed(context.Background(), taskID, image.ErrArchive)
 			openAIError(c, http.StatusBadGateway, image.ErrArchive, "参考图归档失败:"+err.Error())
 			return true
 		}
 	}
 
-	selected, result, failures := pickImageRoute(ctx, routes, ir)
+	selected, result, failures := pickImageRoute(taskCtx, routes, ir)
 	var lastErr error
 	for _, failure := range failures {
 		lastErr = failure.err
@@ -149,7 +149,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	if selected == nil || result == nil {
 		refund("upstream_error")
 		if h.DAO != nil {
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+			_ = h.DAO.MarkFailed(context.Background(), taskID, "upstream_error")
 		}
 		msg := "所有上游渠道均不可用"
 		if lastErr != nil {
@@ -164,7 +164,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 	if actualN == 0 {
 		refund("upstream_error")
 		if h.DAO != nil {
-			_ = h.DAO.MarkFailed(c.Request.Context(), taskID, "upstream_error")
+			_ = h.DAO.MarkFailed(context.Background(), taskID, "upstream_error")
 		}
 		openAIError(c, http.StatusBadGateway, "upstream_error", "上游未返回图片结果")
 		return true
@@ -183,22 +183,22 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 		if err != nil {
 			refund(image.ErrArchive)
 			if h.DAO != nil {
-				_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+				_ = h.DAO.MarkFailed(context.Background(), taskID, image.ErrArchive)
 			}
 			openAIError(c, http.StatusBadGateway, image.ErrArchive, "图片归档失败:"+err.Error())
 			return true
 		}
-		archived, err := h.Runner.ArchiveExternalImages(ctx, taskID, result.URLs, inlineImages)
+		archived, err := h.Runner.ArchiveExternalImages(taskCtx, taskID, result.URLs, inlineImages)
 		if err != nil {
 			refund(image.ErrArchive)
 			if h.DAO != nil {
-				_ = h.DAO.MarkFailed(c.Request.Context(), taskID, image.ErrArchive)
+				_ = h.DAO.MarkFailed(context.Background(), taskID, image.ErrArchive)
 			}
 			openAIError(c, http.StatusBadGateway, image.ErrArchive, "图片归档失败:"+err.Error())
 			return true
 		}
 		if h.DAO != nil {
-			if err := h.DAO.MarkSuccess(c.Request.Context(), taskID, "", nil,
+			if err := h.DAO.MarkSuccess(context.Background(), taskID, "", nil,
 				archived.SignedURLs, archived.ThumbURLs, archived.StorageMode, finalCost); err != nil {
 				refund("billing_error")
 				openAIError(c, http.StatusInternalServerError, "internal_error", "更新任务失败:"+err.Error())
@@ -217,7 +217,7 @@ func (h *ImagesHandler) dispatchImageToChannel(c *gin.Context,
 			resultURLs = append(resultURLs, "data:image/png;base64,"+b)
 		}
 		if h.DAO != nil {
-			if err := h.DAO.MarkSuccess(c.Request.Context(), taskID, "", nil,
+			if err := h.DAO.MarkSuccess(context.Background(), taskID, "", nil,
 				resultURLs, nil, image.StorageModeCloud, finalCost); err != nil {
 				refund("billing_error")
 				openAIError(c, http.StatusInternalServerError, "internal_error", "更新任务失败:"+err.Error())

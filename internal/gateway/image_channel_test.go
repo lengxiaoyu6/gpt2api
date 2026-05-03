@@ -805,6 +805,112 @@ func TestImageGenerationsCreatesChannelTaskBeforeUpstreamReturns(t *testing.T) {
 	}
 }
 
+func TestImageGenerationsKeepsChannelTaskSuccessfulWhenRequestContextCanceled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamStarted := make(chan struct{}, 1)
+	releaseUpstream := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			close(releaseUpstream)
+		})
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case upstreamStarted <- struct{}{}:
+		default:
+		}
+		<-releaseUpstream
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"url":"https://cdn.example.com/generated.png"}]}`)
+	}))
+	defer srv.Close()
+
+	taskDB := newImageTaskSQLiteDB(t)
+	h, ak := newChannelBackedImageHandlerForTest(
+		t,
+		newImageChannelTestRouterWithMapping(t, srv.URL+"/v1/images/generations", "gpt-image-1", "gpt-image-1"),
+		nil,
+	)
+	h.DAO = image.NewDAO(taskDB)
+	h.Runner = nil
+
+	reqBody, err := json.Marshal(ImageGenRequest{
+		Model:  "gpt-image-1",
+		Prompt: "刷新后继续生成",
+		N:      1,
+		Size:   "1024x1024",
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	reqCtx, cancelReq := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(reqBody)).WithContext(reqCtx)
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:34567"
+	c.Request = req
+	c.Set(apikey.CtxKey, ak)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ImageGenerations(c)
+	}()
+	defer func() {
+		release()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("timed out waiting for handler completion during cleanup")
+		}
+	}()
+
+	select {
+	case <-upstreamStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for upstream request")
+	}
+
+	cancelReq()
+	release()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for handler completion")
+	}
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var stored struct {
+		TaskID     string `db:"task_id"`
+		Status     string `db:"status"`
+		ResultURLs string `db:"result_urls"`
+		Error      string `db:"error"`
+	}
+	if err := taskDB.Get(&stored, `SELECT task_id, status, result_urls, error FROM image_tasks ORDER BY id DESC LIMIT 1`); err != nil {
+		t.Fatalf("select stored task: %v", err)
+	}
+	if stored.TaskID == "" {
+		t.Fatalf("stored task_id should not be empty")
+	}
+	if stored.Status != image.StatusSuccess {
+		t.Fatalf("stored status = %q, want %q", stored.Status, image.StatusSuccess)
+	}
+	if stored.ResultURLs != `["https://cdn.example.com/generated.png"]` {
+		t.Fatalf("stored result_urls = %q", stored.ResultURLs)
+	}
+	if stored.Error != "" {
+		t.Fatalf("stored error = %q", stored.Error)
+	}
+}
+
 func TestImageEditsRoutesMultipartReferenceImagesToResponsesChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
