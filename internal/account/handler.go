@@ -63,7 +63,17 @@ func (h *Handler) Create(c *gin.Context) {
 // 返回健康账号的额度汇总:total_remaining / total_capacity / active_accounts。
 // 注意:只统计 image_quota_updated_at IS NOT NULL 的行(已探测过)。
 func (h *Handler) QuotaSummary(c *gin.Context) {
-	s, err := h.svc.dao.SumQuota(c.Request.Context())
+	s, err := h.svc.QuotaSummary(c.Request.Context())
+	if err != nil {
+		resp.Internal(c, err.Error())
+		return
+	}
+	resp.OK(c, s)
+}
+
+// GET /api/me/local-pool-quota-summary
+func (h *Handler) LocalPoolQuotaSummary(c *gin.Context) {
+	s, err := h.svc.QuotaSummary(c.Request.Context())
 	if err != nil {
 		resp.Internal(c, err.Error())
 		return

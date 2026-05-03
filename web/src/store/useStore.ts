@@ -9,6 +9,7 @@ import { resolveOutputSize, type AspectRatio, type OutputQualityValue } from '..
 
 export type TabKey = 'home' | 'generate' | 'history' | 'profile' | 'updateLogs' | 'promptLibrary'
 export type BootstrapStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type AsyncStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type { AspectRatio, OutputQualityValue } from '../features/image/options'
 
 export interface HistoryRecord extends meApi.ImageTask {}
@@ -139,6 +140,8 @@ interface AppState {
   checkin: meApi.CheckinStatus | null
   imageModels: meApi.ImageModel[]
   selectedImageModel: string | null
+  localPoolQuotaSummary: meApi.LocalPoolQuotaSummary | null
+  localPoolQuotaStatus: AsyncStatus
   history: HistoryRecord[]
   historyLoaded: boolean
   historyLoading: boolean
@@ -162,6 +165,7 @@ interface AppState {
   fetchMe: () => Promise<authApi.UserInfo | null>
   fetchCheckin: () => Promise<meApi.CheckinStatus | null>
   fetchImageModels: () => Promise<meApi.ImageModel[]>
+  fetchLocalPoolQuotaSummary: () => Promise<meApi.LocalPoolQuotaSummary | null>
   fetchHistory: (force?: boolean, append?: boolean, filters?: HistoryFilters) => Promise<HistoryRecord[]>
   deleteHistoryRecord: (taskID: string) => Promise<void>
   submitCheckin: () => Promise<meApi.CheckinStatus>
@@ -214,6 +218,8 @@ export const useStore = create<AppState>()(
       checkin: null,
       imageModels: [],
       selectedImageModel: null,
+      localPoolQuotaSummary: null,
+      localPoolQuotaStatus: 'idle',
       history: [],
       historyLoaded: false,
       historyLoading: false,
@@ -282,6 +288,8 @@ export const useStore = create<AppState>()(
           checkin: null,
           imageModels: [],
           selectedImageModel: null,
+          localPoolQuotaSummary: null,
+          localPoolQuotaStatus: 'idle',
           history: [],
           historyLoaded: false,
           historyLoading: false,
@@ -307,6 +315,8 @@ export const useStore = create<AppState>()(
           checkin: null,
           imageModels: [],
           selectedImageModel: null,
+          localPoolQuotaSummary: null,
+          localPoolQuotaStatus: 'idle',
           history: [],
           historyLoaded: false,
           historyLoading: false,
@@ -345,6 +355,18 @@ export const useStore = create<AppState>()(
         const selectedImageModel = pickPreferredImageModel(available, get().selectedImageModel)
         set({ imageModels: available, selectedImageModel })
         return available
+      },
+
+      async fetchLocalPoolQuotaSummary() {
+        set({ localPoolQuotaStatus: 'loading' })
+        try {
+          const summary = await meApi.getMyLocalPoolQuotaSummary()
+          set({ localPoolQuotaSummary: summary, localPoolQuotaStatus: 'ready' })
+          return summary
+        } catch (error) {
+          set({ localPoolQuotaSummary: null, localPoolQuotaStatus: 'error' })
+          throw error
+        }
       },
 
       async fetchHistory(force = false, append = false, filters) {
@@ -412,6 +434,7 @@ export const useStore = create<AppState>()(
         }
         const supportsMultiImage = modelConfig?.supports_multi_image ?? true
         const supportsOutputSize = modelConfig?.supports_output_size ?? true
+        const usesLocalPool = isLocalImagePool(modelConfig)
         const outputQuality = effectiveOutputQuality(supportsOutputSize, input.quality)
         const req: meApi.PlayImageRequest = {
           model: modelSlug,
@@ -427,7 +450,11 @@ export const useStore = create<AppState>()(
             input.signal,
           )
         } finally {
-          await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
+          const tasks: Array<Promise<unknown>> = [get().fetchMe(), get().fetchHistory(true)]
+          if (usesLocalPool) {
+            tasks.push(get().fetchLocalPoolQuotaSummary())
+          }
+          await Promise.allSettled(tasks)
         }
       },
 
@@ -437,6 +464,7 @@ export const useStore = create<AppState>()(
           throw new Error('当前暂无可用图像模型')
         }
         const supportsOutputSize = modelConfig?.supports_output_size ?? true
+        const usesLocalPool = isLocalImagePool(modelConfig)
         const outputQuality = effectiveOutputQuality(supportsOutputSize, input.quality)
         const opts: { n?: number; size?: string; signal?: AbortSignal } = {
           n: 1,
@@ -453,7 +481,11 @@ export const useStore = create<AppState>()(
             opts,
           )
         } finally {
-          await Promise.allSettled([get().fetchMe(), get().fetchHistory(true)])
+          const tasks: Array<Promise<unknown>> = [get().fetchMe(), get().fetchHistory(true)]
+          if (usesLocalPool) {
+            tasks.push(get().fetchLocalPoolQuotaSummary())
+          }
+          await Promise.allSettled(tasks)
         }
       },
 
@@ -506,6 +538,8 @@ export const useStore = create<AppState>()(
           checkin: null,
           imageModels: [],
           selectedImageModel: null,
+          localPoolQuotaSummary: null,
+          localPoolQuotaStatus: 'idle',
           history: [],
           historyLoaded: false,
           historyLoading: false,

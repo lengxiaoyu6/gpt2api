@@ -31,6 +31,12 @@ export interface ImageModel {
   supports_output_size?: boolean
 }
 
+export interface LocalPoolQuotaSummary {
+  total_remaining: number
+  total_capacity: number
+  active_accounts: number
+}
+
 export interface ImageTask {
   id: number
   task_id: string
@@ -100,6 +106,10 @@ export function changeMyPassword(req: { old_password: string; new_password: stri
 
 export function listMyModels() {
   return http.get('/api/me/models') as Promise<{ items: ImageModel[]; total: number }>
+}
+
+export function getMyLocalPoolQuotaSummary() {
+  return http.get('/api/me/local-pool-quota-summary') as Promise<LocalPoolQuotaSummary>
 }
 
 export interface ListMyImageTasksParams {

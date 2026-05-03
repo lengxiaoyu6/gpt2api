@@ -15,6 +15,7 @@ vi.mock('../api/me', () => ({
   getMyCheckinStatus: vi.fn(),
   checkinToday: vi.fn(),
   listMyModels: vi.fn(),
+  getMyLocalPoolQuotaSummary: vi.fn(),
   listMyImageTasks: vi.fn(),
   deleteMyImageTask: vi.fn(),
   playGenerateImage: vi.fn(),
@@ -69,6 +70,11 @@ describe('useStore backend integration', () => {
     vi.mocked(meApi.listMyModels).mockResolvedValue({
       items: [{ id: 1, slug: 'gpt-image-1', type: 'image', description: 'img', image_price_per_call: 5 }],
       total: 1,
+    })
+    vi.mocked(meApi.getMyLocalPoolQuotaSummary).mockResolvedValue({
+      total_remaining: 12,
+      total_capacity: 50,
+      active_accounts: 3,
     })
     vi.mocked(meApi.listMyImageTasks).mockResolvedValue({ items: [], limit: 20, offset: 0 })
     vi.mocked(meApi.deleteMyImageTask).mockResolvedValue({ deleted: 'task-1' })
@@ -347,6 +353,37 @@ describe('useStore backend integration', () => {
     expect(meApi.listMyImageTasks).toHaveBeenCalledTimes(1)
   })
 
+  test('local pool quota summary can be fetched and is refreshed after local-pool text generation plus image edit', async () => {
+    const state = useStore.getState() as any
+    await state.fetchImageModels()
+
+    await state.fetchLocalPoolQuotaSummary()
+
+    expect((useStore.getState() as any).localPoolQuotaSummary).toEqual({
+      total_remaining: 12,
+      total_capacity: 50,
+      active_accounts: 3,
+    })
+    expect((useStore.getState() as any).localPoolQuotaStatus).toBe('ready')
+
+    await state.generateImage({
+      prompt: 'future skyline',
+      aspectRatio: '1:1',
+      quality: '1K',
+      count: 1,
+    })
+
+    await state.editImage({
+      prompt: 'portrait relight',
+      aspectRatio: '1:1',
+      quality: '1K',
+      files: [new File(['demo'], 'demo.png', { type: 'image/png' })],
+      count: 1,
+    })
+
+    expect(meApi.getMyLocalPoolQuotaSummary).toHaveBeenCalledTimes(3)
+  })
+
   test('fetchImageModels prefers image model with upstream channel when current selection is empty', async () => {
     vi.mocked(meApi.listMyModels).mockResolvedValue({
       items: [
@@ -610,6 +647,33 @@ describe('useStore backend integration', () => {
       n: 4,
     })
     expect(req).not.toHaveProperty('size')
+  })
+
+  test('upstream-channel text generation does not refresh local pool quota summary', async () => {
+    vi.mocked(meApi.listMyModels).mockResolvedValue({
+      items: [{
+        id: 2,
+        slug: 'upstream-default-size',
+        type: 'image',
+        description: 'upstream',
+        image_price_per_call: 5,
+        has_image_channel: true,
+      }],
+      total: 1,
+    })
+
+    const state = useStore.getState() as any
+    await state.fetchImageModels()
+    vi.mocked(meApi.getMyLocalPoolQuotaSummary).mockClear()
+
+    await state.generateImage({
+      prompt: 'future skyline',
+      aspectRatio: '1:1',
+      quality: '1K',
+      count: 1,
+    })
+
+    expect(meApi.getMyLocalPoolQuotaSummary).not.toHaveBeenCalled()
   })
 
   test('generateImage refreshes history after API task failure', async () => {

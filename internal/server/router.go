@@ -171,6 +171,10 @@ func New(d *Deps) *gin.Engine {
 				// 普通用户视角的 enabled 模型列表(用于面板下拉)
 				authed.GET("/me/models", d.AdminModelH.ListEnabledForMe)
 			}
+			if d.AccountH != nil {
+				authed.GET("/me/local-pool-quota-summary",
+					middleware.RequirePerm(rbac.PermSelfImage), d.AccountH.LocalPoolQuotaSummary)
+			}
 
 			// ---- 在线体验:复用 /v1 handler,但入口是 JWT 鉴权 + 自动映射内部 key ----
 			if d.GatewayH != nil && d.KeySvc != nil {

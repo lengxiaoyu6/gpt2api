@@ -309,7 +309,10 @@ export default function GenerateView() {
   const {
     generateImage,
     editImage,
+    fetchLocalPoolQuotaSummary,
     imageModels,
+    localPoolQuotaStatus,
+    localPoolQuotaSummary,
     siteInfo,
     selectedImageModel,
     setSelectedImageModel,
@@ -337,6 +340,7 @@ export default function GenerateView() {
   const sourceImagesRef = useRef<SourceImage[]>([]);
 
   const currentModel = imageModels.find((item) => item.slug === selectedImageModel);
+  const currentModelUsesLocalPool = currentModel?.has_image_channel !== true;
   const supportsMultiImage = currentModel?.supports_multi_image ?? true;
   const supportsOutputSize = currentModel?.supports_output_size ?? true;
   const currentModelTitle = getModelPrimaryLabel(currentModel);
@@ -372,6 +376,18 @@ export default function GenerateView() {
     { label: '数量', value: `${effectiveImageCount}张` },
     { label: '费用', value: `${formatCredit(totalPrice)}积分` },
   ];
+
+  useEffect(() => {
+    if (!currentModelUsesLocalPool) {
+      return;
+    }
+    if (localPoolQuotaStatus === 'loading') {
+      return;
+    }
+    if (localPoolQuotaStatus === 'idle' || !localPoolQuotaSummary) {
+      void fetchLocalPoolQuotaSummary();
+    }
+  }, [currentModelUsesLocalPool, fetchLocalPoolQuotaSummary, localPoolQuotaStatus, localPoolQuotaSummary]);
 
   useEffect(() => {
     if (mode !== 'img') {
@@ -1135,6 +1151,13 @@ export default function GenerateView() {
                     </>
                   )}
                 </div>
+                {currentModelUsesLocalPool && localPoolQuotaSummary ? (
+                  <div className="rounded-2xl border border-primary/15 bg-primary/8 px-4 py-3">
+                    <p className="text-sm font-semibold text-foreground">
+                      剩余 {localPoolQuotaSummary.total_remaining} 张
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               <div className="relative">

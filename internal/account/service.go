@@ -239,6 +239,10 @@ func (s *Service) ListDeleted(ctx context.Context, status, keyword string, offse
 	return s.dao.ListDeleted(ctx, status, keyword, offset, limit)
 }
 
+func (s *Service) QuotaSummary(ctx context.Context) (*QuotaSummary, error) {
+	return s.dao.SumQuota(ctx)
+}
+
 // DecryptAuthToken 解密 AT。
 func (s *Service) DecryptAuthToken(a *Account) (string, error) {
 	return s.cipher.DecryptString(a.AuthTokenEnc)

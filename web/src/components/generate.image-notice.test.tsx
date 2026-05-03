@@ -8,6 +8,7 @@ const generateImage = vi.fn()
 const editImage = vi.fn()
 const detectSourceImageFormat = vi.fn()
 const convertHEICToJPEG = vi.fn()
+const fetchLocalPoolQuotaSummary = vi.fn()
 
 vi.mock('../api/site', () => ({
   fetchSiteInfo: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('../api/me', () => ({
   getMyCheckinStatus: vi.fn(),
   checkinToday: vi.fn(),
   listMyModels: vi.fn(),
+  getMyLocalPoolQuotaSummary: vi.fn(),
   listMyImageTasks: vi.fn(),
   playGenerateImage: vi.fn(),
   playEditImage: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock('../lib/heic', async () => {
 })
 
 const storeModule = await import('../store/useStore')
+const meApi = await import('../api/me')
 const useStore = storeModule.useStore
 const { default: GenerateView } = await import('./views/Generate')
 
@@ -63,6 +66,11 @@ describe('generate image notice', () => {
     vi.clearAllMocks()
     detectSourceImageFormat.mockReset()
     convertHEICToJPEG.mockReset()
+    vi.mocked(meApi.getMyLocalPoolQuotaSummary).mockResolvedValue({
+      total_remaining: 12,
+      total_capacity: 50,
+      active_accounts: 3,
+    })
   })
 
   afterEach(() => {
@@ -96,6 +104,47 @@ describe('generate image notice', () => {
     expect(notice).toBeInTheDocument()
     expect(screen.queryByText('生图公告')).toBeNull()
     expect(notice.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  test('generate page shows only remaining local pool quota for local pool model and hides it for upstream model', () => {
+    useStore.setState({
+      siteInfo: {
+        'site.name': 'OAI Hub',
+        'site.description': 'AI 创作平台',
+        'site.logo_url': '',
+        'site.footer': '',
+        'auth.allow_register': 'true',
+        'site.image_notice': '',
+      },
+      generateImage,
+      editImage,
+      fetchLocalPoolQuotaSummary,
+      localPoolQuotaSummary: {
+        total_remaining: 12,
+        total_capacity: 50,
+        active_accounts: 3,
+      },
+      localPoolQuotaStatus: 'ready',
+      imageModels: [
+        { id: 1, slug: 'gpt-image-1', type: 'image', description: '本地模型', image_price_per_call: 1500, has_image_channel: false },
+        { id: 2, slug: 'gpt-image-1-api', type: 'image', description: '通道模型', image_price_per_call: 1500, has_image_channel: true },
+      ],
+      selectedImageModel: 'gpt-image-1',
+      setSelectedImageModel: (slug: string | null) => useStore.setState({ selectedImageModel: slug }),
+    } as any)
+
+    const { rerender } = render(<GenerateView />)
+
+    expect(screen.getByText('剩余 12 张')).toBeInTheDocument()
+    expect(screen.queryByText('账号池剩余 12 / 50')).toBeNull()
+    expect(screen.queryByText('可用账号 3 个')).toBeNull()
+
+    act(() => {
+      useStore.setState({ selectedImageModel: 'gpt-image-1-api' } as any)
+    })
+    rerender(<GenerateView />)
+
+    expect(screen.queryByText('剩余 12 张')).toBeNull()
   })
 
   test('generate page shows the original ratio grid and quality labels without resolution text', () => {
