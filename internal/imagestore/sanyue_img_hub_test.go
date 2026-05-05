@@ -149,3 +149,29 @@ func TestSanyueImgHubUploadBuildsMultipartFileField(t *testing.T) {
 		t.Fatalf("file name = %q", gotFileName)
 	}
 }
+
+func TestSanyueImgHubUploadDefaultsHTTPImageURLToHTTPS(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"src":"http://cdn.example.com/a.png?x=1"}]`))
+	}))
+	defer ts.Close()
+
+	uploader := NewSanyueImgHubUploader(SanyueImgHubUploaderOptions{
+		UploadURL:    ts.URL,
+		AuthCode:     "auth",
+		ReturnFormat: "full",
+	})
+
+	url, err := uploader.Upload(context.Background(), SourceImage{
+		Index:       0,
+		Data:        []byte("png-bytes"),
+		ContentType: "image/png",
+	})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	if url != "https://cdn.example.com/a.png?x=1" {
+		t.Fatalf("url = %q", url)
+	}
+}

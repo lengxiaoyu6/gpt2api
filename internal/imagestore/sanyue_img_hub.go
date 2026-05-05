@@ -132,7 +132,19 @@ func (u *SanyueImgHubUploader) UploadToChannelWithOptions(ctx context.Context, s
 	if strings.TrimSpace(payload[0].Src) == "" {
 		return "", fmt.Errorf("upload response missing src")
 	}
-	return strings.TrimSpace(payload[0].Src), nil
+	return defaultImageURLToHTTPS(strings.TrimSpace(payload[0].Src)), nil
+}
+
+func defaultImageURLToHTTPS(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if parsed.Scheme != "http" {
+		return raw
+	}
+	parsed.Scheme = "https"
+	return parsed.String()
 }
 
 func (u *SanyueImgHubUploader) effectiveUploadChannel(channel string) string {
